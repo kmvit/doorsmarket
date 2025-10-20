@@ -78,6 +78,13 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "password": "Пароли не совпадают"
             })
+        
+        # Запрет создания администраторов через API регистрации
+        if attrs.get('role') == 'admin':
+            raise serializers.ValidationError({
+                "role": "Невозможно зарегистрироваться с ролью администратора"
+            })
+        
         return attrs
     
     def create(self, validated_data):

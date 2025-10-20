@@ -1,0 +1,43 @@
+[
+  {
+    "model": "projects.productionsite",
+    "pk": 1,
+    "fields": {
+      "name": "Производство Москва-Восток",
+      "address": "Москва, ул. Производственная, д. 10",
+      "is_active": true,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.productionsite",
+    "pk": 2,
+    "fields": {
+      "name": "Производство Москва-Запад",
+      "address": "Москва, ул. Заводская, д. 25",
+      "is_active": true,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.productionsite",
+    "pk": 3,
+    "fields": {
+      "name": "Производство Санкт-Петербург",
+      "address": "СПб, пр. Промышленный, д. 15",
+      "is_active": true,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.productionsite",
+    "pk": 4,
+    "fields": {
+      "name": "Производство Казань",
+      "address": "Казань, ул. Фабричная, д. 5",
+      "is_active": true,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  }
+]
+

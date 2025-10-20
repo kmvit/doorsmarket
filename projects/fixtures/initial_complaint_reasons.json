@@ -1,0 +1,135 @@
+[
+  {
+    "model": "projects.complaintreason",
+    "pk": 1,
+    "fields": {
+      "name": "Фабрика Лайт (4-я площадка)",
+      "description": "",
+      "is_active": true,
+      "order": 1,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 2,
+    "fields": {
+      "name": "Фабрика Академи",
+      "description": "",
+      "is_active": true,
+      "order": 2,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 3,
+    "fields": {
+      "name": "Фабрика Ягуар",
+      "description": "",
+      "is_active": true,
+      "order": 3,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 4,
+    "fields": {
+      "name": "Фабрика AG-Style",
+      "description": "",
+      "is_active": true,
+      "order": 4,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 5,
+    "fields": {
+      "name": "Складская программа",
+      "description": "",
+      "is_active": true,
+      "order": 5,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 6,
+    "fields": {
+      "name": "Пересорт фурнитуры в Москве",
+      "description": "",
+      "is_active": true,
+      "order": 6,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 7,
+    "fields": {
+      "name": "Фурнитура брак",
+      "description": "",
+      "is_active": true,
+      "order": 7,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 8,
+    "fields": {
+      "name": "Транспортный бой",
+      "description": "",
+      "is_active": true,
+      "order": 8,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 9,
+    "fields": {
+      "name": "Ошибка менеджера",
+      "description": "",
+      "is_active": true,
+      "order": 9,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 10,
+    "fields": {
+      "name": "Ошибка замера",
+      "description": "",
+      "is_active": true,
+      "order": 10,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 11,
+    "fields": {
+      "name": "Ошибка монтажа",
+      "description": "",
+      "is_active": true,
+      "order": 11,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  },
+  {
+    "model": "projects.complaintreason",
+    "pk": 12,
+    "fields": {
+      "name": "Пошли на встречу клиенту",
+      "description": "",
+      "is_active": true,
+      "order": 12,
+      "created_at": "2025-10-20T09:00:00Z"
+    }
+  }
+]
+

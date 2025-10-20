@@ -5,29 +5,16 @@
 {% block content %}
 <div class="min-h-screen py-12 px-4">
     <div class="max-w-6xl mx-auto animate-fadeIn">
-        <!-- Шапка -->
-        <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 mb-8 border border-gray-100">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">
-                        Добро пожаловать, {{ user.get_full_name|default:user.username }}!
-                    </h1>
-                    <p class="mt-2 text-gray-600">
-                        Роль: <span class="font-semibold text-primary-600">{{ user.get_role_display }}</span>
-                        {% if user.city %}
-                        | Город: <span class="font-semibold text-primary-600">{{ user.city.name }}</span>
-                        {% endif %}
-                    </p>
-                </div>
-                <div class="mt-4 md:mt-0">
-                    <a href="{% url 'users:web_logout' %}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 transform hover:scale-105 shadow-lg">
-                        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                        </svg>
-                        Выйти
-                    </a>
-                </div>
-            </div>
+        <!-- Приветствие -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">
+                Добро пожаловать, {{ user.get_full_name|default:user.username }}!
+            </h1>
+            <p class="mt-2 text-gray-600">
+                {% if user.city %}
+                Город: <span class="font-semibold text-primary-600">{{ user.city.name }}</span>
+                {% endif %}
+            </p>
         </div>
 
         <!-- Сообщения -->
@@ -51,9 +38,9 @@
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
+                    <div class="ml-4 min-w-0 flex-1">
                         <p class="text-sm font-medium text-gray-600">Email</p>
-                        <p class="text-base font-semibold text-gray-900 truncate">{{ user.email }}</p>
+                        <p class="text-base font-semibold text-gray-900 truncate" title="{{ user.email }}">{{ user.email }}</p>
                     </div>
                 </div>
             </div>
@@ -68,9 +55,9 @@
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
+                    <div class="ml-4 min-w-0 flex-1">
                         <p class="text-sm font-medium text-gray-600">Роль</p>
-                        <p class="text-base font-semibold text-gray-900">{{ user.get_role_display }}</p>
+                        <p class="text-base font-semibold text-gray-900 truncate">{{ user.get_role_display }}</p>
                     </div>
                 </div>
             </div>
@@ -86,9 +73,9 @@
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
+                    <div class="ml-4 min-w-0 flex-1">
                         <p class="text-sm font-medium text-gray-600">Город</p>
-                        <p class="text-base font-semibold text-gray-900">{{ user.city.name|default:"Не указан" }}</p>
+                        <p class="text-base font-semibold text-gray-900 truncate">{{ user.city.name|default:"Не указан" }}</p>
                     </div>
                 </div>
             </div>
@@ -103,9 +90,9 @@
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
+                    <div class="ml-4 min-w-0 flex-1">
                         <p class="text-sm font-medium text-gray-600">Телефон</p>
-                        <p class="text-base font-semibold text-gray-900">{{ user.phone_number|default:"Не указан" }}</p>
+                        <p class="text-base font-semibold text-gray-900 truncate">{{ user.phone_number|default:"Не указан" }}</p>
                     </div>
                 </div>
             </div>
@@ -199,24 +186,39 @@
                 </div>
             </div>
 
-            <!-- API информация -->
+            <!-- Быстрые действия -->
             <div class="mt-8 pt-8 border-t border-gray-200">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">
-                    API Доступ
+                    Быстрые действия
                 </h3>
-                <div class="bg-gray-50 rounded-xl p-6">
-                    <p class="text-sm text-gray-600 mb-4">
-                        Для использования API получите JWT токены через эндпоинт входа:
-                    </p>
-                    <div class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code class="text-sm">
-                            POST /api/v1/auth/login/<br>
-                            Body: {"username": "{{ user.username }}", "password": "your_password"}
-                        </code>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-4">
-                        Подробная документация API доступна в файле API_DOCS.md
-                    </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="{% url 'projects:complaint_list' %}" class="flex items-center p-4 bg-gradient-to-r from-primary-50 to-cyan-50 rounded-xl hover:shadow-lg transition-all duration-200 group">
+                        <div class="flex-shrink-0">
+                            <div class="h-12 w-12 bg-gradient-to-br from-primary-500 to-cyan-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-semibold text-gray-900">Список рекламаций</p>
+                            <p class="text-xs text-gray-600">Просмотр всех заявок</p>
+                        </div>
+                    </a>
+
+                    <a href="{% url 'projects:complaint_create' %}" class="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl hover:shadow-lg transition-all duration-200 group">
+                        <div class="flex-shrink-0">
+                            <div class="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-semibold text-gray-900">Создать рекламацию</p>
+                            <p class="text-xs text-gray-600">Новая заявка</p>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>

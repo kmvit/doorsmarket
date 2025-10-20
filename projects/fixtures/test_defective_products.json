@@ -1,0 +1,75 @@
+[
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 1,
+    "fields": {
+      "complaint": 1,
+      "product_name": "Окно пластиковое двухстворчатое",
+      "size": "1400x1500",
+      "opening_type": "Поворотно-откидное",
+      "problem_description": "Трещина в углу профиля рамы",
+      "order": 0
+    }
+  },
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 2,
+    "fields": {
+      "complaint": 2,
+      "product_name": "Стеклопакет однокамерный",
+      "size": "1200x1000",
+      "opening_type": "",
+      "problem_description": "Разбито внешнее стекло",
+      "order": 0
+    }
+  },
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 3,
+    "fields": {
+      "complaint": 3,
+      "product_name": "Дверь балконная",
+      "size": "700x2100",
+      "opening_type": "Правое",
+      "problem_description": "Фурнитура установлена неправильно",
+      "order": 0
+    }
+  },
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 4,
+    "fields": {
+      "complaint": 4,
+      "product_name": "Окно трехстворчатое",
+      "size": "2100x1400",
+      "opening_type": "Центр поворотно-откидное",
+      "problem_description": "Размеры не соответствуют проему",
+      "order": 0
+    }
+  },
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 5,
+    "fields": {
+      "complaint": 4,
+      "product_name": "Подоконник",
+      "size": "2200x300",
+      "opening_type": "",
+      "problem_description": "Длина подоконника меньше требуемой",
+      "order": 1
+    }
+  },
+  {
+    "model": "projects.defectiveproduct",
+    "pk": 6,
+    "fields": {
+      "complaint": 5,
+      "product_name": "Окно двухстворчатое",
+      "size": "1300x1400",
+      "opening_type": "Глухое + поворотно-откидное",
+      "problem_description": "Белый профиль вместо ламинированного",
+      "order": 0
+    }
+  }
+]
+

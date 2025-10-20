@@ -1,0 +1,150 @@
+[
+  {
+    "model": "users.user",
+    "pk": 1,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": true,
+      "username": "admin",
+      "first_name": "Администратор",
+      "last_name": "Системы",
+      "email": "admin@marketingdoors.ru",
+      "is_staff": true,
+      "is_active": true,
+      "date_joined": "2025-10-20T10:00:00Z",
+      "role": "admin",
+      "city": 1,
+      "phone_number": "+79991234567",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 2,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "sm_petrov",
+      "first_name": "Петр",
+      "last_name": "Петров",
+      "email": "petrov@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T10:30:00Z",
+      "role": "service_manager",
+      "city": 1,
+      "phone_number": "+79991234568",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 3,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "manager_ivanov",
+      "first_name": "Иван",
+      "last_name": "Иванов",
+      "email": "ivanov@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T11:00:00Z",
+      "role": "manager",
+      "city": 1,
+      "phone_number": "+79991234569",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 4,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "manager_sidorova",
+      "first_name": "Мария",
+      "last_name": "Сидорова",
+      "email": "sidorova@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T11:15:00Z",
+      "role": "manager",
+      "city": 2,
+      "phone_number": "+79991234570",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 5,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "installer_kozlov",
+      "first_name": "Алексей",
+      "last_name": "Козлов",
+      "email": "kozlov@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T11:30:00Z",
+      "role": "installer",
+      "city": 1,
+      "phone_number": "+79991234571",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 6,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "leader_volkov",
+      "first_name": "Дмитрий",
+      "last_name": "Волков",
+      "email": "volkov@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T12:00:00Z",
+      "role": "leader",
+      "city": 1,
+      "phone_number": "+79991234572",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "users.user",
+    "pk": 7,
+    "fields": {
+      "password": "pbkdf2_sha256$1000000$uSkA3SY8qZifl46u63sZTO$0W+qDQh7gshl04PjOjR0jKTav2Bczg4XQpsdf8pMYsM=",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "complaint_dept",
+      "first_name": "Ольга",
+      "last_name": "Смирнова",
+      "email": "smirnova@marketingdoors.ru",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2025-10-20T12:30:00Z",
+      "role": "complaint_department",
+      "city": 1,
+      "phone_number": "+79991234573",
+      "groups": [],
+      "user_permissions": []
+    }
+  }
+]
+

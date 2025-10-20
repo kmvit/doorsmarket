@@ -166,6 +166,11 @@ class WebRegisterView(View):
             messages.error(request, 'Заполните все обязательные поля')
             return render(request, 'users/register.html', {'cities': cities})
         
+        # Запрет создания администраторов через регистрацию
+        if role == 'admin':
+            messages.error(request, 'Невозможно зарегистрироваться с ролью администратора')
+            return render(request, 'users/register.html', {'cities': cities})
+        
         if password != password2:
             messages.error(request, 'Пароли не совпадают')
             return render(request, 'users/register.html', {'cities': cities})

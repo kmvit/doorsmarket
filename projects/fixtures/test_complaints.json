@@ -1,0 +1,108 @@
+[
+  {
+    "model": "projects.complaint",
+    "pk": 1,
+    "fields": {
+      "created_at": "2025-10-18T10:30:00Z",
+      "updated_at": "2025-10-18T10:30:00Z",
+      "initiator": 3,
+      "recipient": 2,
+      "manager": 3,
+      "production_site": 1,
+      "reason": 1,
+      "order_number": "ORD-2025-001",
+      "client_name": "ООО Строй-Комплект",
+      "address": "Москва, ул. Ленина, д. 45, кв. 12",
+      "contact_person": "Иванов Сергей Петрович",
+      "contact_phone": "+79161234567",
+      "problem_description": "Обнаружен производственный дефект на раме окна. Трещина в углу профиля.",
+      "document_package_link": "https://example.com/docs/package1",
+      "status": "new"
+    }
+  },
+  {
+    "model": "projects.complaint",
+    "pk": 2,
+    "fields": {
+      "created_at": "2025-10-19T14:15:00Z",
+      "updated_at": "2025-10-19T16:20:00Z",
+      "initiator": 4,
+      "recipient": 2,
+      "manager": 4,
+      "production_site": 2,
+      "reason": 8,
+      "order_number": "ORD-2025-002",
+      "client_name": "ИП Новиков А.А.",
+      "address": "Санкт-Петербург, Невский пр., д. 100, офис 25",
+      "contact_person": "Новиков Андрей Александрович",
+      "contact_phone": "+79219876543",
+      "problem_description": "При доставке повреждено стекло. Требуется замена стеклопакета.",
+      "document_package_link": "",
+      "status": "in_progress"
+    }
+  },
+  {
+    "model": "projects.complaint",
+    "pk": 3,
+    "fields": {
+      "created_at": "2025-10-17T09:00:00Z",
+      "updated_at": "2025-10-19T18:00:00Z",
+      "initiator": 5,
+      "recipient": 2,
+      "manager": 3,
+      "production_site": 1,
+      "reason": 11,
+      "order_number": "ORD-2025-003",
+      "client_name": "ООО Домострой",
+      "address": "Москва, ул. Арбат, д. 25",
+      "contact_person": "Смирнов Олег Викторович",
+      "contact_phone": "+79269998877",
+      "problem_description": "Неправильно установлена фурнитура, дверь не закрывается.",
+      "document_package_link": "https://example.com/docs/package3",
+      "status": "resolved"
+    }
+  },
+  {
+    "model": "projects.complaint",
+    "pk": 4,
+    "fields": {
+      "created_at": "2025-10-20T08:45:00Z",
+      "updated_at": "2025-10-20T08:45:00Z",
+      "initiator": 3,
+      "recipient": 2,
+      "manager": 3,
+      "production_site": 3,
+      "reason": 10,
+      "order_number": "ORD-2025-004",
+      "client_name": "ЖК Премиум",
+      "address": "Казань, ул. Баумана, д. 75, кв. 88",
+      "contact_person": "Петрова Елена Ивановна",
+      "contact_phone": "+79050001122",
+      "problem_description": "Неверно указаны размеры при замере. Окно не подходит по проему.",
+      "document_package_link": "",
+      "status": "new"
+    }
+  },
+  {
+    "model": "projects.complaint",
+    "pk": 5,
+    "fields": {
+      "created_at": "2025-10-15T12:00:00Z",
+      "updated_at": "2025-10-16T17:00:00Z",
+      "initiator": 4,
+      "recipient": 2,
+      "manager": 4,
+      "production_site": 2,
+      "reason": 12,
+      "order_number": "ORD-2025-005",
+      "client_name": "Семья Кузнецовых",
+      "address": "Москва, ул. Парковая, д. 12, кв. 45",
+      "contact_person": "Кузнецова Анна Сергеевна",
+      "contact_phone": "+79167778899",
+      "problem_description": "Клиент просит изменить цвет профиля. Пошли навстречу.",
+      "document_package_link": "https://example.com/docs/package5",
+      "status": "closed"
+    }
+  }
+]
+
