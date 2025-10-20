@@ -109,10 +109,12 @@ class CityListView(generics.ListAPIView):
 
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views import View
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 
 class WebLoginView(View):
@@ -239,3 +241,70 @@ class WebDashboardView(View):
             'user': request.user,
         }
         return render(request, 'users/dashboard.html', context)
+
+
+@login_required(login_url='/api/v1/login/')
+def user_list(request):
+    """Список пользователей"""
+    
+    # Получаем всех пользователей
+    users = User.objects.select_related('city')
+    
+    # Фильтрация по роли
+    role_filter = request.GET.get('role')
+    if role_filter:
+        users = users.filter(role=role_filter)
+    
+    # Фильтрация по городу
+    city_filter = request.GET.get('city')
+    if city_filter:
+        users = users.filter(city_id=city_filter)
+    
+    # Фильтрация по активности
+    is_active_filter = request.GET.get('is_active')
+    if is_active_filter == 'true':
+        users = users.filter(is_active=True)
+    elif is_active_filter == 'false':
+        users = users.filter(is_active=False)
+    
+    # Поиск
+    search_query = request.GET.get('search')
+    if search_query:
+        users = users.filter(
+            Q(username__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(phone_number__icontains=search_query)
+        )
+    
+    # Сортировка
+    sort_by = request.GET.get('sort', 'username')
+    users = users.order_by(sort_by)
+    
+    # Статистика
+    stats = {
+        'total': User.objects.count(),
+        'active': User.objects.filter(is_active=True).count(),
+        'by_role': {}
+    }
+    
+    from users.models import Role
+    for role_value, role_label in Role.choices:
+        stats['by_role'][role_value] = User.objects.filter(role=role_value).count()
+    
+    # Данные для фильтров
+    cities = City.objects.all()
+    roles = Role.choices
+    
+    context = {
+        'users': users,
+        'cities': cities,
+        'roles': roles,
+        'stats': stats,
+        'current_role': role_filter,
+        'current_city': city_filter,
+        'search_query': search_query,
+    }
+    
+    return render(request, 'users/user_list.html', context)

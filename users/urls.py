@@ -12,6 +12,7 @@ from .views import (
     WebRegisterView,
     WebLogoutView,
     WebDashboardView,
+    user_list,
 )
 
 app_name = 'users'
@@ -39,5 +40,8 @@ urlpatterns = [
     path('register/', WebRegisterView.as_view(), name='web_register'),
     path('logout/', WebLogoutView.as_view(), name='web_logout'),
     path('dashboard/', WebDashboardView.as_view(), name='web_dashboard'),
+    
+    # Управление пользователями
+    path('users/', user_list, name='user_list'),
 ]
 
