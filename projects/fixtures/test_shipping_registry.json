@@ -1,0 +1,103 @@
+[
+  {
+    "model": "projects.shippingregistry",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-24T10:00:00Z",
+      "complaint": 1,
+      "order_number": "ORD-2024-001",
+      "manager": 3,
+      "client_name": "ООО Строй-Комплект",
+      "address": "г. Москва, ул. Строителей, д. 25, кв. 10",
+      "contact_person": "Петров Петр Петрович",
+      "contact_phone": "+7 (999) 111-22-33",
+      "doors_count": 3,
+      "lift_type": "our",
+      "lift_method": "elevator",
+      "order_type": "complaint",
+      "payment_status": "Оплачено",
+      "delivery_destination": "client",
+      "comments": "Срочная доставка, позвонить за час",
+      "delivery_status": "pending",
+      "client_rating": null,
+      "planned_shipping_date": "2024-10-28T10:00:00Z",
+      "actual_shipping_date": null
+    }
+  },
+  {
+    "model": "projects.shippingregistry",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-23T08:00:00Z",
+      "complaint": null,
+      "order_number": "ORD-2024-100",
+      "manager": 3,
+      "client_name": "ИП Иванов",
+      "address": "г. Москва, Ленинский проспект, д. 45",
+      "contact_person": "Иванов Иван",
+      "contact_phone": "+7 (999) 222-33-44",
+      "doors_count": 2,
+      "lift_type": "client",
+      "lift_method": "manual",
+      "order_type": "main",
+      "payment_status": "Предоплата 50%",
+      "delivery_destination": "client",
+      "comments": "Подъем на 5 этаж",
+      "delivery_status": "in_transit",
+      "client_rating": null,
+      "planned_shipping_date": "2024-10-26T14:00:00Z",
+      "actual_shipping_date": "2024-10-26T14:30:00Z"
+    }
+  },
+  {
+    "model": "projects.shippingregistry",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-22T12:00:00Z",
+      "complaint": null,
+      "order_number": "ORD-2024-105",
+      "manager": 3,
+      "client_name": "Сидоров С.С.",
+      "address": "г. Москва, ул. Мира, д. 12, корп. 2, кв. 156",
+      "contact_person": "Сидорова Анна",
+      "contact_phone": "+7 (999) 333-44-55",
+      "doors_count": 1,
+      "lift_type": "our",
+      "lift_method": "elevator",
+      "order_type": "main",
+      "payment_status": "Оплачено полностью",
+      "delivery_destination": "client",
+      "comments": "",
+      "delivery_status": "delivered",
+      "client_rating": 5,
+      "planned_shipping_date": "2024-10-25T11:00:00Z",
+      "actual_shipping_date": "2024-10-25T11:15:00Z"
+    }
+  },
+  {
+    "model": "projects.shippingregistry",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-21T09:00:00Z",
+      "complaint": null,
+      "order_number": "ORD-2024-110",
+      "manager": 3,
+      "client_name": "ООО Ремонт-Эксперт",
+      "address": "г. Москва, Кутузовский проспект, д. 33",
+      "contact_person": "Смирнов Алексей",
+      "contact_phone": "+7 (999) 444-55-66",
+      "doors_count": 5,
+      "lift_type": "client",
+      "lift_method": "elevator",
+      "order_type": "main",
+      "payment_status": "Рассрочка",
+      "delivery_destination": "warehouse",
+      "comments": "Доставить на склад клиента",
+      "delivery_status": "delivered",
+      "client_rating": 4,
+      "planned_shipping_date": "2024-10-24T09:00:00Z",
+      "actual_shipping_date": "2024-10-24T09:30:00Z"
+    }
+  }
+]
+

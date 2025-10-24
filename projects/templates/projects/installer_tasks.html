@@ -1,0 +1,163 @@
+{% extends 'users/base.html' %}
+
+{% block title %}Мои задачи - Marketing Doors{% endblock %}
+
+{% block content %}
+<div class="min-h-screen py-8 px-4">
+    <div class="max-w-7xl mx-auto">
+        <!-- Заголовок страницы -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-900">Мои задачи</h1>
+            <p class="text-sm text-gray-600 mt-1">Список назначенных вам монтажных работ</p>
+        </div>
+
+        <!-- Статистика для монтажника -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Всего задач</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ stats.total }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <a href="?filter=needs_planning" class="bg-gradient-to-br from-red-500 to-orange-500 rounded-2xl shadow-lg p-6 border border-red-200 hover:shadow-xl transition-all transform hover:scale-105">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-12 w-12 bg-white/20 rounded-xl flex items-center justify-center">
+                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-white">Нужно запланировать</p>
+                        <p class="text-2xl font-bold text-white">{{ stats.needs_planning }}</p>
+                    </div>
+                </div>
+            </a>
+
+            <a href="?filter=planned" class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-all">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-12 w-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Запланировано</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ stats.planned }}</p>
+                    </div>
+                </div>
+            </a>
+
+            <a href="?filter=completed" class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-all">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Завершено</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ stats.completed }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Список задач -->
+        <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
+            {% if complaints %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Рекламация</th>
+                                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент / Адрес</th>
+                                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата монтажа</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for complaint in complaints %}
+                                <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="window.location='{% url 'projects:complaint_detail' complaint.id %}'">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="flex-shrink-0 h-10 w-10">
+                                                <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                    <span class="text-sm font-medium text-blue-800">#{{ complaint.id }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="ml-4">
+                                                <div class="text-sm font-medium text-gray-900">{{ complaint.order_number }}</div>
+                                                <div class="text-sm text-gray-500">{{ complaint.created_at|date:"d.m.Y" }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-medium text-gray-900">{{ complaint.client_name }}</div>
+                                        <div class="text-sm text-gray-500">{{ complaint.address|truncatewords:5 }}</div>
+                                        <div class="text-sm text-gray-500">{{ complaint.contact_phone }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        {% if complaint.status == 'waiting_installer_date' or complaint.status == 'needs_planning' %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
+                                                Нужно запланировать
+                                            </span>
+                                        {% elif complaint.status == 'installation_planned' %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                Монтаж запланирован на {{ complaint.planned_installation_date|date:"d.m.Y H:i" }}
+                                            </span>
+                                        {% elif complaint.status == 'under_sm_review' %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                На проверке у СМ
+                                            </span>
+                                        {% elif complaint.status == 'completed' %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                Завершена
+                                            </span>
+                                        {% else %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                                {{ complaint.get_status_display }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        {% if complaint.planned_installation_date %}
+                                            <div class="text-sm text-gray-900">{{ complaint.planned_installation_date|date:"d.m.Y" }}</div>
+                                            <div class="text-sm text-gray-500">{{ complaint.planned_installation_date|date:"H:i" }}</div>
+                                        {% else %}
+                                            <span class="text-sm text-gray-400">Не назначена</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-12">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">Нет задач</h3>
+                    <p class="mt-1 text-sm text-gray-500">У вас пока нет назначенных монтажных работ</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

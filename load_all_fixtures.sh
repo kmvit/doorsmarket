@@ -26,6 +26,9 @@ python manage.py loaddata projects/fixtures/test_complaints.json
 echo "6️⃣  Загрузка бракованных изделий..."
 python manage.py loaddata projects/fixtures/test_defective_products.json
 
+echo "7️⃣  Загрузка реестра на отгрузку..."
+python manage.py loaddata projects/fixtures/test_shipping_registry.json
+
 echo ""
 echo "🔑 Установка паролей для пользователей..."
 python manage.py shell << 'EOF'

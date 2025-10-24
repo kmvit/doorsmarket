@@ -1,0 +1,142 @@
+{% extends 'users/base.html' %}
+{% load static %}
+
+{% block title %}Планирование монтажа{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Заголовок -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Планирование монтажа</h1>
+            <p class="mt-2 text-gray-600">Назначение дат для выполнения монтажных работ</p>
+        </div>
+
+        <!-- Список рекламаций -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            {% if complaints %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Рекламация</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for complaint in complaints %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-10 w-10">
+                                            <div class="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
+                                                <span class="text-sm font-medium text-primary-800">#{{ complaint.id }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-medium text-gray-900">{{ complaint.order_number }}</div>
+                                            <div class="text-sm text-gray-500">{{ complaint.created_at|date:"d.m.Y H:i" }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">{{ complaint.client_name }}</div>
+                                    <div class="text-sm text-gray-500">{{ complaint.contact_person }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    {% if complaint.status == 'waiting_installer_date' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                            Ожидает дату
+                                        </span>
+                                    {% elif complaint.status == 'needs_planning' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                            Нужно запланировать
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                                            {{ complaint.get_status_display }}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <button onclick="openPlanningModal({{ complaint.id }}, '{{ complaint.order_number }}')" 
+                                            class="text-primary-600 hover:text-primary-900 transition-colors">
+                                        Назначить дату
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-12">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">Нет рекламаций для планирования</h3>
+                    <p class="mt-1 text-sm text-gray-500">Все рекламации уже запланированы или выполнены.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для планирования -->
+<div id="planningModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Планирование монтажа</h3>
+                <button onclick="closePlanningModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <form method="post" id="planningForm">
+                {% csrf_token %}
+                <input type="hidden" name="complaint_id" id="complaint_id">
+                
+                <div class="mb-4">
+                    <label for="installation_date" class="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа</label>
+                    <input type="datetime-local" id="installation_date" name="installation_date" required 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closePlanningModal()" 
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors">
+                        Отмена
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors">
+                        Запланировать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openPlanningModal(complaintId, orderNumber) {
+    document.getElementById('complaint_id').value = complaintId;
+    document.getElementById('planningModal').classList.remove('hidden');
+}
+
+function closePlanningModal() {
+    document.getElementById('planningModal').classList.add('hidden');
+}
+
+// Закрытие модального окна при клике вне его
+document.getElementById('planningModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closePlanningModal();
+    }
+});
+</script>
+{% endblock %}

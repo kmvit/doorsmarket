@@ -1,0 +1,225 @@
+{% extends 'users/base.html' %}
+
+{% block title %}Запись реестра #{{ entry.id }} - Marketing Doors{% endblock %}
+
+{% block content %}
+<div class="min-h-screen py-8 px-4">
+    <div class="max-w-5xl mx-auto">
+        <!-- Заголовок -->
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Запись реестра #{{ entry.id }}</h1>
+                <p class="text-sm text-gray-600 mt-1">{{ entry.order_number }} - {{ entry.client_name }}</p>
+            </div>
+            <a href="{% url 'projects:shipping_registry' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                Назад к реестру
+            </a>
+        </div>
+
+        <!-- Форма редактирования -->
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Основная информация -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Информация о заказе -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">Информация о заказе</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Номер заказа</p>
+                                <p class="text-base font-semibold text-gray-900">{{ entry.order_number }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Менеджер</p>
+                                <p class="text-base font-semibold text-gray-900">{{ entry.manager.get_full_name|default:entry.manager.username }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Дата добавления</p>
+                                <p class="text-base font-semibold text-gray-900">{{ entry.created_at|date:"d.m.Y H:i" }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Вид заказа</p>
+                                {% if entry.order_type == 'complaint' %}
+                                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">
+                                        Рекламация
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                                        Основной
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        {% if entry.complaint %}
+                        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <a href="{% url 'projects:complaint_detail' entry.complaint.id %}" class="text-sm text-blue-600 hover:text-blue-800">
+                                → Связанная рекламация #{{ entry.complaint.id }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Информация о клиенте -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">Информация о клиенте</h2>
+                        <div class="space-y-3">
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Клиент</p>
+                                <p class="text-base font-semibold text-gray-900">{{ entry.client_name }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600 mb-1">Адрес</p>
+                                <p class="text-base text-gray-900">{{ entry.address }}</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Контактное лицо</p>
+                                    <p class="text-base text-gray-900">{{ entry.contact_person }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Телефон</p>
+                                    <p class="text-base text-gray-900">{{ entry.contact_phone }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Детали заказа -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">Детали заказа</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Количество дверей</label>
+                                <input type="number" name="doors_count" value="{{ entry.doors_count }}" min="1" required
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Чей подъем</label>
+                                <select name="lift_type" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                    <option value="our" {% if entry.lift_type == 'our' %}selected{% endif %}>Наш</option>
+                                    <option value="client" {% if entry.lift_type == 'client' %}selected{% endif %}>Клиент</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Как подъем</label>
+                                <select name="lift_method" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                    <option value="elevator" {% if entry.lift_method == 'elevator' %}selected{% endif %}>Лифт</option>
+                                    <option value="manual" {% if entry.lift_method == 'manual' %}selected{% endif %}>Ручной</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Куда везем</label>
+                                <select name="delivery_destination" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                    <option value="client" {% if entry.delivery_destination == 'client' %}selected{% endif %}>Клиент</option>
+                                    <option value="warehouse" {% if entry.delivery_destination == 'warehouse' %}selected{% endif %}>На склад</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Оплата</label>
+                                <input type="text" name="payment_status" value="{{ entry.payment_status }}" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                       placeholder="Статус оплаты">
+                            </div>
+                            
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Комментарии</label>
+                                <textarea name="comments" rows="3" 
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                          placeholder="Дополнительные комментарии">{{ entry.comments }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Боковая панель -->
+                <div class="space-y-6">
+                    <!-- Статус доставки -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-lg font-bold text-gray-900 mb-4">Доставка</h2>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Статус доставки</label>
+                            <select name="delivery_status" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                <option value="pending" {% if entry.delivery_status == 'pending' %}selected{% endif %}>Ожидает отгрузки</option>
+                                <option value="in_transit" {% if entry.delivery_status == 'in_transit' %}selected{% endif %}>В пути</option>
+                                <option value="delivered" {% if entry.delivery_status == 'delivered' %}selected{% endif %}>Доставлено</option>
+                                <option value="cancelled" {% if entry.delivery_status == 'cancelled' %}selected{% endif %}>Отменено</option>
+                            </select>
+                        </div>
+                        
+                        {% if entry.planned_shipping_date %}
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-600">Плановая дата</p>
+                            <p class="text-base font-semibold text-gray-900">{{ entry.planned_shipping_date|date:"d.m.Y H:i" }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if entry.actual_shipping_date %}
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-600">Фактическая дата</p>
+                            <p class="text-base font-semibold text-gray-900">{{ entry.actual_shipping_date|date:"d.m.Y H:i" }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Оценка клиента -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-lg font-bold text-gray-900 mb-4">Оценка клиента</h2>
+                        
+                        <div class="flex items-center justify-center space-x-2 mb-4">
+                            {% for i in "12345" %}
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="client_rating" value="{{ forloop.counter }}" 
+                                           {% if entry.client_rating == forloop.counter %}checked{% endif %}
+                                           class="hidden peer">
+                                    <svg class="h-8 w-8 text-gray-300 peer-checked:text-yellow-400 hover:text-yellow-300 transition-colors fill-current" viewBox="0 0 20 20">
+                                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+                                    </svg>
+                                </label>
+                            {% endfor %}
+                        </div>
+                        
+                        {% if entry.client_rating %}
+                        <p class="text-center text-sm text-gray-600">Текущая оценка: {{ entry.client_rating }}/5</p>
+                        {% else %}
+                        <p class="text-center text-sm text-gray-400">Оценка не выставлена</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Кнопки действий -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="space-y-3">
+                            <button type="submit" class="w-full px-4 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors">
+                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                Сохранить изменения
+                            </button>
+                            
+                            {% if entry.complaint %}
+                            <a href="{% url 'projects:complaint_detail' entry.complaint.id %}" class="block w-full px-4 py-3 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
+                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                                Просмотреть рекламацию
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -161,19 +161,133 @@
                             <p class="text-sm font-semibold text-gray-900">{{ complaint.manager.get_full_name|default:complaint.manager.username }}</p>
                             <p class="text-xs text-gray-500">{{ complaint.manager.get_role_display }}</p>
                         </div>
+                        {% if complaint.installer_assigned %}
+                        <div class="pt-2 border-t border-gray-200">
+                            <p class="text-xs text-gray-600">Монтажник</p>
+                            <p class="text-sm font-semibold text-gray-900">{{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}</p>
+                            <p class="text-xs text-gray-500">{{ complaint.installer_assigned.phone_number|default:"Телефон не указан" }}</p>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
+
+                <!-- Информация о монтаже -->
+                {% if complaint.status == 'under_sm_review' or complaint.status == 'completed' %}
+                <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl shadow-2xl p-6 border border-green-200">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <div class="h-10 w-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="text-sm font-semibold text-green-900 mb-1">Выполнено монтажником</h3>
+                            {% if complaint.installer_assigned %}
+                            <p class="text-sm text-gray-700">{{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}</p>
+                            {% endif %}
+                            {% if complaint.status == 'under_sm_review' %}
+                            <p class="text-xs text-gray-600 mt-2">Ожидает проверки СМ</p>
+                            {% elif complaint.status == 'completed' %}
+                            <p class="text-xs text-green-700 mt-2">✓ Одобрено СМ</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% elif complaint.planned_installation_date %}
+                <div class="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-3xl shadow-2xl p-6 border border-yellow-200">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <div class="h-10 w-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                                <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-1">Монтаж запланирован</h3>
+                            <p class="text-lg font-bold text-gray-900">{{ complaint.planned_installation_date|date:"d.m.Y" }}</p>
+                            <p class="text-sm text-gray-600">{{ complaint.planned_installation_date|date:"H:i" }}</p>
+                            {% if complaint.installer_assigned %}
+                            <p class="text-xs text-gray-500 mt-2">{{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <!-- Действия -->
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                     <h2 class="text-lg font-bold text-gray-900 mb-4">Действия</h2>
                     <div class="space-y-2">
-                        <a href="{% url 'projects:complaint_edit' complaint.id %}" class="block w-full px-4 py-2 bg-primary-600 text-white text-center rounded-xl hover:bg-primary-700 transition-colors">
-                            Редактировать
+                        
+                        {% if user.role in 'service_manager,complaint_department,admin,leader' %}
+                            <!-- Действия для СМ и ОР -->
+                            <a href="{% url 'projects:complaint_process' complaint.id %}" class="block w-full px-4 py-2 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
+                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                </svg>
+                                Обработать рекламацию
+                            </a>
+                        {% endif %}
+                        
+                        {% if user.role == 'installer' and complaint.installer_assigned == user %}
+                            <!-- Действия для монтажника -->
+                            {% if complaint.status in 'waiting_installer_date,needs_planning' %}
+                            <form method="post" action="{% url 'projects:installer_planning' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа</label>
+                                    <input type="datetime-local" name="installation_date" required 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                </div>
+                                <button type="submit" class="block w-full px-4 py-2 bg-orange-600 text-white text-center rounded-xl hover:bg-orange-700 transition-colors">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    Назначить дату монтажа
+                                </button>
+                            </form>
+                            {% elif complaint.status == 'installation_planned' %}
+                            <a href="{% url 'projects:installer_complete' complaint.id %}" class="block w-full px-4 py-2 bg-green-600 text-white text-center rounded-xl hover:bg-green-700 transition-colors">
+                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                Отметить выполненной
+                            </a>
+                            {% endif %}
+                        {% endif %}
+                        
+                        {% if user.role == 'manager' and complaint.manager == user %}
+                            <!-- Действия для менеджера -->
+                            {% if complaint.status in 'in_progress,in_production,on_warehouse' %}
+                            <a href="{% url 'projects:manager_production' %}" class="block w-full px-4 py-2 bg-purple-600 text-white text-center rounded-xl hover:bg-purple-700 transition-colors">
+                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                                </svg>
+                                Управление производством
+                            </a>
+                            {% endif %}
+                        {% endif %}
+                        
+                        <!-- Кнопка назад для всех -->
+                        {% if user.role == 'installer' %}
+                        <a href="{% url 'projects:installer_planning' %}" class="block w-full px-4 py-2 bg-gray-200 text-gray-700 text-center rounded-xl hover:bg-gray-300 transition-colors">
+                            <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                            Вернуться к задачам
                         </a>
-                        <button class="block w-full px-4 py-2 bg-gray-200 text-gray-700 text-center rounded-xl hover:bg-gray-300 transition-colors">
-                            Изменить статус
-                        </button>
+                        {% else %}
+                        <a href="{% url 'projects:complaint_list' %}" class="block w-full px-4 py-2 bg-gray-200 text-gray-700 text-center rounded-xl hover:bg-gray-300 transition-colors">
+                            <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                            Вернуться к списку
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
 

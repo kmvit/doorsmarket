@@ -1,0 +1,160 @@
+{% extends 'users/base.html' %}
+{% load static %}
+
+{% block title %}Завершение работы - Рекламация #{{ complaint.id }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Заголовок -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">Завершение работы</h1>
+                    <p class="mt-2 text-gray-600">Рекламация #{{ complaint.id }} - {{ complaint.order_number }}</p>
+                </div>
+                <a href="{% url 'projects:complaint_detail' complaint.id %}" 
+                   class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    Просмотр деталей
+                </a>
+            </div>
+        </div>
+
+        <!-- Информация о рекламации -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Информация о рекламации</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-600">Клиент</p>
+                        <p class="text-base font-medium text-gray-900">{{ complaint.client_name }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Номер заказа</p>
+                        <p class="text-base font-medium text-gray-900">{{ complaint.order_number }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Адрес</p>
+                        <p class="text-base font-medium text-gray-900">{{ complaint.address }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Контактное лицо</p>
+                        <p class="text-base font-medium text-gray-900">{{ complaint.contact_person }}</p>
+                        <p class="text-sm text-gray-500">{{ complaint.contact_phone }}</p>
+                    </div>
+                </div>
+                
+                {% if complaint.planned_installation_date %}
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="text-sm font-medium text-blue-800">
+                            Запланировано на: {{ complaint.planned_installation_date|date:"d.m.Y H:i" }}
+                        </span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Бракованные изделия -->
+        {% if complaint.defective_products.all %}
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Бракованные изделия</h3>
+                <div class="space-y-4">
+                    {% for product in complaint.defective_products.all %}
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-900">{{ product.product_name }}</h4>
+                                <p class="text-sm text-gray-600">Размер: {{ product.size }}</p>
+                                {% if product.opening_type %}
+                                <p class="text-sm text-gray-600">Открывание: {{ product.opening_type }}</p>
+                                {% endif %}
+                                <p class="text-sm text-gray-700 mt-2">{{ product.problem_description }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Вложения -->
+        {% if complaint.attachments.all %}
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Вложения</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {% for attachment in complaint.attachments.all %}
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center">
+                            {% if attachment.attachment_type == 'photo' %}
+                            <svg class="h-8 w-8 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            {% elif attachment.attachment_type == 'video' %}
+                            <svg class="h-8 w-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            {% else %}
+                            <svg class="h-8 w-8 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            {% endif %}
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">{{ attachment.get_attachment_type_display }}</p>
+                                <p class="text-xs text-gray-500">{{ attachment.file_size }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Подтверждение завершения -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Подтверждение завершения работы</h3>
+                <p class="text-gray-600 mb-6">
+                    Подтвердите, что монтажные работы по данной рекламации выполнены полностью и качественно.
+                </p>
+                
+                <form method="post" onsubmit="return confirmCompletion()">
+                    {% csrf_token %}
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input type="checkbox" id="confirm_quality" required class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                            <label for="confirm_quality" class="ml-2 text-sm text-gray-700">
+                                Подтверждаю качественное выполнение работ
+                            </label>
+                        </div>
+                        <button type="submit" class="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors">
+                            <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Отметить как выполненную
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmCompletion() {
+    return confirm('Вы уверены, что работа выполнена полностью и качественно? После подтверждения рекламация будет передана на проверку сервис-менеджеру.');
+}
+</script>
+{% endblock %}

@@ -5,7 +5,9 @@ from .models import (
     Complaint,
     DefectiveProduct,
     ComplaintAttachment,
-    ComplaintComment
+    ComplaintComment,
+    ShippingRegistry,
+    Notification
 )
 
 
@@ -53,6 +55,7 @@ class ComplaintAdmin(admin.ModelAdmin):
         'order_number',
         'client_name',
         'status',
+        'complaint_type',
         'reason',
         'initiator',
         'recipient',
@@ -61,6 +64,7 @@ class ComplaintAdmin(admin.ModelAdmin):
     )
     list_filter = (
         'status',
+        'complaint_type',
         'reason',
         'production_site',
         'created_at',
@@ -81,6 +85,7 @@ class ComplaintAdmin(admin.ModelAdmin):
         ('Основная информация', {
             'fields': (
                 'status',
+                'complaint_type',
                 'created_at',
                 'updated_at',
                 'initiator',
@@ -93,6 +98,14 @@ class ComplaintAdmin(admin.ModelAdmin):
                 'production_site',
                 'order_number',
                 'reason',
+            )
+        }),
+        ('Планирование', {
+            'fields': (
+                'planned_installation_date',
+                'planned_shipping_date',
+                'production_deadline',
+                'installer_assigned',
             )
         }),
         ('Информация о клиенте', {
@@ -113,6 +126,22 @@ class ComplaintAdmin(admin.ModelAdmin):
                 'document_package_link',
                 'commercial_offer',
             )
+        }),
+        ('Дополнительные даты', {
+            'fields': (
+                'factory_response_date',
+                'client_agreement_date',
+                'completion_date',
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Отгрузка', {
+            'fields': (
+                'is_shipped',
+                'shipped_at',
+                'added_to_shipping_registry_at',
+            ),
+            'classes': ('collapse',)
         }),
     )
     
@@ -173,3 +202,78 @@ class ComplaintCommentAdmin(admin.ModelAdmin):
         """Превью текста комментария"""
         return obj.text[:50] + '...' if len(obj.text) > 50 else obj.text
     text_preview.short_description = 'Текст'
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = (
+        'complaint',
+        'recipient',
+        'notification_type',
+        'title',
+        'is_sent',
+        'created_at'
+    )
+    list_filter = (
+        'notification_type',
+        'is_sent',
+        'created_at',
+        'recipient'
+    )
+    search_fields = (
+        'title',
+        'message',
+        'complaint__order_number',
+        'recipient__username'
+    )
+    readonly_fields = ('created_at', 'sent_at')
+    ordering = ('-created_at',)
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('complaint', 'recipient')
+
+
+@admin.register(ShippingRegistry)
+class ShippingRegistryAdmin(admin.ModelAdmin):
+    list_display = (
+        'order_number', 
+        'manager', 
+        'client_name', 
+        'order_type', 
+        'delivery_status',
+        'doors_count',
+        'planned_shipping_date',
+        'created_at'
+    )
+    list_filter = (
+        'order_type', 
+        'delivery_status', 
+        'lift_type', 
+        'lift_method', 
+        'delivery_destination',
+        'created_at'
+    )
+    search_fields = ('order_number', 'client_name', 'contact_person', 'address')
+    readonly_fields = ('created_at',)
+    ordering = ('-created_at',)
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('complaint', 'order_number', 'manager', 'order_type')
+        }),
+        ('Информация о клиенте', {
+            'fields': ('client_name', 'address', 'contact_person', 'contact_phone')
+        }),
+        ('Детали заказа', {
+            'fields': ('doors_count', 'lift_type', 'lift_method', 'payment_status', 'delivery_destination')
+        }),
+        ('Доставка', {
+            'fields': ('planned_shipping_date', 'actual_shipping_date', 'delivery_status', 'client_rating')
+        }),
+        ('Дополнительно', {
+            'fields': ('comments',)
+        }),
+    )
+
+
