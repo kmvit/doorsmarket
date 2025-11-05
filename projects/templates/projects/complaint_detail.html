@@ -11,10 +11,22 @@
                 <h1 class="text-3xl font-bold text-gray-900">Рекламация #{{ complaint.id }}</h1>
                 <p class="text-sm text-gray-600 mt-1">{{ complaint.created_at|date:"d.m.Y H:i" }} | {{ complaint.order_number }}</p>
             </div>
-            <div>
+            <div class="flex items-center space-x-3">
+                {% if user.role in 'service_manager,manager,admin,leader,complaint_department' %}
+                <a href="{% url 'projects:complaint_history' complaint.id %}" class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-200">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    История
+                </a>
+                {% endif %}
                 {% if complaint.status == 'new' %}
                     <span class="px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-green-100 text-green-800">
                         {{ complaint.get_status_display }}
+                    </span>
+                {% elif complaint.status == 'installer_not_planned' %}
+                    <span class="px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-red-600 text-white border-2 border-red-800 animate-pulse">
+                        ⚠️ {{ complaint.get_status_display }}
                     </span>
                 {% elif complaint.status == 'in_progress' %}
                     <span class="px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-yellow-100 text-yellow-800">
@@ -37,7 +49,54 @@
             <div class="lg:col-span-2 space-y-6">
                 <!-- Информация о заказе -->
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-900 mb-4">Информация о заказе</h2>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-900">Информация о заказе</h2>
+                        {% if user.role in 'service_manager,manager,admin,leader' %}
+                        <button onclick="toggleEditContactForm()" class="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-semibold rounded-xl hover:shadow-lg transition-all">
+                            <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                            </svg>
+                            Изменить контактные данные
+                        </button>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Форма редактирования (скрыта по умолчанию) -->
+                    <div id="edit-contact-form" class="hidden mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Изменить контактные данные клиента</h3>
+                        <form method="post" action="{% url 'projects:update_client_contact' complaint.id %}">
+                            {% csrf_token %}
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Контактное лицо *</label>
+                                    <input type="text" name="contact_person" value="{{ complaint.contact_person }}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Телефон *</label>
+                                    <input type="text" name="contact_phone" value="{{ complaint.contact_phone }}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Адрес</label>
+                                    <textarea name="address" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">{{ complaint.address }}</textarea>
+                                </div>
+                                <div class="flex space-x-3">
+                                    <button type="submit" class="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all">
+                                        Сохранить изменения
+                                    </button>
+                                    <button type="button" onclick="toggleEditContactForm()" class="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-all">
+                                        Отмена
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-600">
+                                    <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    После сохранения все участники рекламации получат уведомление об изменении контактных данных.
+                                </p>
+                            </div>
+                        </form>
+                    </div>
+                    
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <p class="text-sm text-gray-600">Номер заказа</p>
@@ -68,12 +127,6 @@
                             <p class="text-base font-semibold text-gray-900">{{ complaint.address }}</p>
                         </div>
                     </div>
-                </div>
-
-                <!-- Описание проблемы -->
-                <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-900 mb-4">Описание проблемы</h2>
-                    <p class="text-gray-700 whitespace-pre-wrap">{{ complaint.problem_description }}</p>
                 </div>
 
                 <!-- Бракованные изделия -->
@@ -108,13 +161,53 @@
                     </div>
                 </div>
                 {% endif %}
+                
+                <!-- Информация о решении фабрики -->
+                {% if complaint.complaint_type == 'factory' %}
+                    {% if complaint.factory_reject_reason %}
+                    <div class="bg-red-50 border-2 border-red-300 rounded-3xl shadow-2xl p-6">
+                        <h2 class="text-xl font-bold text-red-900 mb-4 flex items-center">
+                            <svg class="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            Отказ фабрики
+                        </h2>
+                        <div>
+                            <p class="text-sm text-gray-600 mb-1">Причина отказа:</p>
+                            <p class="text-base text-gray-900">{{ complaint.factory_reject_reason }}</p>
+                        </div>
+                        {% if complaint.factory_response_date %}
+                        <div class="mt-3 text-xs text-gray-600">
+                            Дата ответа: {{ complaint.factory_response_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if complaint.dispute_arguments %}
+                    <div class="bg-orange-50 border-2 border-orange-300 rounded-3xl shadow-2xl p-6">
+                        <h2 class="text-xl font-bold text-orange-900 mb-4 flex items-center">
+                            <svg class="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            Спор с фабрикой
+                        </h2>
+                        <div>
+                            <p class="text-sm text-gray-600 mb-1">Аргументы СМ:</p>
+                            <p class="text-base text-gray-900">{{ complaint.dispute_arguments }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endif %}
 
                 <!-- Вложения -->
-                {% if complaint.attachments.all %}
+                {% with regular_attachments=complaint.attachments.all|dictsort:"attachment_type" %}
+                {% if regular_attachments %}
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                     <h2 class="text-xl font-bold text-gray-900 mb-4">Вложения</h2>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {% for attachment in complaint.attachments.all %}
+                        {% for attachment in regular_attachments %}
+                        {% if attachment.attachment_type != 'commercial_offer' %}
                         <a href="{{ attachment.file.url }}" target="_blank" class="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors">
                             <div class="text-center">
                                 {% if attachment.attachment_type == 'photo' %}
@@ -134,10 +227,12 @@
                                 <p class="text-xs text-gray-500">{{ attachment.file_size }}</p>
                             </div>
                         </a>
+                        {% endif %}
                         {% endfor %}
                     </div>
                 </div>
                 {% endif %}
+                {% endwith %}
             </div>
 
             <!-- Боковая панель -->
@@ -156,11 +251,19 @@
                             <p class="text-sm font-semibold text-gray-900">{{ complaint.recipient.get_full_name|default:complaint.recipient.username }}</p>
                             <p class="text-xs text-gray-500">{{ complaint.recipient.get_role_display }}</p>
                         </div>
+                        {% if complaint.manager %}
                         <div>
                             <p class="text-xs text-gray-600">Менеджер</p>
                             <p class="text-sm font-semibold text-gray-900">{{ complaint.manager.get_full_name|default:complaint.manager.username }}</p>
                             <p class="text-xs text-gray-500">{{ complaint.manager.get_role_display }}</p>
                         </div>
+                        {% else %}
+                        <div>
+                            <p class="text-xs text-gray-600">Менеджер</p>
+                            <p class="text-sm font-semibold text-orange-600">Не назначен</p>
+                            <p class="text-xs text-gray-500">Будет назначен при обработке</p>
+                        </div>
+                        {% endif %}
                         {% if complaint.installer_assigned %}
                         <div class="pt-2 border-t border-gray-200">
                             <p class="text-xs text-gray-600">Монтажник</p>
@@ -222,22 +325,282 @@
                     <h2 class="text-lg font-bold text-gray-900 mb-4">Действия</h2>
                     <div class="space-y-2">
                         
-                        {% if user.role in 'service_manager,complaint_department,admin,leader' %}
-                            <!-- Действия для СМ и ОР -->
+                        {% if user.role == 'service_manager' or user.role == 'complaint_department' or user.role == 'admin' or user.role == 'leader' %}
+                            <!-- Действия для СМ, ОР, админов и лидеров (НЕ для менеджеров) -->
+                            {% if complaint.status == 'new' %}
                             <a href="{% url 'projects:complaint_process' complaint.id %}" class="block w-full px-4 py-2 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
                                 <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                                 </svg>
                                 Обработать рекламацию
                             </a>
+                            {% endif %}
+                            
+                            <!-- Планирование монтажа (когда товар на складе или отгрузка запланирована) -->
+                            {% if user.role == 'service_manager' and complaint.status in 'on_warehouse,shipping_planned' %}
+                            <form method="post" action="{% url 'projects:sm_plan_installation' complaint.id %}">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа <span class="text-red-500">*</span></label>
+                                    <input type="datetime-local" name="installation_date" required 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Монтажник <span class="text-red-500">*</span></label>
+                                    <select name="installer" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                        <option value="">Выберите монтажника</option>
+                                        {% for installer in available_installers %}
+                                            <option value="{{ installer.id }}">{{ installer.get_full_name|default:installer.username }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button type="submit" class="block w-full px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    Монтаж запланирован
+                                </button>
+                            </form>
+                            {% endif %}
+                            
+                            <!-- Заменить монтажника (СМ) -->
+                            {% if user.role == 'service_manager' and complaint.installer_assigned and complaint.status not in 'completed,closed,resolved' %}
+                            <div class="mt-4 p-4 border-2 border-blue-200 rounded-xl bg-blue-50">
+                                <h4 class="text-sm font-semibold text-gray-900 mb-2">
+                                    <svg class="inline h-4 w-4 mr-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                    </svg>
+                                    Заменить монтажника
+                                </h4>
+                                <p class="text-xs text-gray-600 mb-3">
+                                    Текущий монтажник: <strong>{{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}</strong>
+                                </p>
+                                <form method="post" action="{% url 'projects:complaint_process' complaint.id %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="change_installer">
+                                    <select name="new_installer" required class="w-full px-3 py-2 mb-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Выберите нового монтажника</option>
+                                        {% for installer in available_installers %}
+                                            <option value="{{ installer.id }}" {% if installer.id == complaint.installer_assigned.id %}disabled{% endif %}>
+                                                {{ installer.get_full_name|default:installer.username }}
+                                                {% if installer.id == complaint.installer_assigned.id %}(текущий){% endif %}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="block w-full px-4 py-2 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
+                                        <svg class="h-4 w-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                        </svg>
+                                        Заменить монтажника
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Проверить и завершить рекламацию (СМ) -->
+                            {% if user.role == 'service_manager' and complaint.status == 'under_sm_review' %}
+                            <form method="post" action="{% url 'projects:complaint_process' complaint.id %}" 
+                                  onsubmit="return confirm('Вы подтверждаете, что работа выполнена качественно?');"
+                                  class="mt-4 p-4 border-2 border-green-300 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="approve">
+                                <p class="text-xs text-gray-700 mb-3 flex items-start">
+                                    <svg class="inline h-4 w-4 mr-2 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Монтажник отметил работу как выполненную. После проверки статус изменится на "Выполнена", а клиенту будет отправлено SMS для оценки работы.
+                                </p>
+                                <button type="submit" class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    ✓ Проверено
+                                </button>
+                            </form>
+                            {% endif %}
+                        {% endif %}
+                        
+                        {% if user.role == 'complaint_department' or user.role == 'admin' or user.role == 'leader' %}
+                            <!-- Действия для ОР -->
+                            {% if complaint.complaint_type == 'factory' and complaint.status in 'sent,factory_response_overdue,factory_dispute' %}
+                            <div class="p-4 border-2 border-orange-300 rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 mb-3">
+                                <h4 class="text-sm font-semibold text-gray-900 mb-2 flex items-center">
+                                    <svg class="h-5 w-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                                    </svg>
+                                    Решение отдела рекламаций
+                                </h4>
+                                <p class="text-xs text-gray-700 mb-3">
+                                    Рассмотрите рекламацию и примите решение в течение 2 рабочих дней
+                                </p>
+                                
+                                <!-- Кнопка "Запуск в производство" -->
+                                <form method="post" action="{% url 'projects:or_factory_complaints' %}" class="mb-2">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="factory_approve">
+                                    <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                    <button type="submit" 
+                                            onclick="return confirm('Вы одобряете рекламацию? Она будет отправлена СМ на согласование с клиентом.');"
+                                            class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                        <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        ✓ Запуск в производство
+                                    </button>
+                                </form>
+                                
+                                <!-- Кнопка "Отказ" -->
+                                <button onclick="showRejectForm()" class="block w-full px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                    ✗ Отказ
+                                </button>
+                                
+                                <!-- Форма отказа (скрыта по умолчанию) -->
+                                <div id="reject-form" class="hidden mt-3 p-3 bg-white border-2 border-red-200 rounded-xl">
+                                    <form method="post" action="{% url 'projects:or_factory_complaints' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="factory_reject">
+                                        <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Причина отказа <span class="text-red-500">*</span></label>
+                                            <textarea name="reject_reason" rows="3" required 
+                                                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                      placeholder="Укажите причину отказа в рекламации..."></textarea>
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="submit" 
+                                                    class="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
+                                                Отправить отказ
+                                            </button>
+                                            <button type="button" onclick="hideRejectForm()"
+                                                    class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Кнопка "Заказ на складе" для ОР -->
+                            {% if complaint.complaint_type == 'factory' and complaint.status == 'in_production' %}
+                            <form method="post" action="{% url 'projects:or_factory_complaints' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="mark_warehouse">
+                                <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                <button type="submit" 
+                                        onclick="return confirm('Подтвердите, что товар готов и находится на складе?');"
+                                        class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    Заказ на складе
+                                </button>
+                            </form>
+                            {% endif %}
+                        {% endif %}
+                        
+                        {% if user.role == 'service_manager' and complaint.complaint_type == 'factory' %}
+                            <!-- Действия для СМ по фабричным рекламациям -->
+                            
+                            {% if complaint.status in 'factory_approved,sm_response_overdue' %}
+                            <!-- СМ согласовывает решение с клиентом или оспаривает -->
+                            <div class="p-4 border-2 border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50 mb-3">
+                                <h4 class="text-sm font-semibold text-gray-900 mb-2 flex items-center">
+                                    <svg class="h-5 w-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                    </svg>
+                                    Согласование с клиентом
+                                </h4>
+                                <p class="text-xs text-gray-700 mb-3">
+                                    {% if complaint.status == 'sm_response_overdue' %}
+                                        <span class="text-red-600 font-semibold">⚠️ Просрочено!</span> 
+                                    {% else %}
+                                        <span class="text-green-600 font-semibold">✓ Ответ получен от фабрики</span>
+                                    {% endif %}
+                                    Фабрика одобрила рекламацию. Согласуйте решение с клиентом в течение 2 рабочих дней.
+                                </p>
+                                
+                                <!-- Кнопка "Решение с клиентом согласовано" -->
+                                <button onclick="showClientAgreementForm()" class="block w-full px-4 py-2 mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    ✓ Решение с клиентом согласовано
+                                </button>
+                                
+                                <!-- Форма согласования (скрыта по умолчанию) -->
+                                <div id="client-agreement-form" class="hidden mb-2 p-3 bg-white border-2 border-green-200 rounded-xl">
+                                    <form method="post" action="{% url 'projects:sm_agree_client' complaint.id %}">
+                                        {% csrf_token %}
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Дата готовности заказа <span class="text-red-500">*</span></label>
+                                            <input type="date" name="production_deadline" required 
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                   min="{{ today }}">
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="submit" 
+                                                    class="flex-1 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
+                                                Подтвердить согласование
+                                            </button>
+                                            <button type="button" onclick="hideClientAgreementForm()"
+                                                    class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <!-- Кнопка "Оспорить решение" -->
+                                <button onclick="showDisputeForm()" class="block w-full px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                    ⚠ Оспорить решение
+                                </button>
+                                
+                                <!-- Форма оспаривания (скрыта по умолчанию) -->
+                                <div id="dispute-form" class="hidden mt-3 p-3 bg-white border-2 border-red-200 rounded-xl">
+                                    <form method="post" action="{% url 'projects:sm_dispute_decision' complaint.id %}" enctype="multipart/form-data">
+                                        {% csrf_token %}
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Аргументы спора <span class="text-red-500">*</span></label>
+                                            <textarea name="dispute_arguments" rows="4" required 
+                                                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                      placeholder="Опишите почему вы не согласны с решением фабрики, приведите аргументы..."></textarea>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Дополнительные документы/фото/видео</label>
+                                            <input type="file" name="dispute_attachments" multiple accept="image/*,video/*,.pdf,.doc,.docx"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                                            <p class="text-xs text-gray-500 mt-1">Можно прикрепить фото, видео или документы для подтверждения аргументов</p>
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="submit" 
+                                                    class="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
+                                                Оспорить решение
+                                            </button>
+                                            <button type="button" onclick="hideDisputeForm()"
+                                                    class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endif %}
                         {% endif %}
                         
                         {% if user.role == 'installer' and complaint.installer_assigned == user %}
                             <!-- Действия для монтажника -->
-                            {% if complaint.status in 'waiting_installer_date,needs_planning' %}
+                            {% if complaint.status in 'waiting_installer_date,needs_planning,installer_not_planned' %}
                             <form method="post" action="{% url 'projects:installer_planning' %}">
                                 {% csrf_token %}
                                 <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                <input type="hidden" name="action" value="plan">
                                 <div class="mb-3">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа</label>
                                     <input type="datetime-local" name="installation_date" required 
@@ -250,25 +613,121 @@
                                     Назначить дату монтажа
                                 </button>
                             </form>
-                            {% elif complaint.status == 'installation_planned' %}
-                            <a href="{% url 'projects:installer_complete' complaint.id %}" class="block w-full px-4 py-2 bg-green-600 text-white text-center rounded-xl hover:bg-green-700 transition-colors">
+                            {% endif %}
+                            
+                            <!-- Перенос даты монтажа -->
+                            {% if complaint.planned_installation_date and complaint.status not in 'under_sm_review,completed,closed,resolved' %}
+                            <div class="mt-4 p-4 border-2 border-yellow-200 rounded-xl bg-yellow-50">
+                                <h4 class="text-sm font-semibold text-gray-900 mb-2">
+                                    <svg class="inline h-4 w-4 mr-1 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    Перенести дату монтажа
+                                </h4>
+                                <p class="text-xs text-gray-600 mb-3">
+                                    Текущая дата: <strong>{{ complaint.planned_installation_date|date:"d.m.Y H:i" }}</strong>
+                                </p>
+                                <form method="post" action="{% url 'projects:installer_planning' %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                    <input type="hidden" name="action" value="reschedule">
+                                    <div class="mb-3">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Новая дата и время</label>
+                                        <input type="datetime-local" name="installation_date" required 
+                                               value="{{ complaint.planned_installation_date|date:'Y-m-d\TH:i' }}"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500">
+                                    </div>
+                                    <button type="submit" class="block w-full px-4 py-2 bg-yellow-600 text-white text-center rounded-xl hover:bg-yellow-700 transition-colors">
+                                        <svg class="h-4 w-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                        </svg>
+                                        Перенести дату
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Отметить выполненным -->
+                            {% if complaint.status in 'installation_planned,both_planned' %}
+                            <a href="{% url 'projects:installer_complete' complaint.id %}" class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
                                 <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                 </svg>
-                                Отметить выполненной
+                                ✓ Отметить выполненной
                             </a>
                             {% endif %}
                         {% endif %}
                         
                         {% if user.role == 'manager' and complaint.manager == user %}
                             <!-- Действия для менеджера -->
-                            {% if complaint.status in 'in_progress,in_production,on_warehouse' %}
-                            <a href="{% url 'projects:manager_production' %}" class="block w-full px-4 py-2 bg-purple-600 text-white text-center rounded-xl hover:bg-purple-700 transition-colors">
-                                <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-                                </svg>
-                                Управление производством
-                            </a>
+                            {% if complaint.status == 'new' or not complaint.complaint_type %}
+                            <!-- Информация об ожидании обработки СМ -->
+                            <div class="p-4 border-2 border-yellow-200 rounded-xl bg-yellow-50">
+                                <div class="flex items-start">
+                                    <svg class="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Ожидает обработки</h4>
+                                        <p class="text-xs text-gray-700">
+                                            Рекламация отправлена сервис-менеджеру на обработку. После того как СМ назначит тип рекламации "Менеджер", вы получите уведомление и сможете оформить заказ в производство.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% elif complaint.status == 'in_progress' and complaint.complaint_type == 'manager' %}
+                            <!-- Запустить производство -->
+                            <div class="p-4 border-2 border-purple-200 rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 mb-3">
+                                <p class="text-xs text-gray-700 flex items-start">
+                                    <svg class="inline h-4 w-4 mr-2 text-purple-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Оформите заказ на производство за счет филиала, затем нажмите кнопку "Заказ в производстве" и укажите предварительную дату готовности.
+                                </p>
+                            </div>
+                            <form method="post" action="{% url 'projects:manager_start_production' complaint.id %}">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Предварительная дата готовности <span class="text-red-500">*</span></label>
+                                    <input type="date" name="production_deadline" required 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                           min="{{ today }}">
+                                </div>
+                                <button type="submit" class="block w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                                    </svg>
+                                    Заказ в производстве
+                                </button>
+                            </form>
+                            {% elif complaint.status == 'in_production' and complaint.complaint_type == 'manager' %}
+                            <!-- Отметить готовым -->
+                            <form method="post" action="{% url 'projects:manager_mark_warehouse' complaint.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="block w-full px-4 py-2 bg-green-600 text-white text-center rounded-xl hover:bg-green-700 transition-colors">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    Товар на складе
+                                </button>
+                            </form>
+                            {% elif complaint.status == 'on_warehouse' %}
+                            <!-- Планирование отгрузки -->
+                            <form method="post" action="{% url 'projects:manager_plan_shipping' complaint.id %}">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Дата отгрузки</label>
+                                    <input type="date" name="shipping_date" required 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                           min="{{ today }}">
+                                </div>
+                                <button type="submit" class="block w-full px-4 py-2 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    Отгрузка запланирована
+                                </button>
+                            </form>
                             {% endif %}
                         {% endif %}
                         
@@ -292,26 +751,87 @@
                 </div>
 
                 <!-- Документы -->
-                {% if complaint.document_package_link or complaint.commercial_offer %}
+                {% with commercial_offers=complaint.attachments.filter|dictsort:"attachment_type" %}
+                {% if complaint.document_package_link or commercial_offers %}
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                     <h2 class="text-lg font-bold text-gray-900 mb-4">Документы</h2>
                     <div class="space-y-2">
                         {% if complaint.document_package_link %}
-                        <a href="{{ complaint.document_package_link }}" target="_blank" class="block text-sm text-primary-600 hover:text-primary-700">
-                            📦 Пакет документов
+                        <a href="{{ complaint.document_package_link }}" target="_blank" class="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors">
+                            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
+                            </svg>
+                            Пакет документов
                         </a>
                         {% endif %}
+                        
+                        {% for attachment in complaint.attachments.all %}
+                        {% if attachment.attachment_type == 'commercial_offer' %}
+                        <a href="{{ attachment.file.url }}" target="_blank" class="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors">
+                            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            КП #{{ forloop.counter }}
+                            <span class="ml-auto text-xs text-gray-500">{{ attachment.file_size }}</span>
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                        
                         {% if complaint.commercial_offer %}
-                        <a href="{{ complaint.commercial_offer.url }}" target="_blank" class="block text-sm text-primary-600 hover:text-primary-700">
-                            📄 Коммерческое предложение
+                        <a href="{{ complaint.commercial_offer.url }}" target="_blank" class="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors">
+                            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            КП (старое)
                         </a>
                         {% endif %}
                     </div>
                 </div>
                 {% endif %}
+                {% endwith %}
             </div>
         </div>
     </div>
 </div>
+
+<script>
+// Функция для переключения формы редактирования контактных данных
+function toggleEditContactForm() {
+    const form = document.getElementById('edit-contact-form');
+    if (form.classList.contains('hidden')) {
+        form.classList.remove('hidden');
+        form.classList.add('animate-fadeIn');
+        // Прокрутка к форме
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        form.classList.add('hidden');
+        form.classList.remove('animate-fadeIn');
+    }
+}
+
+// Функции для формы отказа ОР
+function showRejectForm() {
+    document.getElementById('reject-form').classList.remove('hidden');
+}
+function hideRejectForm() {
+    document.getElementById('reject-form').classList.add('hidden');
+}
+
+// Функции для формы согласования СМ с клиентом
+function showClientAgreementForm() {
+    document.getElementById('client-agreement-form').classList.remove('hidden');
+}
+function hideClientAgreementForm() {
+    document.getElementById('client-agreement-form').classList.add('hidden');
+}
+
+// Функции для формы оспаривания решения фабрики
+function showDisputeForm() {
+    document.getElementById('dispute-form').classList.remove('hidden');
+}
+function hideDisputeForm() {
+    document.getElementById('dispute-form').classList.add('hidden');
+}
+</script>
 {% endblock %}
 

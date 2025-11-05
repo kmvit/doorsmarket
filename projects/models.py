@@ -47,6 +47,8 @@ class ComplaintStatus(models.TextChoices):
     SHIPPING_OVERDUE = 'shipping_overdue', 'Отгрузка просрочена'
     FACTORY_DISPUTE = 'factory_dispute', 'Спор с фабрикой'
     FACTORY_RESPONSE_OVERDUE = 'factory_response_overdue', 'Ответ фабрики просрочен'
+    FACTORY_APPROVED = 'factory_approved', 'Ответ получен'
+    FACTORY_REJECTED = 'factory_rejected', 'Отказ'
     SM_RESPONSE_OVERDUE = 'sm_response_overdue', 'СМ просрочил ответ'
     UNDER_SM_REVIEW = 'under_sm_review', 'На проверке у СМ'
     
@@ -129,9 +131,6 @@ class Complaint(models.Model):
     contact_person = models.CharField(max_length=255, verbose_name='Контактное лицо от клиента')
     contact_phone = models.CharField(max_length=20, verbose_name='Телефон контактного лица')
     
-    # Описание проблемы
-    problem_description = models.TextField(verbose_name='Описание проблемы')
-    
     # Документы и ссылки
     document_package_link = models.URLField(
         blank=True,
@@ -188,6 +187,14 @@ class Complaint(models.Model):
         null=True,
         verbose_name='Дата ответа фабрики'
     )
+    factory_reject_reason = models.TextField(
+        blank=True,
+        verbose_name='Причина отказа фабрики'
+    )
+    dispute_arguments = models.TextField(
+        blank=True,
+        verbose_name='Аргументы спора с фабрикой'
+    )
     client_agreement_date = models.DateTimeField(
         blank=True,
         null=True,
@@ -230,9 +237,9 @@ class Complaint(models.Model):
                 if service_manager:
                     self.recipient = service_manager
         
-        # Автоматически устанавливаем статус "В работе" при создании
+        # Автоматически устанавливаем статус "Новая" при создании
         if not self.pk:
-            self.status = ComplaintStatus.IN_PROGRESS
+            self.status = ComplaintStatus.NEW
             
         super().save(*args, **kwargs)
     
@@ -250,6 +257,9 @@ class Complaint(models.Model):
     
     def set_type_manager(self):
         """СМ выбирает тип 'Менеджер'"""
+        if not self.manager:
+            raise ValueError('Необходимо назначить менеджера заказа перед установкой типа "Менеджер"')
+        
         self.complaint_type = ComplaintType.MANAGER
         self.status = ComplaintStatus.IN_PROGRESS
         self.save()
@@ -263,17 +273,99 @@ class Complaint(models.Model):
     def set_type_factory(self):
         """СМ выбирает тип 'Фабрика'"""
         self.complaint_type = ComplaintType.FACTORY
-        self.status = ComplaintStatus.IN_PROGRESS
+        self.status = ComplaintStatus.SENT
         self.save()
-        # Уведомление для ОР
+        # Уведомление для ОР в личный кабинет
         from users.models import User
-        or_user = User.objects.filter(role='complaint_department').first()
-        if or_user:
+        or_users = User.objects.filter(role='complaint_department')
+        for or_user in or_users:
             self._create_notification(
                 recipient=or_user,
-                notification_type='email',
+                notification_type='pc',
                 title='Новая рекламация от фабрики',
-                message=f'Рекламация #{self.id} требует решения отдела рекламаций'
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) требует решения отдела рекламаций. Срок ответа: 2 рабочих дня. Клиент: {self.client_name}'
+            )
+    
+    def factory_approve(self):
+        """ОР одобряет рекламацию - запуск в производство"""
+        self.status = ComplaintStatus.FACTORY_APPROVED
+        self.factory_response_date = timezone.now()
+        self.save()
+        
+        # Уведомление СМ о решении фабрики
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            print(f"[DEBUG] Создание уведомления СМ для рекламации #{self.id}, получатель: {sm_recipient.username}")
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Получен ответ от фабрики',
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой для запуска в производство. Необходимо согласовать решение с клиентом в течение 2 рабочих дней.'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Ответ от фабрики',
+                message=f'Рекламация #{self.id} одобрена фабрикой. Согласуйте решение с клиентом.'
+            )
+            print(f"[DEBUG] Уведомление создано успешно")
+    
+    def factory_reject(self, reject_reason):
+        """ОР отказывает в рекламации"""
+        self.status = ComplaintStatus.FACTORY_REJECTED
+        self.factory_reject_reason = reject_reason
+        self.factory_response_date = timezone.now()
+        self.save()
+        
+        # Уведомление СМ об отказе
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Отказ в рекламации',
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) отклонена фабрикой. Причина: {reject_reason}'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Отказ от фабрики',
+                message=f'Рекламация #{self.id} отклонена фабрикой'
+            )
+    
+    def sm_agree_with_client(self, production_deadline):
+        """СМ согласовывает решение с клиентом"""
+        self.status = ComplaintStatus.IN_PRODUCTION
+        self.client_agreement_date = timezone.now()
+        self.production_deadline = production_deadline
+        self.save()
+        
+        # Уведомление ОР о согласовании
+        from users.models import User
+        or_users = User.objects.filter(role='complaint_department')
+        for or_user in or_users:
+            self._create_notification(
+                recipient=or_user,
+                notification_type='pc',
+                title='Решение согласовано с клиентом',
+                message=f'СМ согласовал решение по рекламации #{self.id} (заказ {self.order_number}) с клиентом. Срок готовности: {production_deadline.strftime("%d.%m.%Y")}. Следите за производством.'
+            )
+    
+    def sm_dispute_factory_decision(self, arguments):
+        """СМ оспаривает решение фабрики"""
+        self.status = ComplaintStatus.FACTORY_DISPUTE
+        self.dispute_arguments = arguments
+        self.save()
+        
+        # Уведомления ОР о споре
+        from users.models import User
+        or_users = User.objects.filter(role='complaint_department')
+        for or_user in or_users:
+            self._create_notification(
+                recipient=or_user,
+                notification_type='pc',
+                title='🔴 Спор с фабрикой',
+                message=f'СМ оспаривает решение фабрики по рекламации #{self.id} (заказ {self.order_number}). Требуется повторное рассмотрение.'
             )
     
     def plan_installation(self, installer, installation_date):
@@ -282,23 +374,43 @@ class Complaint(models.Model):
         self.planned_installation_date = installation_date
         self.status = ComplaintStatus.INSTALLATION_PLANNED
         self.save()
-        self._create_notification(
-            recipient=self.recipient,
-            notification_type='push',
-            title='Монтаж запланирован',
-            message=f'Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y")}'
-        )
+        
+        # Уведомление СМ о планировании
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Монтаж запланирован',
+                message=f'Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y")}'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Монтаж запланирован',
+                message=f'Рекламация #{self.id} (заказ {self.order_number}): Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y %H:%M")}. Клиент: {self.client_name}'
+            )
     
     def mark_completed(self):
         """Монтажник отмечает работу выполненной"""
         self.status = ComplaintStatus.UNDER_SM_REVIEW
         self.save()
-        self._create_notification(
-            recipient=self.recipient,
-            notification_type='push',
-            title='Требуется проверка',
-            message=f'Рекламация #{self.id} выполнена, требуется проверка СМ'
-        )
+        
+        # Отправляем уведомление СМ
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Требуется проверка',
+                message=f'Рекламация #{self.id} выполнена монтажником, требуется проверка'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Требуется проверка',
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) выполнена монтажником. Клиент: {self.client_name}. Требуется проверка качества работы.'
+            )
     
     def approve_by_sm(self):
         """СМ проверяет и одобряет выполнение"""
@@ -318,25 +430,69 @@ class Complaint(models.Model):
         self.status = ComplaintStatus.IN_PRODUCTION
         self.production_deadline = deadline
         self.save()
+        
+        # Уведомление менеджеру о запуске производства
+        if self.manager:
+            self._create_notification(
+                recipient=self.manager,
+                notification_type='pc',
+                title='Заказ запущен в производство',
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) запущена в производство. Срок готовности: {deadline.strftime("%d.%m.%Y")}'
+            )
+        
+        # Уведомление СМ о запуске производства
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Заказ в производстве',
+                message=f'Менеджер запустил в производство рекламацию #{self.id} (заказ {self.order_number}). Срок готовности: {deadline.strftime("%d.%m.%Y")}'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Заказ в производстве',
+                message=f'Рекламация #{self.id} запущена в производство'
+            )
     
     def mark_on_warehouse(self):
         """Товар готов на складе"""
         self.status = ComplaintStatus.ON_WAREHOUSE
         self.added_to_shipping_registry_at = timezone.now()
         self.save()
+        
+        print(f"[DEBUG] Товар на складе для рекламации #{self.id}, тип: {self.complaint_type}")
+        
         # Уведомления менеджеру и СМ
-        self._create_notification(
-            recipient=self.manager,
-            notification_type='pc',
-            title='Товар готов к отгрузке',
-            message=f'Товар по рекламации #{self.id} готов, поставьте в реестр на отгрузку'
-        )
-        self._create_notification(
-            recipient=self.recipient,
-            notification_type='push',
-            title='Запланируйте монтаж',
-            message=f'Товар по рекламации #{self.id} готов, запланируйте монтаж'
-        )
+        if self.manager:
+            # Уведомление менеджеру в личный кабинет
+            print(f"[DEBUG] Отправка уведомления менеджеру: {self.manager.username}")
+            self._create_notification(
+                recipient=self.manager,
+                notification_type='pc',
+                title='Товар по рекламации на складе',
+                message=f'Товар по рекламации #{self.id} (заказ {self.order_number}) на складе, поставьте в реестр на отгрузку'
+            )
+        else:
+            print(f"[DEBUG] Менеджер не назначен для рекламации #{self.id}")
+        
+        # Уведомление СМ в личный кабинет
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            print(f"[DEBUG] Отправка уведомления СМ: {sm_recipient.username}")
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Товар по рекламации на складе',
+                message=f'Товар по рекламации #{self.id} (заказ {self.order_number}) на складе, запланируйте монтаж'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Товар на складе',
+                message=f'Рекламация #{self.id} - товар на складе, запланируйте монтаж'
+            )
     
     def add_to_shipping_registry(self, doors_count=1, lift_type='our', lift_method='elevator', 
                                   payment_status='', delivery_destination='client', comments=''):
@@ -389,6 +545,30 @@ class Complaint(models.Model):
         else:
             self.status = ComplaintStatus.INSTALLATION_PLANNED
         self.save()
+        
+        # Уведомление монтажнику в личный кабинет
+        self._create_notification(
+            recipient=installer,
+            notification_type='pc',
+            title='Назначен монтаж',
+            message=f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). Дата: {installation_date.strftime("%d.%m.%Y %H:%M")}. Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}'
+        )
+    
+    def _get_service_manager(self):
+        """Определяет СМ для этой рекламации"""
+        # Если получатель - СМ, возвращаем его
+        if self.recipient and self.recipient.role == 'service_manager':
+            return self.recipient
+        
+        # Ищем СМ по городу инициатора
+        from users.models import User
+        if self.initiator.city:
+            sm = User.objects.filter(role='service_manager', city=self.initiator.city).first()
+            if sm:
+                return sm
+        
+        # Если не нашли по городу, берем первого доступного СМ
+        return User.objects.filter(role='service_manager').first()
     
     def _create_notification(self, recipient, notification_type, title, message):
         """Создание уведомления"""
@@ -399,7 +579,9 @@ class Complaint(models.Model):
                 recipient=recipient,
                 notification_type=notification_type,
                 title=title,
-                message=message
+                message=message,
+                is_sent=True,  # Для PC и Push уведомлений сразу помечаем как отправленные
+                sent_at=timezone.now()
             )
 
 
@@ -437,6 +619,7 @@ class ComplaintAttachment(models.Model):
         ('photo', 'Фото'),
         ('video', 'Видео'),
         ('document', 'Документ'),
+        ('commercial_offer', 'Коммерческое предложение'),
     ]
     
     complaint = models.ForeignKey(
@@ -451,7 +634,7 @@ class ComplaintAttachment(models.Model):
         help_text='Загрузка без сжатия и изменения формата'
     )
     attachment_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=ATTACHMENT_TYPE_CHOICES,
         verbose_name='Тип вложения'
     )
@@ -666,15 +849,28 @@ class Notification(models.Model):
     title = models.CharField(max_length=255, verbose_name='Заголовок')
     message = models.TextField(verbose_name='Сообщение')
     is_sent = models.BooleanField(default=False, verbose_name='Отправлено')
+    is_read = models.BooleanField(default=False, verbose_name='Прочитано')
     sent_at = models.DateTimeField(blank=True, null=True, verbose_name='Дата отправки')
+    read_at = models.DateTimeField(blank=True, null=True, verbose_name='Дата прочтения')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     
     class Meta:
         verbose_name = 'Уведомление'
         verbose_name_plural = 'Уведомления'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read', '-created_at']),
+            models.Index(fields=['complaint', '-created_at']),
+        ]
     
     def __str__(self):
         return f"{self.get_notification_type_display()} - {self.recipient.username}"
+    
+    def mark_as_read(self):
+        """Отметить уведомление как прочитанное"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save()
 
 

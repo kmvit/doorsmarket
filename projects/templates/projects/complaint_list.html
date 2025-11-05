@@ -241,7 +241,11 @@
                                         {{ complaint.initiator.get_full_name|default:complaint.initiator.username }}
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                        {% if complaint.manager %}
                                         {{ complaint.manager.get_full_name|default:complaint.manager.username }}
+                                        {% else %}
+                                        <span class="text-orange-600 font-medium">Не назначен</span>
+                                        {% endif %}
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-900">
                                         {{ complaint.client_name }}
@@ -256,7 +260,7 @@
                                         {{ complaint.contact_phone }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        {% if complaint.status in 'installer_not_planned,factory_response_overdue,sm_response_overdue,shipping_overdue,waiting_factory_response_overdue,waiting_client_agreement_overdue' %}
+                                        {% if complaint.status in 'installer_not_planned,factory_response_overdue,factory_rejected,factory_dispute,sm_response_overdue,shipping_overdue,waiting_factory_response_overdue,waiting_client_agreement_overdue' %}
                                             <!-- Просроченные статусы - красный цвет -->
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
                                                 {{ complaint.get_status_display }}
@@ -264,19 +268,21 @@
                                         {% elif complaint.status == 'both_planned' %}
                                             <!-- Оба запланированы -->
                                             <div class="text-xs">
-                                                <div class="font-semibold text-yellow-800">Отгрузка {{ complaint.planned_shipping_date|date:"d.m.Y" }}</div>
-                                                <div class="font-semibold text-blue-800">Монтаж {{ complaint.planned_installation_date|date:"d.m.Y" }}</div>
-                                                <div class="text-gray-600">{{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}</div>
+                                                <div class="font-semibold text-gray-800">
+                                                    Отгрузка {{ complaint.planned_shipping_date|date:"d.m.Y" }}, 
+                                                    монтаж {{ complaint.planned_installation_date|date:"d.m.Y" }}, 
+                                                    монтажник {{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}
+                                                </div>
                                             </div>
                                         {% elif complaint.status == 'installation_planned' %}
                                             <!-- Только монтаж запланирован -->
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                                Монтажник запланировал на {{ complaint.planned_installation_date|date:"d.m.Y" }}
+                                                Монтаж запланирован на {{ complaint.planned_installation_date|date:"d.m.Y" }}, монтажник {{ complaint.installer_assigned.get_full_name|default:complaint.installer_assigned.username }}
                                             </span>
                                         {% elif complaint.status == 'shipping_planned' %}
                                             <!-- Только отгрузка запланирована -->
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
-                                                Отгрузка {{ complaint.planned_shipping_date|date:"d.m.Y" }}
+                                                Отгрузка запланирована на {{ complaint.planned_shipping_date|date:"d.m.Y" }}
                                             </span>
                                         {% elif complaint.status == 'new' %}
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -290,6 +296,21 @@
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                                 {{ complaint.get_status_display }}
                                             </span>
+                                        {% elif complaint.status == 'factory_approved' %}
+                                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                                ✓ {{ complaint.get_status_display }}
+                                            </span>
+                                        {% elif complaint.status == 'in_production' %}
+                                            <div class="text-xs">
+                                                <div class="font-semibold text-purple-800">
+                                                    Заказ в производстве
+                                                </div>
+                                                {% if complaint.production_deadline %}
+                                                <div class="text-gray-600 mt-1">
+                                                    Срок готовности: {{ complaint.production_deadline|date:"d.m.Y" }}
+                                                </div>
+                                                {% endif %}
+                                            </div>
                                         {% elif complaint.status == 'resolved' %}
                                             <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                                                 {{ complaint.get_status_display }}

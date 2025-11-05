@@ -1,0 +1,207 @@
+{% extends 'users/base.html' %}
+
+{% block title %}Уведомления - Marketing Doors{% endblock %}
+
+{% block content %}
+<div class="min-h-screen py-12 px-4">
+    <div class="max-w-7xl mx-auto animate-fadeIn">
+        <!-- Заголовок -->
+        <div class="mb-8 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 flex items-center">
+                    <svg class="h-10 w-10 mr-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                    Уведомления
+                </h1>
+                <p class="mt-2 text-gray-600">
+                    Все уведомления по вашим рекламациям
+                </p>
+            </div>
+            <a href="{% url 'users:web_dashboard' %}" class="px-6 py-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition-all duration-200">
+                ← Назад на главную
+            </a>
+        </div>
+
+        <!-- Сообщения -->
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-6 {% if message.tags == 'error' %}bg-red-50 border-l-4 border-red-500 text-red-700{% else %}bg-green-50 border-l-4 border-green-500 text-green-700{% endif %} p-4 rounded-lg animate-fadeIn shadow-lg" role="alert">
+                    <p class="font-medium">{{ message }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <!-- Статистика -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-blue-100">Непрочитанные</p>
+                        <p class="text-4xl font-bold mt-2">{{ stats.unread_count }}</p>
+                    </div>
+                    <div class="h-16 w-16 bg-white/20 rounded-xl flex items-center justify-center">
+                        <svg class="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-green-100">Прочитанные</p>
+                        <p class="text-4xl font-bold mt-2">{{ stats.read_count }}</p>
+                    </div>
+                    <div class="h-16 w-16 bg-white/20 rounded-xl flex items-center justify-center">
+                        <svg class="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Кнопка "Отметить все прочитанными" -->
+        {% if unread_notifications %}
+        <div class="mb-6 text-right">
+            <form method="post" action="{% url 'users:mark_all_notifications_read' %}" class="inline">
+                {% csrf_token %}
+                <button type="submit" class="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:shadow-xl transition-all duration-200">
+                    <svg class="inline h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Отметить все прочитанными
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Непрочитанные уведомления -->
+        {% if unread_notifications %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                <svg class="h-7 w-7 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                Непрочитанные уведомления ({{ unread_notifications.count }})
+            </h2>
+            <div class="space-y-4">
+                {% for notification in unread_notifications %}
+                <a href="{% url 'users:mark_notification_read' notification.id %}" class="block bg-white rounded-xl p-6 hover:shadow-2xl transition-all duration-200 border-2 border-blue-200 hover:border-blue-400 group">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-start space-x-4 flex-1">
+                            <div class="flex-shrink-0">
+                                <div class="h-14 w-14 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                        {{ notification.title }}
+                                    </h3>
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                                        Новое
+                                    </span>
+                                </div>
+                                
+                                <p class="text-sm text-gray-600 mb-2">
+                                    {{ notification.message }}
+                                </p>
+                                
+                                <div class="flex items-center space-x-4 text-xs text-gray-400">
+                                    <span>Рекламация #{{ notification.complaint.id }}</span>
+                                    <span>•</span>
+                                    <span>{{ notification.created_at|date:"d.m.Y H:i" }}</span>
+                                    <span>•</span>
+                                    <span class="px-2 py-1 bg-gray-100 rounded">{{ notification.get_notification_type_display }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex-shrink-0 ml-4">
+                            <svg class="h-8 w-8 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Прочитанные уведомления -->
+        {% if read_notifications %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-500 mb-4 flex items-center">
+                <svg class="h-7 w-7 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Прочитанные уведомления
+            </h2>
+            <div class="space-y-4">
+                {% for notification in read_notifications %}
+                <a href="{% url 'projects:complaint_detail' notification.complaint.id %}" class="block bg-gray-50 rounded-xl p-6 hover:shadow-lg transition-all duration-200 border border-gray-200 hover:border-gray-300 group opacity-75 hover:opacity-100">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-start space-x-4 flex-1">
+                            <div class="flex-shrink-0">
+                                <div class="h-12 w-12 bg-gray-300 rounded-xl flex items-center justify-center">
+                                    <svg class="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-base font-semibold text-gray-700 group-hover:text-gray-900 transition-colors">
+                                    {{ notification.title }}
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    {{ notification.message }}
+                                </p>
+                                <div class="flex items-center space-x-4 text-xs text-gray-400 mt-2">
+                                    <span>Рекламация #{{ notification.complaint.id }}</span>
+                                    <span>•</span>
+                                    <span>{{ notification.created_at|date:"d.m.Y H:i" }}</span>
+                                    {% if notification.read_at %}
+                                    <span>•</span>
+                                    <span>Прочитано: {{ notification.read_at|date:"d.m.Y H:i" }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex-shrink-0 ml-4">
+                            <svg class="h-6 w-6 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Если нет уведомлений -->
+        {% if not unread_notifications and not read_notifications %}
+        <div class="bg-green-50 border-2 border-green-200 rounded-3xl p-12 text-center">
+            <div class="inline-flex items-center justify-center h-20 w-20 bg-green-500 rounded-full mb-6">
+                <svg class="h-12 w-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-green-800 mb-3">Нет уведомлений!</h3>
+            <p class="text-green-600 text-lg">У вас нет уведомлений</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

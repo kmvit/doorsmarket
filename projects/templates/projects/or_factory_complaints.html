@@ -13,67 +13,99 @@
         </div>
 
         <!-- Статистика -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow p-6">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow p-4">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
-                        <div class="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                            <svg class="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">Всего</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.total }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-10 w-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Ожидают ответа</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ stats.waiting_response }}</p>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">Ожидает ответа</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.sent }}</p>
                     </div>
                 </div>
             </div>
             
-            <div class="bg-white rounded-lg shadow p-6">
+            <div class="bg-white rounded-lg shadow p-4">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
-                        <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Ожидают согласия</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ stats.waiting_agreement }}</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-                            <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Согласовано</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ stats.agreed }}</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
-                            <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="h-10 w-10 bg-red-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-600">Просрочено</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ stats.overdue }}</p>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">Просрочено</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.overdue }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">Споры</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.dispute }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-10 w-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">В производстве</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.in_production }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                            <svg class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-xs font-medium text-gray-600">На складе</p>
+                        <p class="text-xl font-bold text-gray-900">{{ stats.on_warehouse }}</p>
                     </div>
                 </div>
             </div>
@@ -95,7 +127,7 @@
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                             {% for complaint in complaints %}
-                            <tr class="hover:bg-gray-50 cursor-pointer {% if complaint.status in 'waiting_factory_response_overdue,waiting_client_agreement_overdue' %}bg-red-50{% endif %}" onclick="window.location='{% url 'projects:complaint_detail' complaint.id %}'">
+                            <tr class="hover:bg-gray-50 cursor-pointer {% if complaint.status in 'factory_response_overdue,factory_rejected,factory_dispute' %}bg-red-50{% endif %}" data-href="{% url 'projects:complaint_detail' complaint.id %}" onclick="window.location=this.dataset.href">
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center">
                                         <div class="flex-shrink-0 h-10 w-10">
@@ -114,25 +146,37 @@
                                     <div class="text-sm text-gray-500">{{ complaint.contact_person }}</div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    {% if complaint.status == 'waiting_factory_response' %}
+                                    {% if complaint.status == 'sent' %}
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                            Ожидает ответа фабрики
+                                            Отправлена (ожидает ответ)
                                         </span>
-                                    {% elif complaint.status == 'waiting_factory_response_overdue' %}
+                                    {% elif complaint.status == 'factory_response_overdue' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border-2 border-red-300 animate-pulse">
+                                            ⚠️ Просрочен ответ ({{ complaint.status|default:"0" }} р.д.)
+                                        </span>
+                                    {% elif complaint.status == 'factory_dispute' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border-2 border-red-300">
+                                            🔴 Спор с фабрикой
+                                        </span>
+                                    {% elif complaint.status == 'factory_rejected' %}
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                            Просрочен ответ фабрики
+                                            ✗ Отказ
                                         </span>
-                                    {% elif complaint.status == 'waiting_client_agreement' %}
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                            Ожидает согласия клиента
-                                        </span>
-                                    {% elif complaint.status == 'waiting_client_agreement_overdue' %}
-                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                            Просрочено согласие клиента
-                                        </span>
-                                    {% elif complaint.status == 'client_agreed' %}
+                                    {% elif complaint.status == 'factory_approved' %}
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                            Клиент согласен
+                                            ✓ Ответ получен (ожидает СМ)
+                                        </span>
+                                    {% elif complaint.status == 'sm_response_overdue' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border-2 border-red-300 animate-pulse">
+                                            ⚠️ СМ просрочил ответ
+                                        </span>
+                                    {% elif complaint.status == 'in_production' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                                            В производстве
+                                        </span>
+                                    {% elif complaint.status == 'on_warehouse' %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                            Товар на складе
                                         </span>
                                     {% else %}
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
@@ -141,32 +185,23 @@
                                     {% endif %}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                    {% if complaint.factory_response_date %}
-                                        <div class="{% if complaint.status == 'waiting_factory_response_overdue' %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
-                                            Ответ до: {{ complaint.factory_response_date|date:"d.m.Y" }}
+                                    {% if complaint.updated_at %}
+                                        <div class="text-gray-500">
+                                            Обновлено: {{ complaint.updated_at|date:"d.m.Y H:i" }}
                                         </div>
                                     {% endif %}
-                                    {% if complaint.client_agreement_date %}
-                                        <div class="{% if complaint.status == 'waiting_client_agreement_overdue' %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
-                                            Согласие до: {{ complaint.client_agreement_date|date:"d.m.Y" }}
+                                    {% if complaint.status == 'factory_response_overdue' %}
+                                        <div class="text-red-600 font-medium">
+                                            ⚠️ Требует срочного ответа!
                                         </div>
                                     {% endif %}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" onclick="event.stopPropagation()">
                                     <div class="flex space-x-2">
-                                        {% if complaint.status in 'waiting_factory_response,waiting_factory_response_overdue' %}
-                                        <button onclick="openResponseModal({{ complaint.id }}, '{{ complaint.order_number }}')" 
-                                                class="px-3 py-1 text-xs text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors">
-                                            Получен ответ
-                                        </button>
-                                        {% elif complaint.status in 'waiting_client_agreement,waiting_client_agreement_overdue' %}
-                                        <button onclick="markAgreed({{ complaint.id }})" 
-                                                class="px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-                                            Клиент согласен
-                                        </button>
-                                        {% else %}
-                                        <span class="text-gray-400 text-xs">—</span>
-                                        {% endif %}
+                                        <a href="{% url 'projects:complaint_detail' complaint.id %}" 
+                                           class="px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                                            Открыть
+                                        </a>
                                     </div>
                                 </td>
                             </tr>

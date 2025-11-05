@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Count
 from django.db import transaction
+from django.utils import timezone
 from users.models import User
 from .models import (
     Complaint,
@@ -36,11 +37,11 @@ def complaint_list(request):
         complaints = complaints.filter(
             Q(initiator=request.user) | Q(installer_assigned=request.user)
         )
-    # 2. Администратор и Руководитель видят все по всем городам
-    elif request.user.role in ['admin', 'leader']:
+    # 2. Администратор, Руководитель и Менеджер видят все по всем городам
+    elif request.user.role in ['admin', 'leader', 'manager']:
         pass  # Без фильтрации
-    # 3. СМ и Менеджер видят все рекламации по своему городу
-    elif request.user.role in ['service_manager', 'manager']:
+    # 3. СМ видит все рекламации по своему городу
+    elif request.user.role == 'service_manager':
         if request.user.city:
             complaints = complaints.filter(
                 Q(initiator__city=request.user.city) | 
@@ -75,7 +76,12 @@ def complaint_list(request):
     
     # Фильтрация по получателю (назначенные мне)
     if request.GET.get('assigned_to_me'):
-        complaints = complaints.filter(recipient=request.user)
+        if request.user.role == 'manager':
+            # Для менеджера - рекламации где он менеджер заказа или получатель
+            complaints = complaints.filter(Q(manager=request.user) | Q(recipient=request.user))
+        else:
+            # Для остальных - только получатель
+            complaints = complaints.filter(recipient=request.user)
     
     # Поиск
     search_query = request.GET.get('search')
@@ -147,8 +153,61 @@ def complaint_detail(request, pk):
         pk=pk
     )
     
+    # Обработка POST-запросов
+    if request.method == 'POST':
+        action = request.path.split('/')[-2]  # Получаем действие из URL
+        
+        # Действия менеджера
+        if request.user.role == 'manager' and complaint.manager == request.user:
+            if action == 'start-production' and complaint.status == 'in_progress':
+                # Запуск производства
+                production_deadline = request.POST.get('production_deadline')
+                if production_deadline:
+                    from datetime import datetime
+                    deadline = datetime.fromisoformat(production_deadline)
+                    complaint.start_production(deadline)
+                    messages.success(request, 'Заказ запущен в производство')
+                else:
+                    messages.error(request, 'Укажите дату готовности')
+            
+            elif action == 'mark-warehouse' and complaint.status == 'in_production':
+                # Товар готов на складе
+                complaint.mark_on_warehouse()
+                messages.success(request, 'Товар отмечен как готовый на складе')
+            
+            elif action == 'plan-shipping' and complaint.status == 'on_warehouse':
+                # Планирование отгрузки
+                shipping_date = request.POST.get('shipping_date')
+                if shipping_date:
+                    from datetime import datetime
+                    shipping_date = datetime.fromisoformat(shipping_date)
+                    complaint.plan_shipping(shipping_date)
+                    messages.success(request, f'Отгрузка запланирована на {shipping_date.strftime("%d.%m.%Y")}')
+                else:
+                    messages.error(request, 'Укажите дату отгрузки')
+        
+        # Действия СМ
+        elif request.user.role == 'service_manager':
+            if action == 'plan-installation' and complaint.status in ['on_warehouse', 'shipping_planned']:
+                # Планирование монтажа
+                installation_date = request.POST.get('installation_date')
+                installer_id = request.POST.get('installer')
+                if installation_date and installer_id:
+                    from datetime import datetime
+                    installation_date = datetime.fromisoformat(installation_date)
+                    installer = User.objects.get(id=installer_id)
+                    complaint.plan_installation_by_sm(installer, installation_date)
+                    messages.success(request, f'Монтаж запланирован на {installation_date.strftime("%d.%m.%Y %H:%M")}, монтажник: {installer.get_full_name() or installer.username}')
+                else:
+                    messages.error(request, 'Укажите дату монтажа и монтажника')
+        
+        return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    from datetime import date
     context = {
         'complaint': complaint,
+        'today': date.today().isoformat(),
+        'available_installers': User.objects.filter(role='installer'),
     }
     
     return render(request, 'projects/complaint_detail.html', context)
@@ -168,18 +227,46 @@ def complaint_create(request):
                 reason_id = request.POST.get('reason')
                 
                 # Валидация обязательных полей
-                if not all([manager_id, production_site_id, reason_id, 
+                required_fields = [production_site_id, reason_id, 
                            request.POST.get('order_number'), 
                            request.POST.get('client_name'),
                            request.POST.get('address'),
                            request.POST.get('contact_person'),
-                           request.POST.get('contact_phone'),
-                           request.POST.get('problem_description')]):
+                                 request.POST.get('contact_phone')]
+                
+                if not all(required_fields):
                     messages.error(request, 'Заполните все обязательные поля')
                     raise ValueError('Missing required fields')
                 
+                # Для монтажников обязательно нужны вложения (фото/видео/документы)
+                if request.user.role == 'installer':
+                    if not request.FILES.getlist('attachments'):
+                        messages.error(request, 'Для монтажников обязательно нужно прикрепить фото/видео/документы!')
+                        raise ValueError('Installer must attach files')
+                
+                # Обработка типа рекламации для СМ
+                complaint_type = request.POST.get('complaint_type')
+                installer_id = request.POST.get('installer')
+                
                 # Определяем получателя
-                if recipient_id:
+                if request.user.role == 'service_manager' and complaint_type:
+                    # СМ выбрал тип рекламации сразу
+                    if complaint_type == 'manager':
+                        # Получатель - менеджер заказа
+                        recipient = User.objects.get(id=manager_id)
+                    elif complaint_type == 'installer':
+                        # Получатель - выбранный монтажник
+                        if not installer_id:
+                            messages.error(request, 'Для типа "Монтажник" нужно выбрать монтажника')
+                            raise ValueError('Installer required for installer type')
+                        recipient = User.objects.get(id=installer_id)
+                    elif complaint_type == 'factory':
+                        # Получатель - первый ОР
+                        recipient = User.objects.filter(role='complaint_department').first()
+                        if not recipient:
+                            messages.error(request, 'Не найден отдел рекламаций')
+                            raise ValueError('No complaint department found')
+                elif recipient_id:
                     recipient = User.objects.get(id=recipient_id)
                 else:
                     # Если инициатор - менеджер или монтажник, получатель - первый СМ
@@ -191,11 +278,24 @@ def complaint_create(request):
                     else:
                         recipient = User.objects.get(id=recipient_id)
                 
+                # Определяем менеджера заказа
+                # Если инициатор - менеджер, автоматически назначаем его
+                if request.user.role == 'manager':
+                    final_manager_id = request.user.id
+                else:
+                    # Для СМ и других - используем выбранного менеджера из формы
+                    final_manager_id = manager_id
+                    
+                # Валидация: менеджер заказа обязателен для всех
+                if not final_manager_id:
+                    messages.error(request, 'Необходимо указать менеджера заказа')
+                    raise ValueError('Manager is required')
+                
                 # Создаем рекламацию
                 complaint = Complaint.objects.create(
                     initiator=request.user,
                     recipient=recipient,
-                    manager_id=manager_id,
+                    manager_id=final_manager_id,
                     production_site_id=production_site_id,
                     reason_id=reason_id,
                     order_number=request.POST.get('order_number'),
@@ -203,14 +303,8 @@ def complaint_create(request):
                     address=request.POST.get('address'),
                     contact_person=request.POST.get('contact_person'),
                     contact_phone=request.POST.get('contact_phone'),
-                    problem_description=request.POST.get('problem_description'),
                     document_package_link=request.POST.get('document_package_link', ''),
                 )
-                
-                # Загружаем КП если есть
-                if request.FILES.get('commercial_offer'):
-                    complaint.commercial_offer = request.FILES['commercial_offer']
-                    complaint.save()
                 
                 # Добавляем бракованные изделия
                 product_names = request.POST.getlist('product_name[]')
@@ -247,7 +341,32 @@ def complaint_create(request):
                         attachment_type=attachment_type
                     )
                 
-                messages.success(request, f'Рекламация #{complaint.id} успешно создана!')
+                # Добавляем коммерческие предложения
+                commercial_offers = request.FILES.getlist('commercial_offers')
+                for co_file in commercial_offers:
+                    ComplaintAttachment.objects.create(
+                        complaint=complaint,
+                        file=co_file,
+                        attachment_type='commercial_offer',
+                        description='Коммерческое предложение'
+                    )
+                
+                # Если СМ выбрал тип рекламации сразу, применяем соответствующую логику
+                if request.user.role == 'service_manager' and complaint_type:
+                    if complaint_type == 'manager':
+                        complaint.set_type_manager()
+                        messages.success(request, f'Рекламация #{complaint.id} создана и отправлена менеджеру!')
+                    elif complaint_type == 'installer':
+                        complaint.installer_assigned_id = installer_id
+                        complaint.save()
+                        complaint.set_type_installer()
+                        messages.success(request, f'Рекламация #{complaint.id} создана и отправлена монтажнику!')
+                    elif complaint_type == 'factory':
+                        complaint.set_type_factory()
+                        messages.success(request, f'Рекламация #{complaint.id} создана и отправлена в ОР!')
+                else:
+                    messages.success(request, f'Рекламация #{complaint.id} успешно создана!')
+                
                 return redirect('projects:complaint_detail', pk=complaint.id)
                 
         except ValueError:
@@ -260,8 +379,9 @@ def complaint_create(request):
         'reasons': ComplaintReason.objects.filter(is_active=True),
         'production_sites': ProductionSite.objects.filter(is_active=True),
         'managers': User.objects.filter(role='manager'),
+        'installers': User.objects.filter(role='installer'),
         'recipients': User.objects.filter(role__in=['service_manager', 'complaint_department', 'leader']),
-        'show_recipient': request.user.role not in ['manager', 'installer'],
+        'show_recipient': request.user.role not in ['manager', 'installer', 'service_manager'],
     }
     
     return render(request, 'projects/complaint_create.html', context)
@@ -278,11 +398,11 @@ def shipping_registry(request):
     ).all()
     
     # Фильтрация по городам
-    # Администратор и Руководитель видят все
-    if request.user.role in ['admin', 'leader']:
+    # Администратор, Руководитель и Менеджер видят все
+    if request.user.role in ['admin', 'leader', 'manager']:
         pass  # Без фильтрации
-    # СМ и Менеджер видят только по своему городу
-    elif request.user.role in ['service_manager', 'manager']:
+    # СМ видит только по своему городу
+    elif request.user.role == 'service_manager':
         if request.user.city:
             shipping_entries = shipping_entries.filter(manager__city=request.user.city)
     # ОР видит все
@@ -344,7 +464,8 @@ def shipping_detail(request, pk):
     entry = get_object_or_404(ShippingRegistry, pk=pk)
     
     # Проверка прав по городу
-    if request.user.role in ['service_manager', 'manager']:
+    # Менеджер видит все, СМ - только по своему городу
+    if request.user.role == 'service_manager':
         if request.user.city and entry.manager.city != request.user.city:
             messages.error(request, 'У вас нет доступа к этой записи')
             return redirect('projects:shipping_registry')
@@ -400,25 +521,154 @@ def complaint_process(request, pk):
                 return redirect('projects:complaint_process', pk=complaint.id)
             
         elif action == 'set_type_manager':
-            complaint.set_type_manager()
-            messages.success(request, 'Тип рекламации установлен: Менеджер')
+            manager_id = request.POST.get('manager')
+            if manager_id:
+                manager = User.objects.get(id=manager_id)
+                
+                # Создаем комментарий если менеджер только что назначен
+                if not complaint.manager:
+                    ComplaintComment.objects.create(
+                        complaint=complaint,
+                        author=request.user,
+                        text=f'Назначен менеджер заказа: {manager.get_full_name() or manager.username}'
+                    )
+                
+                complaint.manager = manager
+                complaint.save()
+                
+                try:
+                    complaint.set_type_manager()
+                    messages.success(request, f'Тип рекламации установлен: Менеджер. Назначен: {manager.get_full_name() or manager.username}')
+                except ValueError as e:
+                    messages.error(request, str(e))
+                    return redirect('projects:complaint_process', pk=complaint.id)
+            else:
+                messages.error(request, 'Выберите менеджера')
+                return redirect('projects:complaint_process', pk=complaint.id)
             
         elif action == 'set_type_factory':
             complaint.set_type_factory()
             messages.success(request, 'Тип рекламации установлен: Фабрика')
             
         elif action == 'approve':
+            # СМ проверяет и одобряет выполненную монтажником работу
             complaint.approve_by_sm()
-            messages.success(request, 'Рекламация одобрена и завершена')
+            
+            # Создаем комментарий о проверке
+            ComplaintComment.objects.create(
+                complaint=complaint,
+                author=request.user,
+                text=f'Рекламация проверена и одобрена сервис-менеджером {request.user.get_full_name() or request.user.username}'
+            )
+            
+            # Уведомляем монтажника об одобрении
+            if complaint.installer_assigned:
+                complaint._create_notification(
+                    recipient=complaint.installer_assigned,
+                    notification_type='push',
+                    title='Работа одобрена',
+                    message=f'Ваша работа по рекламации #{complaint.id} одобрена СМ'
+                )
+            
+            messages.success(request, 'Рекламация проверена и отмечена как выполненная! Клиенту отправлено SMS для оценки работы.')
+        
+        elif action == 'close':
+            # СМ может завершить рекламацию напрямую
+            complaint.status = 'closed'
+            complaint.completion_date = timezone.now()
+            complaint.save()
+            
+            # Создаем комментарий о завершении
+            ComplaintComment.objects.create(
+                complaint=complaint,
+                author=request.user,
+                text=f'Рекламация завершена сервис-менеджером без дальнейшей обработки'
+            )
+            
+            # Уведомляем участников
+            if complaint.initiator != request.user:
+                complaint._create_notification(
+                    recipient=complaint.initiator,
+                    notification_type='push',
+                    title='Рекламация завершена',
+                    message=f'Рекламация #{complaint.id} завершена сервис-менеджером'
+                )
+            
+            if complaint.manager != request.user:
+                complaint._create_notification(
+                    recipient=complaint.manager,
+                    notification_type='push',
+                    title='Рекламация завершена',
+                    message=f'Рекламация #{complaint.id} завершена сервис-менеджером'
+                )
+            
+            messages.success(request, 'Рекламация успешно завершена')
+        
+        elif action == 'change_installer':
+            # СМ может заменить монтажника
+            new_installer_id = request.POST.get('new_installer')
+            if new_installer_id:
+                old_installer = complaint.installer_assigned
+                new_installer = User.objects.get(id=new_installer_id)
+                
+                complaint.installer_assigned = new_installer
+                complaint.save()
+                
+                # Создаем комментарий об изменении
+                if old_installer:
+                    change_text = f'Монтажник изменен: {old_installer.get_full_name() or old_installer.username} → {new_installer.get_full_name() or new_installer.username}'
+                else:
+                    change_text = f'Назначен монтажник: {new_installer.get_full_name() or new_installer.username}'
+                
+                ComplaintComment.objects.create(
+                    complaint=complaint,
+                    author=request.user,
+                    text=change_text
+                )
+                
+                # Уведомляем старого монтажника
+                if old_installer and old_installer != new_installer:
+                    complaint._create_notification(
+                        recipient=old_installer,
+                        notification_type='push',
+                        title='Вы сняты с рекламации',
+                        message=f'Рекламация #{complaint.id} назначена другому монтажнику'
+                    )
+                    complaint._create_notification(
+                        recipient=old_installer,
+                        notification_type='sms',
+                        title='Вы сняты с рекламации',
+                        message=f'Рекламация #{complaint.id} ({complaint.order_number}) назначена другому монтажнику'
+                    )
+                
+                # Уведомляем нового монтажника
+                complaint._create_notification(
+                    recipient=new_installer,
+                    notification_type='push',
+                    title='Вам назначена рекламация',
+                    message=f'Рекламация #{complaint.id} назначена вам. Клиент: {complaint.client_name}'
+                )
+                complaint._create_notification(
+                    recipient=new_installer,
+                    notification_type='sms',
+                    title='Назначена рекламация',
+                    message=f'Рекламация #{complaint.id} ({complaint.order_number}). Клиент: {complaint.client_name}, тел: {complaint.contact_phone}'
+                )
+                
+                messages.success(request, f'Монтажник успешно изменен на {new_installer.get_full_name() or new_installer.username}')
+            else:
+                messages.error(request, 'Выберите нового монтажника')
         
         return redirect('projects:complaint_detail', pk=complaint.id)
     
-    # Получаем монтажников для планирования
+    # Получаем монтажников и менеджеров для планирования
     installers = User.objects.filter(role='installer').order_by('first_name', 'last_name')
+    managers = User.objects.filter(role='manager').order_by('first_name', 'last_name')
     
     context = {
         'complaint': complaint,
         'installers': installers,
+        'managers': managers,
     }
     
     return render(request, 'projects/complaint_process.html', context)
@@ -429,18 +679,18 @@ def complaint_process(request, pk):
 def installer_planning(request):
     """Страница задач монтажника"""
     
-    # Получаем только рекламации, назначенные ЭТОМУ монтажнику
+    # Получаем рекламации, назначенные ЭТОМУ монтажнику
+    # Включаем и тип "installer" и тип "manager" (где СМ запланировал монтаж)
     complaints = Complaint.objects.filter(
-        installer_assigned=request.user,
-        complaint_type='installer'
+        installer_assigned=request.user
     ).select_related(
         'initiator', 'recipient', 'manager', 'production_site', 'reason'
     ).order_by('-created_at')
     
-    # Admin и Leader видят все рекламации монтажников
+    # Admin и Leader видят все рекламации с назначенным монтажником
     if request.user.role in ['admin', 'leader']:
         complaints = Complaint.objects.filter(
-            complaint_type='installer'
+            installer_assigned__isnull=False
         ).select_related(
             'initiator', 'recipient', 'manager', 'production_site', 'reason', 'installer_assigned'
         ).order_by('-created_at')
@@ -448,14 +698,15 @@ def installer_planning(request):
     # Фильтрация по статусу
     filter_type = request.GET.get('filter')
     if filter_type == 'needs_planning':
-        complaints = complaints.filter(status__in=['waiting_installer_date', 'needs_planning'])
+        complaints = complaints.filter(status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned'])
     elif filter_type == 'planned':
-        complaints = complaints.filter(status='installation_planned')
+        complaints = complaints.filter(status__in=['installation_planned', 'both_planned'])
     elif filter_type == 'completed':
         complaints = complaints.filter(status__in=['under_sm_review', 'completed'])
     
-    # Обработка POST-запроса (назначение даты)
+    # Обработка POST-запроса (назначение даты или перенос)
     if request.method == 'POST':
+        action = request.POST.get('action', 'plan')
         complaint_id = request.POST.get('complaint_id')
         installation_date = request.POST.get('installation_date')
         
@@ -463,9 +714,43 @@ def installer_planning(request):
             try:
                 from datetime import datetime
                 complaint = Complaint.objects.get(id=complaint_id, installer_assigned=request.user)
-                installation_date = datetime.fromisoformat(installation_date)
-                complaint.plan_installation(request.user, installation_date)
+                new_installation_date = datetime.fromisoformat(installation_date)
+                
+                if action == 'reschedule' and complaint.planned_installation_date:
+                    # Перенос даты монтажа
+                    old_date = complaint.planned_installation_date
+                    complaint.planned_installation_date = new_installation_date
+                    complaint.save()
+                    
+                    # Создаем комментарий о переносе
+                    ComplaintComment.objects.create(
+                        complaint=complaint,
+                        author=request.user,
+                        text=f'Дата монтажа перенесена: {old_date.strftime("%d.%m.%Y %H:%M")} → {new_installation_date.strftime("%d.%m.%Y %H:%M")}'
+                    )
+                    
+                    # Уведомляем СМ
+                    complaint._create_notification(
+                        recipient=complaint.recipient,
+                        notification_type='push',
+                        title='Монтаж перенесен',
+                        message=f'Монтажник перенес дату монтажа по рекламации #{complaint.id} на {new_installation_date.strftime("%d.%m.%Y %H:%M")}'
+                    )
+                    
+                    # Уведомляем менеджера
+                    complaint._create_notification(
+                        recipient=complaint.manager,
+                        notification_type='push',
+                        title='Монтаж перенесен',
+                        message=f'Дата монтажа по рекламации #{complaint.id} перенесена на {new_installation_date.strftime("%d.%m.%Y %H:%M")}'
+                    )
+                    
+                    messages.success(request, f'Дата монтажа успешно перенесена на {new_installation_date.strftime("%d.%m.%Y %H:%M")}')
+                else:
+                    # Первичное планирование
+                    complaint.plan_installation(request.user, new_installation_date)
                 messages.success(request, 'Монтаж запланирован успешно')
+                    
             except Complaint.DoesNotExist:
                 messages.error(request, 'Рекламация не найдена или не назначена вам')
             except Exception as e:
@@ -476,12 +761,12 @@ def installer_planning(request):
         return redirect('projects:installer_planning')
     
     # Статистика
-    base_filter = {'installer_assigned': request.user, 'complaint_type': 'installer'} if request.user.role == 'installer' else {'complaint_type': 'installer'}
+    base_filter = {'installer_assigned': request.user} if request.user.role == 'installer' else {'installer_assigned__isnull': False}
     
     stats = {
         'total': Complaint.objects.filter(**base_filter).count(),
-        'needs_planning': Complaint.objects.filter(**base_filter, status__in=['waiting_installer_date', 'needs_planning']).count(),
-        'planned': Complaint.objects.filter(**base_filter, status='installation_planned').count(),
+        'needs_planning': Complaint.objects.filter(**base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']).count(),
+        'planned': Complaint.objects.filter(**base_filter, status__in=['installation_planned', 'both_planned']).count(),
         'completed': Complaint.objects.filter(**base_filter, status__in=['under_sm_review', 'completed']).count(),
     }
     
@@ -523,19 +808,10 @@ def manager_production(request):
         'initiator', 'recipient', 'production_site', 'reason'
     )
     
-    # Фильтруем по менеджеру и городу
-    if request.user.role == 'admin' or request.user.role == 'leader':
-        # Админ и лидер видят все
-        pass
-    elif request.user.role == 'manager':
-        # Менеджер видит только по своему городу и где он назначен менеджером
-        if request.user.city:
-            complaints = complaints.filter(
-                Q(manager=request.user) | 
-                Q(manager__city=request.user.city)
-            )
-        else:
-            complaints = complaints.filter(manager=request.user)
+    # Фильтруем по менеджеру
+    # Админ, лидер и менеджер видят все
+    if request.user.role in ['admin', 'leader', 'manager']:
+        pass  # Без фильтрации
     
     complaints = complaints.order_by('-created_at')
     
@@ -587,15 +863,17 @@ def manager_production(request):
 def or_factory_complaints(request):
     """Работа ОР с фабричными рекламациями"""
     
-    # Получаем фабричные рекламации
+    # Получаем фабричные рекламации  
     complaints = Complaint.objects.filter(
         complaint_type='factory',
         status__in=[
-            'waiting_factory_response', 
-            'waiting_factory_response_overdue',
-            'waiting_client_agreement', 
-            'waiting_client_agreement_overdue',
-            'client_agreed'
+            'sent',  # Отправлена
+            'factory_response_overdue',  # Ответ фабрики просрочен
+            'factory_approved',  # Ответ получен (ожидает СМ)
+            'sm_response_overdue',  # СМ просрочил ответ
+            'factory_dispute',  # Спор с фабрикой
+            'in_production',  # В производстве после одобрения
+            'on_warehouse',  # Товар готов
         ]
     ).select_related(
         'initiator', 'recipient', 'manager', 'production_site', 'reason'
@@ -606,42 +884,30 @@ def or_factory_complaints(request):
         complaint_id = request.POST.get('complaint_id')
         
         try:
-            from datetime import datetime
             complaint = Complaint.objects.get(id=complaint_id)
             
-            if action == 'factory_responded':
-                commercial_offer = request.POST.get('commercial_offer')
-                agreement_deadline = request.POST.get('agreement_deadline')
+            if action == 'factory_approve':
+                # ОР одобряет рекламацию - запуск в производство
+                sm_name = complaint.recipient.get_full_name() or complaint.recipient.username
+                complaint.factory_approve()
+                messages.success(request, f'Рекламация одобрена фабрикой. Уведомление отправлено СМ ({sm_name}) на согласование с клиентом.')
                 
-                if commercial_offer and agreement_deadline:
-                    complaint.commercial_offer_text = commercial_offer
-                    complaint.client_agreement_date = datetime.fromisoformat(agreement_deadline)
-                    complaint.status = complaint.ComplaintStatus.WAITING_CLIENT_AGREEMENT
-                    complaint.save()
-                    
-                    # Уведомление СМ
-                    complaint._create_notification(
-                        recipient=complaint.recipient,
-                        notification_type='push',
-                        title='Ответ фабрики получен',
-                        message=f'Получен ответ фабрики по рекламации #{complaint.id}. Требуется согласование с клиентом.'
-                    )
-                    messages.success(request, 'Ответ фабрики сохранен, отправлено на согласование клиенту')
+            elif action == 'factory_reject':
+                # ОР отказывает в рекламации
+                reject_reason = request.POST.get('reject_reason', '').strip()
+                if reject_reason:
+                    complaint.factory_reject(reject_reason)
+                    messages.success(request, 'Рекламация отклонена. СМ получил уведомление.')
                 else:
-                    messages.error(request, 'Заполните все поля')
+                    messages.error(request, 'Укажите причину отказа')
+                    return redirect('projects:or_factory_complaints')
                 
-            elif action == 'client_agreed':
-                complaint.status = complaint.ComplaintStatus.CLIENT_AGREED
-                complaint.save()
-                
-                # Уведомление менеджеру для запуска производства
-                complaint._create_notification(
-                    recipient=complaint.manager,
-                    notification_type='push',
-                    title='Клиент согласовал КП',
-                    message=f'Клиент согласовал КП по рекламации #{complaint.id}. Можно запускать производство.'
-                )
-                messages.success(request, 'Согласие клиента зафиксировано')
+            elif action == 'mark_warehouse':
+                # ОР отмечает товар на складе
+                sm_name = complaint.recipient.get_full_name() or complaint.recipient.username
+                manager_name = complaint.manager.get_full_name() or complaint.manager.username if complaint.manager else "не назначен"
+                complaint.mark_on_warehouse()
+                messages.success(request, f'Товар отмечен как готовый на складе. Уведомления отправлены: СМ ({sm_name}), Менеджер ({manager_name}).')
                     
         except Exception as e:
             messages.error(request, f'Ошибка: {str(e)}')
@@ -650,16 +916,12 @@ def or_factory_complaints(request):
     
     # Статистика
     stats = {
-        'waiting_response': complaints.filter(
-            status__in=['waiting_factory_response', 'waiting_factory_response_overdue']
-        ).count(),
-        'waiting_agreement': complaints.filter(
-            status__in=['waiting_client_agreement', 'waiting_client_agreement_overdue']
-        ).count(),
-        'agreed': complaints.filter(status='client_agreed').count(),
-        'overdue': complaints.filter(
-            status__in=['waiting_factory_response_overdue', 'waiting_client_agreement_overdue']
-        ).count(),
+        'total': complaints.count(),
+        'sent': complaints.filter(status__in=['sent', 'factory_response_overdue']).count(),  # Ожидает ответа (включая просроченные)
+        'overdue': complaints.filter(status='factory_response_overdue').count(),  # Просрочена
+        'dispute': complaints.filter(status='factory_dispute').count(),  # Споры
+        'in_production': complaints.filter(status='in_production').count(),  # В производстве
+        'on_warehouse': complaints.filter(status='on_warehouse').count(),  # На складе
     }
     
     context = {
@@ -668,5 +930,318 @@ def or_factory_complaints(request):
     }
     
     return render(request, 'projects/or_factory_complaints.html', context)
+
+
+@login_required(login_url='/api/v1/login/')
+def complaint_history(request, pk):
+    """История событий по рекламации"""
+    complaint = get_object_or_404(Complaint, pk=pk)
+    
+    # Проверка прав доступа
+    # Менеджер видит все, СМ - только по своему городу
+    if request.user.role == 'service_manager':
+        if request.user.city and complaint.manager and complaint.manager.city != request.user.city:
+            messages.error(request, 'У вас нет доступа к этой рекламации')
+            return redirect('projects:complaint_list')
+    elif request.user.role not in ['manager', 'admin', 'leader', 'complaint_department']:
+        messages.error(request, 'У вас нет доступа к истории рекламаций')
+        return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    # Собираем всю историю событий
+    history_events = []
+    
+    # 1. Создание рекламации
+    history_events.append({
+        'type': 'created',
+        'date': complaint.created_at,
+        'user': complaint.initiator,
+        'title': 'Рекламация создана',
+        'description': f'Инициатор: {complaint.initiator.get_full_name() or complaint.initiator.username} ({complaint.initiator.get_role_display()})',
+        'icon': 'create',
+        'color': 'blue'
+    })
+    
+    # 2. Комментарии
+    comments = complaint.comments.all().select_related('author')
+    for comment in comments:
+        history_events.append({
+            'type': 'comment',
+            'date': comment.created_at,
+            'user': comment.author,
+            'title': 'Комментарий добавлен',
+            'description': comment.text,
+            'icon': 'comment',
+            'color': 'gray'
+        })
+    
+    # 3. Уведомления (отправленные)
+    notifications = complaint.notifications.filter(is_sent=True).select_related('recipient')
+    for notification in notifications:
+        history_events.append({
+            'type': 'notification',
+            'date': notification.sent_at or notification.created_at,
+            'user': notification.recipient,
+            'title': f'Уведомление: {notification.title}',
+            'description': f'{notification.get_notification_type_display()} → {notification.recipient.get_full_name() or notification.recipient.username}',
+            'icon': 'notification',
+            'color': 'yellow'
+        })
+    
+    # 4. Изменение статуса (из обновлений)
+    if complaint.updated_at != complaint.created_at:
+        history_events.append({
+            'type': 'updated',
+            'date': complaint.updated_at,
+            'user': None,
+            'title': 'Рекламация обновлена',
+            'description': f'Текущий статус: {complaint.get_status_display()}',
+            'icon': 'update',
+            'color': 'purple'
+        })
+    
+    # 5. Назначение монтажника
+    if complaint.installer_assigned:
+        # Ищем комментарий о назначении
+        installer_comment = comments.filter(text__icontains='монтажник').first()
+        if installer_comment:
+            history_events.append({
+                'type': 'installer_assigned',
+                'date': installer_comment.created_at,
+                'user': installer_comment.author,
+                'title': 'Назначен монтажник',
+                'description': f'Монтажник: {complaint.installer_assigned.get_full_name() or complaint.installer_assigned.username}',
+                'icon': 'user',
+                'color': 'green'
+            })
+    
+    # 6. Планирование монтажа
+    if complaint.planned_installation_date:
+        history_events.append({
+            'type': 'installation_planned',
+            'date': complaint.planned_installation_date,
+            'user': complaint.installer_assigned,
+            'title': 'Монтаж запланирован',
+            'description': f'Дата: {complaint.planned_installation_date.strftime("%d.%m.%Y")}',
+            'icon': 'calendar',
+            'color': 'indigo'
+        })
+    
+    # 7. Планирование отгрузки
+    if complaint.planned_shipping_date:
+        history_events.append({
+            'type': 'shipping_planned',
+            'date': complaint.planned_shipping_date,
+            'user': complaint.manager,
+            'title': 'Отгрузка запланирована',
+            'description': f'Дата: {complaint.planned_shipping_date.strftime("%d.%m.%Y")}',
+            'icon': 'truck',
+            'color': 'orange'
+        })
+    
+    # 8. Завершение
+    if complaint.completion_date:
+        history_events.append({
+            'type': 'completed',
+            'date': complaint.completion_date,
+            'user': None,
+            'title': 'Рекламация завершена',
+            'description': f'Дата завершения: {complaint.completion_date.strftime("%d.%m.%Y %H:%M")}',
+            'icon': 'check',
+            'color': 'green'
+        })
+    
+    # Сортируем по дате (от новых к старым)
+    history_events.sort(key=lambda x: x['date'], reverse=True)
+    
+    context = {
+        'complaint': complaint,
+        'history_events': history_events,
+        'total_events': len(history_events),
+    }
+    
+    return render(request, 'projects/complaint_history.html', context)
+
+
+@login_required(login_url='/api/v1/login/')
+@role_required(['service_manager', 'manager', 'admin', 'leader'])
+def update_client_contact(request, pk):
+    """Обновление контактной информации клиента"""
+    complaint = get_object_or_404(Complaint, pk=pk)
+    
+    # Проверка прав доступа
+    # Менеджер, СМ, Админ и Лидер могут редактировать
+    # Для менеджера - без ограничений (видит все рекламации)
+    if request.user.role == 'service_manager':
+        # СМ может редактировать рекламации в своем городе
+        if request.user.city and complaint.manager and complaint.manager.city != request.user.city:
+            messages.error(request, 'У вас нет прав для редактирования этой рекламации')
+            return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    if request.method == 'POST':
+        # Получаем новые данные
+        new_contact_person = request.POST.get('contact_person', '').strip()
+        new_contact_phone = request.POST.get('contact_phone', '').strip()
+        new_address = request.POST.get('address', '').strip()
+        
+        # Валидация
+        if not new_contact_person or not new_contact_phone:
+            messages.error(request, 'Укажите контактное лицо и телефон')
+            return redirect('projects:complaint_detail', pk=complaint.id)
+        
+        # Сохраняем старые данные для истории
+        old_contact_person = complaint.contact_person
+        old_contact_phone = complaint.contact_phone
+        old_address = complaint.address
+        
+        # Обновляем данные
+        complaint.contact_person = new_contact_person
+        complaint.contact_phone = new_contact_phone
+        if new_address:
+            complaint.address = new_address
+        complaint.save()
+        
+        # Создаем комментарий об изменении
+        change_message = f"Изменены контактные данные клиента:\n"
+        if old_contact_person != new_contact_person:
+            change_message += f"Контактное лицо: {old_contact_person} → {new_contact_person}\n"
+        if old_contact_phone != new_contact_phone:
+            change_message += f"Телефон: {old_contact_phone} → {new_contact_phone}\n"
+        if new_address and old_address != new_address:
+            change_message += f"Адрес: {old_address} → {new_address}"
+        
+        ComplaintComment.objects.create(
+            complaint=complaint,
+            author=request.user,
+            text=change_message
+        )
+        
+        # Уведомляем всех участников об изменении
+        # Уведомление инициатору (если не он сам менял)
+        if complaint.initiator != request.user:
+            complaint._create_notification(
+                recipient=complaint.initiator,
+                notification_type='push',
+                title='Изменены контактные данные клиента',
+                message=f'По рекламации #{complaint.id} изменены контактные данные клиента. Новое контактное лицо: {new_contact_person}'
+            )
+        
+        # Уведомление получателю (если не он сам менял)
+        if complaint.recipient != request.user:
+            complaint._create_notification(
+                recipient=complaint.recipient,
+                notification_type='push',
+                title='Изменены контактные данные клиента',
+                message=f'По рекламации #{complaint.id} изменены контактные данные клиента. Новое контактное лицо: {new_contact_person}'
+            )
+        
+        # Уведомление менеджеру (если не он сам менял и менеджер назначен)
+        if complaint.manager and complaint.manager != request.user:
+            complaint._create_notification(
+                recipient=complaint.manager,
+                notification_type='push',
+                title='Изменены контактные данные клиента',
+                message=f'По рекламации #{complaint.id} изменены контактные данные клиента. Новое контактное лицо: {new_contact_person}'
+            )
+        
+        # Уведомление монтажнику (если назначен и не он сам менял)
+        if complaint.installer_assigned and complaint.installer_assigned != request.user:
+            complaint._create_notification(
+                recipient=complaint.installer_assigned,
+                notification_type='sms',
+                title='Изменены контактные данные клиента',
+                message=f'По рекламации #{complaint.id} изменены контактные данные. Новый контакт: {new_contact_person}, тел: {new_contact_phone}'
+            )
+        
+        messages.success(request, 'Контактные данные клиента успешно обновлены. Уведомления отправлены всем участникам.')
+        return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    # GET запрос - показываем форму (можно добавить отдельный шаблон)
+    return redirect('projects:complaint_detail', pk=complaint.id)
+
+
+@login_required(login_url='/api/v1/login/')
+@role_required(['service_manager', 'admin', 'leader'])
+def sm_agree_client(request, pk):
+    """СМ согласовывает решение фабрики с клиентом"""
+    complaint = get_object_or_404(Complaint, pk=pk)
+    
+    # Проверка, что рекламация в правильном статусе
+    if complaint.status not in ['factory_approved', 'sm_response_overdue']:
+        messages.error(request, 'Рекламация не находится на этапе согласования с клиентом')
+        return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    if request.method == 'POST':
+        production_deadline = request.POST.get('production_deadline')
+        
+        if production_deadline:
+            from datetime import datetime
+            deadline = datetime.fromisoformat(production_deadline)
+            
+            # Вызываем метод согласования
+            complaint.sm_agree_with_client(deadline)
+            
+            # Создаем комментарий
+            ComplaintComment.objects.create(
+                complaint=complaint,
+                author=request.user,
+                text=f'СМ согласовал решение фабрики с клиентом. Срок готовности: {deadline.strftime("%d.%m.%Y")}'
+            )
+            
+            messages.success(request, f'Решение согласовано с клиентом! Срок готовности: {deadline.strftime("%d.%m.%Y")}. ОР получил уведомление.')
+        else:
+            messages.error(request, 'Укажите дату готовности заказа')
+    
+    return redirect('projects:complaint_detail', pk=complaint.id)
+
+
+@login_required(login_url='/api/v1/login/')
+@role_required(['service_manager', 'admin', 'leader'])
+def sm_dispute_decision(request, pk):
+    """СМ оспаривает решение фабрики"""
+    complaint = get_object_or_404(Complaint, pk=pk)
+    
+    # Проверка, что рекламация в правильном статусе
+    if complaint.status not in ['factory_approved', 'sm_response_overdue']:
+        messages.error(request, 'Рекламация не находится на этапе согласования с клиентом')
+        return redirect('projects:complaint_detail', pk=complaint.id)
+    
+    if request.method == 'POST':
+        dispute_arguments = request.POST.get('dispute_arguments', '').strip()
+        
+        if dispute_arguments:
+            # Вызываем метод оспаривания
+            complaint.sm_dispute_factory_decision(dispute_arguments)
+            
+            # Сохраняем дополнительные документы, если есть
+            files = request.FILES.getlist('dispute_attachments')
+            for file in files:
+                # Определяем тип файла
+                file_ext = file.name.lower().split('.')[-1]
+                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                    attachment_type = 'photo'
+                elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
+                    attachment_type = 'video'
+                else:
+                    attachment_type = 'document'
+                
+                ComplaintAttachment.objects.create(
+                    complaint=complaint,
+                    file=file,
+                    attachment_type=attachment_type,
+                    description='Документ для спора с фабрикой'
+                )
+            
+            # Создаем комментарий
+            ComplaintComment.objects.create(
+                complaint=complaint,
+                author=request.user,
+                text=f'СМ оспорил решение фабрики. Аргументы: {dispute_arguments}'
+            )
+            
+            messages.success(request, 'Решение фабрики оспорено. Рекламация отправлена в ОР на повторное рассмотрение.')
+        else:
+            messages.error(request, 'Укажите аргументы спора')
+    
+    return redirect('projects:complaint_detail', pk=complaint.id)
 
 

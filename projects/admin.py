@@ -76,8 +76,7 @@ class ComplaintAdmin(admin.ModelAdmin):
         'client_name',
         'address',
         'contact_person',
-        'contact_phone',
-        'problem_description'
+        'contact_phone'
     )
     readonly_fields = ('created_at', 'updated_at')
     
@@ -116,15 +115,11 @@ class ComplaintAdmin(admin.ModelAdmin):
                 'contact_phone',
             )
         }),
-        ('Описание проблемы', {
-            'fields': (
-                'problem_description',
-            )
-        }),
         ('Документы', {
             'fields': (
                 'document_package_link',
                 'commercial_offer',
+                'commercial_offer_text',
             )
         }),
         ('Дополнительные даты', {
@@ -132,14 +127,14 @@ class ComplaintAdmin(admin.ModelAdmin):
                 'factory_response_date',
                 'client_agreement_date',
                 'completion_date',
+                'added_to_shipping_registry_at',
             ),
             'classes': ('collapse',)
         }),
-        ('Отгрузка', {
+        ('Данные по фабричным рекламациям', {
             'fields': (
-                'is_shipped',
-                'shipped_at',
-                'added_to_shipping_registry_at',
+                'factory_reject_reason',
+                'dispute_arguments',
             ),
             'classes': ('collapse',)
         }),

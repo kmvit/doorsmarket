@@ -13,6 +13,9 @@ from .views import (
     WebLogoutView,
     WebDashboardView,
     user_list,
+    notifications_list,
+    mark_notification_read,
+    mark_all_notifications_read,
 )
 
 app_name = 'users'
@@ -43,5 +46,10 @@ urlpatterns = [
     
     # Управление пользователями
     path('users/', user_list, name='user_list'),
+    
+    # Уведомления и задачи
+    path('notifications/', notifications_list, name='notifications_list'),
+    path('notifications/<int:notification_id>/read/', mark_notification_read, name='mark_notification_read'),
+    path('notifications/mark-all-read/', mark_all_notifications_read, name='mark_all_notifications_read'),
 ]
 

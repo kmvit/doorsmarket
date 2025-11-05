@@ -1,0 +1,120 @@
+"""
+Management команда для проверки просроченных ответов от СМ
+Должна запускаться по расписанию (например, через cron каждый час)
+"""
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from datetime import timedelta
+from projects.models import Complaint, ComplaintStatus
+from users.models import User
+
+
+class Command(BaseCommand):
+    help = 'Проверяет просроченные ответы СМ по согласованию с клиентом и отправляет уведомления'
+
+    def handle(self, *args, **options):
+        now = timezone.now()
+        
+        # Находим рекламации со статусом "Ответ получен",
+        # которые были отправлены более 2 рабочих дней назад
+        waiting_complaints = Complaint.objects.filter(
+            complaint_type='factory',
+            status=ComplaintStatus.FACTORY_APPROVED
+        )
+        
+        for complaint in waiting_complaints:
+            # Вычисляем рабочие дни с момента ответа фабрики
+            if complaint.factory_response_date:
+                days_passed = self.count_business_days(complaint.factory_response_date, now)
+                
+                if days_passed >= 2:
+                    # Меняем статус на просроченный
+                    complaint.status = ComplaintStatus.SM_RESPONSE_OVERDUE
+                    complaint.save()
+                    
+                    # Отправляем уведомления СМ и ОР
+                    self.send_overdue_notifications(complaint)
+                    
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'СМ просрочил ответ по рекламации #{complaint.id} ({days_passed} р.д.)'
+                        )
+                    )
+        
+        # Ежедневные напоминания для уже просроченных
+        overdue_complaints = Complaint.objects.filter(
+            complaint_type='factory',
+            status=ComplaintStatus.SM_RESPONSE_OVERDUE
+        )
+        
+        for complaint in overdue_complaints:
+            if complaint.factory_response_date:
+                days_overdue = self.count_business_days(complaint.factory_response_date, now)
+                self.send_daily_reminder(complaint, days_overdue)
+                
+                self.stdout.write(
+                    self.style.ERROR(
+                        f'СМ просрочил ответ по рекламации #{complaint.id} на {days_overdue} р.д.'
+                    )
+                )
+        
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'Проверка завершена. Просрочено: {waiting_complaints.count()}, Напоминаний: {overdue_complaints.count()}'
+            )
+        )
+    
+    def count_business_days(self, start_date, end_date):
+        """Подсчет рабочих дней между двумя датами"""
+        current = start_date
+        business_days = 0
+        
+        while current.date() < end_date.date():
+            # Понедельник = 0, Воскресенье = 6
+            if current.weekday() < 5:  # Пн-Пт
+                business_days += 1
+            current += timedelta(days=1)
+        
+        return business_days
+    
+    def send_overdue_notifications(self, complaint):
+        """Отправка уведомлений о просрочке (при первой просрочке)"""
+        # Уведомление СМ в личный кабинет
+        complaint._create_notification(
+            recipient=complaint.recipient,
+            notification_type='pc',
+            title='⚠️ Просрочено согласование с клиентом',
+            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) ожидает согласования с клиентом более 2 рабочих дней! Необходимо срочно согласовать решение.'
+        )
+        
+        # Уведомления всем ОР в личный кабинет
+        or_users = User.objects.filter(role='complaint_department')
+        for or_user in or_users:
+            complaint._create_notification(
+                recipient=or_user,
+                notification_type='pc',
+                title='⚠️ СМ просрочил ответ',
+                message=f'СМ не согласовал решение по рекламации #{complaint.id} (заказ {complaint.order_number}) с клиентом в течение 2 рабочих дней.'
+            )
+    
+    def send_daily_reminder(self, complaint, days_overdue):
+        """Ежедневные напоминания о просроченных рекламациях"""
+        # Уведомление СМ в личный кабинет
+        complaint._create_notification(
+            recipient=complaint.recipient,
+            notification_type='pc',
+            title=f'🔴 Напоминание: просрочка {days_overdue} р.д.',
+            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) всё ещё ожидает согласования с клиентом!'
+        )
+        
+        # Уведомления всем ОР в личный кабинет
+        or_users = User.objects.filter(role='complaint_department')
+        for or_user in or_users:
+            complaint._create_notification(
+                recipient=or_user,
+                notification_type='pc',
+                title=f'🔴 Напоминание: СМ просрочил {days_overdue} р.д.',
+                message=f'СМ всё ещё не согласовал решение по рекламации #{complaint.id} (заказ {complaint.order_number}) с клиентом!'
+            )
+
+

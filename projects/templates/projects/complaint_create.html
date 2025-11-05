@@ -21,14 +21,41 @@
         {% endif %}
 
         <!-- Форма -->
-        <form method="POST" enctype="multipart/form-data" class="space-y-6">
+        <form method="POST" enctype="multipart/form-data" class="space-y-6" data-user-role="{{ user.role }}">
             {% csrf_token %}
             
             <!-- Назначение -->
             <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                 <h2 class="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {% if show_recipient %}
+                    {% if user.role == 'service_manager' %}
+                    <!-- Для СМ - выбор типа рекламации -->
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Тип рекламации <span class="text-red-500">*</span>
+                        </label>
+                        <select name="complaint_type" id="complaint_type" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white" onchange="handleComplaintTypeChange()">
+                            <option value="">Выберите тип рекламации</option>
+                            <option value="manager">Менеджер</option>
+                            <option value="installer">Монтажник</option>
+                            <option value="factory">Фабрика</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Выберите, кто будет обрабатывать рекламацию</p>
+                    </div>
+                    
+                    <!-- Поле для выбора монтажника (показывается только для типа "Монтажник") -->
+                    <div id="installer_field" class="md:col-span-2 hidden">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Монтажник <span class="text-red-500">*</span>
+                        </label>
+                        <select name="installer" id="installer_select" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white">
+                            <option value="">Выберите монтажника</option>
+                            {% for installer in installers %}
+                                <option value="{{ installer.id }}">{{ installer.get_full_name|default:installer.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% elif show_recipient %}
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
                             Получатель <span class="text-red-500">*</span>
@@ -50,17 +77,33 @@
                     </div>
                     {% endif %}
 
-                    <div>
+                    {% if user.role == 'service_manager' or user.role == 'installer' or user.role == 'admin' or user.role == 'leader' or user.role == 'complaint_department' %}
+                    <!-- Выбор менеджера (обязательное поле) -->
+                    <div class="md:col-span-2">
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
                             Менеджер заказа <span class="text-red-500">*</span>
                         </label>
-                        <select name="manager" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white">
-                            <option value="">Выберите менеджера</option>
+                        <select name="manager" id="manager_select" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white">
+                            <option value="">Выберите менеджера заказа</option>
                             {% for manager in managers %}
-                                <option value="{{ manager.id }}">{{ manager.get_full_name|default:manager.username }}</option>
+                                <option value="{{ manager.id }}">{{ manager.get_full_name|default:manager.username }}{% if manager.city %} ({{ manager.city.name }}){% endif %}</option>
                             {% endfor %}
                         </select>
+                        <p class="text-xs text-gray-500 mt-1">Выберите менеджера, ответственного за заказ</p>
                     </div>
+                    {% elif user.role == 'manager' %}
+                    <!-- Для менеджера - автоматически подставляется как менеджер заказа -->
+                    <div class="md:col-span-2">
+                        <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+                            <p class="text-sm text-green-700">
+                                <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                                <strong>Менеджер заказа:</strong> Вы автоматически назначаетесь менеджером этого заказа
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 
@@ -135,12 +178,6 @@
                 </div>
             </div>
 
-            <!-- Описание проблемы -->
-            <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
-                <h2 class="text-xl font-bold text-gray-900 mb-4">Описание проблемы</h2>
-                <textarea name="problem_description" required rows="5" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Подробно опишите проблему..."></textarea>
-            </div>
-
             <!-- Бракованные изделия -->
             <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                 <div class="flex items-center justify-between mb-4">
@@ -157,28 +194,35 @@
                     <div class="product-item border border-gray-200 rounded-xl p-4">
                         <div class="flex items-center justify-between mb-3">
                             <h3 class="font-semibold text-gray-700">Изделие #1</h3>
-                            <button type="button" onclick="removeProduct(this)" class="text-red-600 hover:text-red-700">
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                </svg>
-                            </button>
+                            <div class="flex items-center space-x-2">
+                                <button type="button" onclick="copyProduct(this)" class="text-blue-600 hover:text-blue-700 transition-colors" title="Копировать изделие">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
+                                </button>
+                                <button type="button" onclick="removeProduct(this)" class="text-red-600 hover:text-red-700 transition-colors" title="Удалить изделие">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Наименование</label>
-                                <input type="text" name="product_name[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Название изделия">
+                                <input type="text" name="product_name[]" class="product-name w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Название изделия">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Размер</label>
-                                <input type="text" name="product_size[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Размеры">
+                                <input type="text" name="product_size[]" class="product-size w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Размеры">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Открывание</label>
-                                <input type="text" name="product_opening[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Тип открывания">
+                                <input type="text" name="product_opening[]" class="product-opening w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Тип открывания">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Описание проблемы</label>
-                                <input type="text" name="product_description[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Описание дефекта">
+                                <input type="text" name="product_description[]" class="product-description w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Описание дефекта">
                             </div>
                         </div>
                     </div>
@@ -191,10 +235,13 @@
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
-                            Фото/Видео/Документы
+                            Фото/Видео/Документы {% if user.role == 'installer' %}<span class="text-red-500">*</span>{% endif %}
                         </label>
-                        <input type="file" name="attachments" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" class="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100">
-                        <p class="text-xs text-gray-500 mt-2">Загружаются без сжатия. Можно выбрать несколько файлов.</p>
+                        <input type="file" id="attachments-input" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" class="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" onchange="handleAttachmentsChange(this)">
+                        <p class="text-xs text-gray-500 mt-2">Загружаются без сжатия. Можно выбрать несколько файлов.{% if user.role == 'installer' %} <span class="text-red-500 font-semibold">Обязательно для монтажников!</span>{% endif %}</p>
+                        
+                        <!-- Список прикрепленных файлов -->
+                        <div id="attachments-list" class="mt-3 space-y-2"></div>
                     </div>
 
                     <div>
@@ -208,7 +255,11 @@
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
                             Коммерческое предложение (КП)
                         </label>
-                        <input type="file" name="commercial_offer" accept=".pdf,.doc,.docx,.xls,.xlsx" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                        <input type="file" id="commercial-offers-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onchange="handleCommercialOffersChange(this)">
+                        <p class="text-xs text-gray-500 mt-2">Можно выбрать несколько файлов КП.</p>
+                        
+                        <!-- Список КП -->
+                        <div id="commercial-offers-list" class="mt-3 space-y-2"></div>
                     </div>
                 </div>
             </div>
@@ -227,6 +278,30 @@
 </div>
 
 <script>
+// Определяем роль пользователя из data-атрибута формы
+const userRole = document.querySelector('form').getAttribute('data-user-role');
+const isInstaller = userRole === 'installer';
+
+// Обработка изменения типа рекламации (для СМ)
+function handleComplaintTypeChange() {
+    const complaintType = document.getElementById('complaint_type');
+    const installerField = document.getElementById('installer_field');
+    const installerSelect = document.getElementById('installer_select');
+    
+    if (complaintType && installerField) {
+        if (complaintType.value === 'installer') {
+            // Показываем поле выбора монтажника
+            installerField.classList.remove('hidden');
+            installerSelect.required = true;
+        } else {
+            // Скрываем поле монтажника
+            installerField.classList.add('hidden');
+            installerSelect.required = false;
+            installerSelect.value = '';
+        }
+    }
+}
+
 let productCounter = 1;
 
 function addProduct() {
@@ -236,33 +311,107 @@ function addProduct() {
         <div class="product-item border border-gray-200 rounded-xl p-4 animate-fadeIn">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="font-semibold text-gray-700">Изделие #${productCounter}</h3>
-                <button type="button" onclick="removeProduct(this)" class="text-red-600 hover:text-red-700">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="copyProduct(this)" class="text-blue-600 hover:text-blue-700 transition-colors" title="Копировать изделие">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                    <button type="button" onclick="removeProduct(this)" class="text-red-600 hover:text-red-700 transition-colors" title="Удалить изделие">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Наименование</label>
-                    <input type="text" name="product_name[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Название изделия">
+                    <input type="text" name="product_name[]" class="product-name w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Название изделия">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Размер</label>
-                    <input type="text" name="product_size[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Размеры">
+                    <input type="text" name="product_size[]" class="product-size w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Размеры">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Открывание</label>
-                    <input type="text" name="product_opening[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Тип открывания">
+                    <input type="text" name="product_opening[]" class="product-opening w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Тип открывания">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Описание проблемы</label>
-                    <input type="text" name="product_description[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Описание дефекта">
+                    <input type="text" name="product_description[]" class="product-description w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Описание дефекта">
                 </div>
             </div>
         </div>
     `;
     container.insertAdjacentHTML('beforeend', productHTML);
+}
+
+function copyProduct(button) {
+    // Находим карточку изделия, которое нужно скопировать
+    const productItem = button.closest('.product-item');
+    
+    // Получаем значения полей из исходного изделия
+    const productName = productItem.querySelector('.product-name').value;
+    const productSize = productItem.querySelector('.product-size').value;
+    const productOpening = productItem.querySelector('.product-opening').value;
+    const productDescription = productItem.querySelector('.product-description').value;
+    
+    // Увеличиваем счетчик изделий
+    productCounter++;
+    
+    // Создаем новое изделие с теми же данными
+    const container = document.getElementById('products-container');
+    const productHTML = `
+        <div class="product-item border border-gray-200 rounded-xl p-4 animate-fadeIn">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-gray-700">Изделие #${productCounter}</h3>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="copyProduct(this)" class="text-blue-600 hover:text-blue-700 transition-colors" title="Копировать изделие">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                    <button type="button" onclick="removeProduct(this)" class="text-red-600 hover:text-red-700 transition-colors" title="Удалить изделие">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Наименование</label>
+                    <input type="text" name="product_name[]" class="product-name w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Название изделия" value="${escapeHtml(productName)}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Размер</label>
+                    <input type="text" name="product_size[]" class="product-size w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Размеры" value="${escapeHtml(productSize)}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Открывание</label>
+                    <input type="text" name="product_opening[]" class="product-opening w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Тип открывания" value="${escapeHtml(productOpening)}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Описание проблемы</label>
+                    <input type="text" name="product_description[]" class="product-description w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Описание дефекта" value="${escapeHtml(productDescription)}">
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Добавляем новое изделие в конец списка
+    container.insertAdjacentHTML('beforeend', productHTML);
+    
+    // Прокручиваем к новому изделию
+    const newProduct = container.lastElementChild;
+    newProduct.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Подсветка нового изделия на короткое время
+    newProduct.style.backgroundColor = '#e0f2fe';
+    setTimeout(() => {
+        newProduct.style.backgroundColor = '';
+    }, 1000);
 }
 
 function removeProduct(button) {
@@ -282,6 +431,191 @@ function updateProductNumbers() {
     });
     productCounter = products.length;
 }
+
+// Функция для экранирования HTML
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// ========== УПРАВЛЕНИЕ ФАЙЛАМИ ==========
+
+// Массивы для хранения выбранных файлов
+let attachmentsFiles = [];
+let commercialOffersFiles = [];
+
+// Обработка изменения вложений
+function handleAttachmentsChange(input) {
+    const newFiles = Array.from(input.files);
+    attachmentsFiles = [...attachmentsFiles, ...newFiles];
+    updateAttachmentsList();
+    input.value = ''; // Сбрасываем input для возможности добавить еще файлы
+}
+
+// Обработка изменения КП
+function handleCommercialOffersChange(input) {
+    const newFiles = Array.from(input.files);
+    commercialOffersFiles = [...commercialOffersFiles, ...newFiles];
+    updateCommercialOffersList();
+    input.value = ''; // Сбрасываем input для возможности добавить еще файлы
+}
+
+// Удаление вложения
+function removeAttachment(index) {
+    attachmentsFiles.splice(index, 1);
+    updateAttachmentsList();
+}
+
+// Удаление КП
+function removeCommercialOffer(index) {
+    commercialOffersFiles.splice(index, 1);
+    updateCommercialOffersList();
+}
+
+// Обновление списка вложений
+function updateAttachmentsList() {
+    const container = document.getElementById('attachments-list');
+    
+    if (attachmentsFiles.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = attachmentsFiles.map((file, index) => {
+        const fileSize = formatFileSize(file.size);
+        const fileType = getFileType(file.name);
+        const icon = getFileIcon(fileType);
+        
+        return `
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 animate-fadeIn">
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <div class="flex-shrink-0">
+                        ${icon}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(file.name)}</p>
+                        <p class="text-xs text-gray-500">${fileSize} • ${fileType}</p>
+                    </div>
+                </div>
+                <button type="button" onclick="removeAttachment(${index})" 
+                        class="ml-3 flex-shrink-0 text-red-600 hover:text-red-700 transition-colors"
+                        title="Удалить файл">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+// Обновление списка КП
+function updateCommercialOffersList() {
+    const container = document.getElementById('commercial-offers-list');
+    
+    if (commercialOffersFiles.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = commercialOffersFiles.map((file, index) => {
+        const fileSize = formatFileSize(file.size);
+        
+        return `
+            <div class="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 animate-fadeIn">
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <div class="flex-shrink-0">
+                        <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(file.name)}</p>
+                        <p class="text-xs text-gray-500">${fileSize} • КП #${index + 1}</p>
+                    </div>
+                </div>
+                <button type="button" onclick="removeCommercialOffer(${index})" 
+                        class="ml-3 flex-shrink-0 text-red-600 hover:text-red-700 transition-colors"
+                        title="Удалить файл">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+// Форматирование размера файла
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Б';
+    const k = 1024;
+    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Определение типа файла
+function getFileType(filename) {
+    const ext = filename.toLowerCase().split('.').pop();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'Фото';
+    if (['mp4', 'avi', 'mov', 'wmv', 'flv'].includes(ext)) return 'Видео';
+    if (['pdf'].includes(ext)) return 'PDF';
+    if (['doc', 'docx'].includes(ext)) return 'Word';
+    if (['xls', 'xlsx'].includes(ext)) return 'Excel';
+    return 'Документ';
+}
+
+// Получение иконки для типа файла
+function getFileIcon(fileType) {
+    if (fileType === 'Фото') {
+        return `<svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>`;
+    }
+    if (fileType === 'Видео') {
+        return `<svg class="h-8 w-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>`;
+    }
+    return `<svg class="h-8 w-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+    </svg>`;
+}
+
+// Обновление input'ов перед отправкой формы
+document.querySelector('form').addEventListener('submit', function(e) {
+    // Проверка для монтажников - обязательно должны быть вложения
+    if (isInstaller && attachmentsFiles.length === 0) {
+        e.preventDefault();
+        alert('⚠️ Для монтажников обязательно нужно прикрепить фото/видео/документы!');
+        document.getElementById('attachments-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById('attachments-input').focus();
+        return false;
+    }
+    
+    // Создаем новый DataTransfer для обновления файлов
+    const attachmentsInput = document.getElementById('attachments-input');
+    const commercialOffersInput = document.getElementById('commercial-offers-input');
+    
+    // Обновляем вложения
+    const dtAttachments = new DataTransfer();
+    attachmentsFiles.forEach(file => dtAttachments.items.add(file));
+    attachmentsInput.files = dtAttachments.files;
+    attachmentsInput.name = 'attachments';
+    
+    // Обновляем КП
+    const dtCommercial = new DataTransfer();
+    commercialOffersFiles.forEach(file => dtCommercial.items.add(file));
+    commercialOffersInput.files = dtCommercial.files;
+    commercialOffersInput.name = 'commercial_offers';
+});
 </script>
 {% endblock %}
 
