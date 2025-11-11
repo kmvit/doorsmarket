@@ -130,6 +130,12 @@ class Complaint(models.Model):
     address = models.TextField(verbose_name='Адрес')
     contact_person = models.CharField(max_length=255, verbose_name='Контактное лицо от клиента')
     contact_phone = models.CharField(max_length=20, verbose_name='Телефон контактного лица')
+    additional_info = models.TextField(blank=True, verbose_name='Дополнительная информация')
+    assignee_comment = models.TextField(
+        blank=True,
+        verbose_name='Комментарий менеджеру/монтажнику',
+        help_text='Необязательное пояснение для менеджера или монтажника'
+    )
     
     # Документы и ссылки
     document_package_link = models.URLField(
@@ -228,7 +234,9 @@ class Complaint(models.Model):
     
     def save(self, *args, **kwargs):
         """Автоматическая установка получателя и статуса"""
-        if not self.pk and not self.recipient_id:
+        is_new = self.pk is None
+
+        if is_new and not self.recipient_id:
             # Если инициатор - менеджер или монтажник, получатель - сервис-менеджер
             if self.initiator.role in ['manager', 'installer']:
                 from users.models import User
@@ -238,10 +246,13 @@ class Complaint(models.Model):
                     self.recipient = service_manager
         
         # Автоматически устанавливаем статус "Новая" при создании
-        if not self.pk:
+        if is_new:
             self.status = ComplaintStatus.NEW
             
         super().save(*args, **kwargs)
+
+        if is_new:
+            self._notify_recipient_on_creation()
     
     def set_type_installer(self):
         """СМ выбирает тип 'Монтажник'"""
@@ -287,7 +298,7 @@ class Complaint(models.Model):
             )
     
     def factory_approve(self):
-        """ОР одобряет рекламацию - запуск в производство"""
+        """ОР одобряет рекламацию - ответ получен"""
         self.status = ComplaintStatus.FACTORY_APPROVED
         self.factory_response_date = timezone.now()
         self.save()
@@ -300,13 +311,13 @@ class Complaint(models.Model):
                 recipient=sm_recipient,
                 notification_type='pc',
                 title='Получен ответ от фабрики',
-                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой для запуска в производство. Необходимо согласовать решение с клиентом в течение 2 рабочих дней.'
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой. Согласуйте решение с клиентом или оспорьте его при необходимости.'
             )
             self._create_notification(
                 recipient=sm_recipient,
                 notification_type='push',
                 title='Ответ от фабрики',
-                message=f'Рекламация #{self.id} одобрена фабрикой. Согласуйте решение с клиентом.'
+                message=f'Получен ответ фабрики по рекламации #{self.id}. Согласуйте решение с клиентом.'
             )
             print(f"[DEBUG] Уведомление создано успешно")
     
@@ -583,6 +594,29 @@ class Complaint(models.Model):
                 is_sent=True,  # Для PC и Push уведомлений сразу помечаем как отправленные
                 sent_at=timezone.now()
             )
+
+    def _notify_recipient_on_creation(self):
+        """Уведомление первичного получателя о создании рекламации"""
+        if not self.recipient or self.recipient == self.initiator:
+            return
+
+        initiator_name = self.initiator.get_full_name() or self.initiator.username
+        message_parts = [
+            f'Поступила новая рекламация #{self.id} от {initiator_name}.',
+            f'Заказ: {self.order_number}',
+            f'Клиент: {self.client_name}',
+        ]
+
+        comment = (self.assignee_comment or '').strip()
+        if comment:
+            message_parts.append(f'Комментарий: {comment}')
+
+        self._create_notification(
+            recipient=self.recipient,
+            notification_type='pc',
+            title='Новая рекламация',
+            message='\n'.join(message_parts)
+        )
 
 
 class DefectiveProduct(models.Model):

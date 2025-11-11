@@ -108,6 +108,7 @@ class CityListView(generics.ListAPIView):
 # ===== Веб-интерфейс (Template Views) =====
 
 from django.shortcuts import render, redirect
+from django.urls import reverse
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -237,174 +238,144 @@ class WebDashboardView(View):
         if not request.user.is_authenticated:
             return redirect('users:web_login')
         
-        # Получаем новые задачи/уведомления для пользователя
-        new_tasks = self._get_new_tasks_for_user(request.user)
+        task_summary = self._get_task_summary(request.user)
         
         context = {
             'user': request.user,
-            'new_tasks': new_tasks,
+            'task_summary': task_summary,
         }
         return render(request, 'users/dashboard.html', context)
     
-    def _get_new_tasks_for_user(self, user):
-        """Получить список новых задач для пользователя в зависимости от роли"""
-        from projects.models import Complaint, Notification
+    def _get_task_summary(self, user):
+        """Количество задач по категориям для дашборда"""
+        from projects.models import Complaint, ComplaintStatus
         from django.db.models import Q
         
-        tasks = []
+        summaries = []
+        base_url = reverse('projects:complaint_list')
         
-        # Непрочитанные уведомления
-        unread_notifications = Notification.objects.filter(
-            recipient=user,
-            is_read=False
-        ).select_related('complaint').order_by('-created_at')
-        
-        # Получаем ID рекламаций, по которым уже есть непрочитанные уведомления
-        notified_complaint_ids = set(unread_notifications.values_list('complaint_id', flat=True))
-        
-        for notification in unread_notifications[:10]:
-            tasks.append({
-                'type': 'notification',
-                'id': notification.id,
-                'complaint_id': notification.complaint.id,
-                'title': notification.title,
-                'message': notification.message,
-                'created_at': notification.created_at,
-                'url': f'/complaints/{notification.complaint.id}/',
+        def add_summary(key, label, query):
+            count = Complaint.objects.filter(query).count()
+            summaries.append({
+                'key': key,
+                'label': label,
+                'count': count,
+                'url': f"{base_url}?my_tasks={key}",
             })
         
-        # Дополнительные задачи в зависимости от роли (только если нет уведомления)
+        completed_statuses = {
+            ComplaintStatus.COMPLETED,
+            ComplaintStatus.RESOLVED,
+            ComplaintStatus.CLOSED,
+        }
+        active_statuses = [choice[0] for choice in ComplaintStatus.choices if choice[0] not in completed_statuses]
+
         if user.role == 'installer':
-            # Монтажник: рекламации требующие планирования (без дублей с уведомлениями)
-            installer_tasks = Complaint.objects.filter(
-                installer_assigned=user,
-                status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']
-            ).exclude(
-                id__in=notified_complaint_ids
-            ).select_related('manager', 'production_site').order_by('-created_at')[:5]
-            
-            for complaint in installer_tasks:
-                tasks.append({
-                    'type': 'task',
-                    'id': f'complaint_{complaint.id}',
-                    'complaint_id': complaint.id,
-                    'title': 'Требуется планирование монтажа',
-                    'message': f'Рекламация #{complaint.id} - {complaint.order_number}',
-                    'created_at': complaint.created_at,
-                    'url': f'/complaints/{complaint.id}/',
-                })
-        
+            add_summary(
+                'in_work',
+                'В работе',
+                (Q(installer_assigned=user) | Q(initiator=user)) & Q(status__in=active_statuses)
+            )
+            add_summary(
+                'needs_planning',
+                'Требуют планирования',
+                Q(installer_assigned=user, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned'])
+            )
+            add_summary(
+                'planned',
+                'Запланированные работы',
+                Q(installer_assigned=user, status__in=['installation_planned', 'both_planned'])
+            )
+            add_summary(
+                'completed',
+                'Ожидают проверки',
+                Q(installer_assigned=user, status__in=['under_sm_review', 'completed'])
+            )
         elif user.role == 'manager':
-            # Менеджер: рекламации требующие действий (только без уведомлений)
-            manager_tasks = Complaint.objects.filter(
-                status__in=['in_progress', 'on_warehouse']
-            ).exclude(
-                id__in=notified_complaint_ids
-            ).select_related('production_site', 'reason', 'manager').order_by('-created_at')[:5]
-            
-            for complaint in manager_tasks:
-                if complaint.status == 'in_progress':
-                    title = 'Запустить производство'
-                elif complaint.status == 'on_warehouse':
-                    title = 'Товар на складе - требуется отгрузка'
-                else:
-                    title = 'Требуется действие'
-                
-                tasks.append({
-                    'type': 'task',
-                    'id': f'complaint_{complaint.id}',
-                    'complaint_id': complaint.id,
-                    'title': title,
-                    'message': f'Рекламация #{complaint.id} - {complaint.order_number}',
-                    'created_at': complaint.created_at,
-                    'url': f'/complaints/{complaint.id}/',
-                })
-        
+            add_summary(
+                'in_work',
+                'В работе',
+                (Q(manager=user) | Q(initiator=user) | Q(recipient=user)) & Q(status__in=active_statuses)
+            )
+            add_summary(
+                'in_progress',
+                'Нужно запустить в производство',
+                Q(manager=user, status='in_progress')
+            )
+            add_summary(
+                'on_warehouse',
+                'Готово к отгрузке',
+                Q(manager=user, status='on_warehouse')
+            )
         elif user.role == 'service_manager':
-            # СМ: новые рекламации и требующие проверки (без дублей)
-            sm_tasks = Complaint.objects.filter(
-                Q(recipient=user) & (Q(status='new') | Q(status='under_sm_review'))
-            ).exclude(
-                id__in=notified_complaint_ids
-            ).select_related('initiator', 'manager', 'production_site').order_by('-created_at')[:5]
-            
-            for complaint in sm_tasks:
-                if complaint.status == 'new':
-                    title = 'Новая рекламация - выбрать тип'
-                elif complaint.status == 'under_sm_review':
-                    title = 'Работа выполнена - требуется проверка'
-                else:
-                    title = 'Требуется действие'
-                
-                tasks.append({
-                    'type': 'task',
-                    'id': f'complaint_{complaint.id}',
-                    'complaint_id': complaint.id,
-                    'title': title,
-                    'message': f'Рекламация #{complaint.id} - {complaint.order_number}',
-                    'created_at': complaint.created_at,
-                    'url': f'/complaints/{complaint.id}/',
-                })
-        
+            if user.city:
+                city_filter = (
+                    Q(initiator__city=user.city) |
+                    Q(recipient__city=user.city) |
+                    Q(manager__city=user.city)
+                )
+            else:
+                city_filter = Q()
+
+            add_summary(
+                'in_work',
+                'В работе',
+                (Q(status__in=active_statuses) & city_filter) | Q(initiator=user, status__in=active_statuses)
+            )
+            add_summary(
+                'new',
+                'Новые рекламации',
+                Q(status='new') & city_filter
+            )
+            add_summary(
+                'review',
+                'Ожидают проверки',
+                Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']) & city_filter
+            )
+            add_summary(
+                'overdue',
+                'Просроченные ответы',
+                Q(status='sm_response_overdue') & city_filter
+            )
         elif user.role == 'complaint_department':
-            # ОР: фабричные рекламации (без дублей)
-            or_tasks = Complaint.objects.filter(
-                complaint_type='factory',
-                status__in=['sent', 'factory_response_overdue']
-            ).exclude(
-                id__in=notified_complaint_ids
-            ).select_related('manager', 'production_site').order_by('-created_at')[:5]
-            
-            for complaint in or_tasks:
-                if complaint.status == 'factory_response_overdue':
-                    title = 'ПРОСРОЧЕН ответ фабрики!'
-                else:
-                    title = 'Фабричная рекламация - требуется ответ'
-                
-                tasks.append({
-                    'type': 'task',
-                    'id': f'complaint_{complaint.id}',
-                    'complaint_id': complaint.id,
-                    'title': title,
-                    'message': f'Рекламация #{complaint.id} - {complaint.order_number}',
-                    'created_at': complaint.created_at,
-                    'url': f'/complaints/{complaint.id}/',
-                })
-        
+            add_summary(
+                'in_work',
+                'В работе',
+                Q(complaint_type='factory', status__in=active_statuses)
+            )
+            add_summary(
+                'pending',
+                'Ожидают ответа',
+                Q(complaint_type='factory', status='sent')
+            )
+            add_summary(
+                'overdue',
+                'Просрочен ответ',
+                Q(complaint_type='factory', status='factory_response_overdue')
+            )
         elif user.role in ['admin', 'leader']:
-            # Админ/Руководитель: новые рекламации и критические задачи (без дублей)
-            admin_tasks = Complaint.objects.filter(
-                Q(status='new') | 
-                Q(status='factory_response_overdue') |
-                Q(status='shipping_overdue') |
+            add_summary(
+                'new',
+                'Новые рекламации',
+                Q(status='new')
+            )
+            add_summary(
+                'factory_overdue',
+                'Ответ фабрики просрочен',
+                Q(status='factory_response_overdue')
+            )
+            add_summary(
+                'shipping_overdue',
+                'Отгрузка просрочена',
+                Q(status='shipping_overdue')
+            )
+            add_summary(
+                'sm_overdue',
+                'Ответ СМ просрочен',
                 Q(status='sm_response_overdue')
-            ).exclude(
-                id__in=notified_complaint_ids
-            ).select_related('initiator', 'manager', 'production_site').order_by('-created_at')[:5]
-            
-            for complaint in admin_tasks:
-                status_titles = {
-                    'new': 'Новая рекламация',
-                    'factory_response_overdue': 'ПРОСРОЧЕН ответ фабрики',
-                    'shipping_overdue': 'ПРОСРОЧЕНА отгрузка',
-                    'sm_response_overdue': 'ПРОСРОЧЕН ответ СМ',
-                }
-                title = status_titles.get(complaint.status, 'Требуется внимание')
-                
-                tasks.append({
-                    'type': 'task',
-                    'id': f'complaint_{complaint.id}',
-                    'complaint_id': complaint.id,
-                    'title': title,
-                    'message': f'Рекламация #{complaint.id} - {complaint.order_number}',
-                    'created_at': complaint.created_at,
-                    'url': f'/complaints/{complaint.id}/',
-                })
+            )
         
-        # Сортируем все задачи по дате создания (новые первыми)
-        tasks.sort(key=lambda x: x['created_at'], reverse=True)
-        
-        return tasks
+        return summaries
 
 
 @login_required(login_url='/api/v1/login/')

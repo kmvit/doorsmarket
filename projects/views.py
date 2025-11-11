@@ -5,6 +5,7 @@ from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
 from users.models import User
+from .forms import ComplaintEditForm
 from .models import (
     Complaint,
     ComplaintReason,
@@ -13,7 +14,8 @@ from .models import (
     ComplaintAttachment,
     ComplaintComment,
     ShippingRegistry,
-    Notification
+    Notification,
+    ComplaintStatus,
 )
 from .decorators import role_required, complaint_access_required
 
@@ -40,13 +42,22 @@ def complaint_list(request):
     # 2. Администратор, Руководитель и Менеджер видят все по всем городам
     elif request.user.role in ['admin', 'leader', 'manager']:
         pass  # Без фильтрации
-    # 3. СМ видит все рекламации по своему городу
+    # 3. СМ видит все рекламации по своему городу + свои рекламации
     elif request.user.role == 'service_manager':
         if request.user.city:
             complaints = complaints.filter(
-                Q(initiator__city=request.user.city) | 
+                Q(initiator=request.user) |
+                Q(recipient=request.user) |
+                Q(manager=request.user) |
+                Q(initiator__city=request.user.city) |
                 Q(recipient__city=request.user.city) |
                 Q(manager__city=request.user.city)
+            )
+        else:
+            complaints = complaints.filter(
+                Q(initiator=request.user) |
+                Q(recipient=request.user) |
+                Q(manager=request.user)
             )
     # 4. ОР видит только фабричные рекламации (по всем городам)
     elif request.user.role == 'complaint_department':
@@ -60,6 +71,63 @@ def complaint_list(request):
             status__in=['waiting_installer_date', 'needs_planning']
         )
     
+    # Фильтр "Мои задачи" для быстрого доступа из дашборда
+    my_tasks_key = request.GET.get('my_tasks')
+    completed_statuses = {
+        ComplaintStatus.COMPLETED,
+        ComplaintStatus.RESOLVED,
+        ComplaintStatus.CLOSED,
+    }
+    active_statuses = [status for status, _ in ComplaintStatus.choices if status not in completed_statuses]
+    if my_tasks_key:
+        role_task_filters = {
+            'installer': {
+                'in_work': (Q(installer_assigned=request.user) | Q(initiator=request.user)) & Q(status__in=active_statuses),
+                'needs_planning': Q(installer_assigned=request.user, status__in=[
+                    'waiting_installer_date', 'needs_planning', 'installer_not_planned'
+                ]),
+                'planned': Q(installer_assigned=request.user, status__in=[
+                    'installation_planned', 'both_planned'
+                ]),
+                'completed': Q(installer_assigned=request.user, status__in=[
+                    'under_sm_review', 'completed'
+                ]),
+            },
+            'manager': {
+                'in_work': (Q(manager=request.user) | Q(initiator=request.user) | Q(recipient=request.user)) & Q(status__in=active_statuses),
+                'in_progress': Q(manager=request.user, status='in_progress'),
+                'on_warehouse': Q(manager=request.user, status='on_warehouse'),
+            },
+            'service_manager': {
+                'in_work': Q(status__in=active_statuses),
+                'new': Q(status='new'),
+                'review': Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']),
+                'overdue': Q(status='sm_response_overdue'),
+            },
+            'complaint_department': {
+                'in_work': Q(complaint_type='factory', status__in=active_statuses),
+                'pending': Q(complaint_type='factory', status='sent'),
+                'overdue': Q(complaint_type='factory', status='factory_response_overdue'),
+            },
+            'admin': {
+                'new': Q(status='new'),
+                'factory_overdue': Q(status='factory_response_overdue'),
+                'shipping_overdue': Q(status='shipping_overdue'),
+                'sm_overdue': Q(status='sm_response_overdue'),
+            },
+            'leader': {
+                'new': Q(status='new'),
+                'factory_overdue': Q(status='factory_response_overdue'),
+                'shipping_overdue': Q(status='shipping_overdue'),
+                'sm_overdue': Q(status='sm_response_overdue'),
+            },
+        }
+        
+        role_filters = role_task_filters.get(request.user.role, {})
+        task_filter = role_filters.get(my_tasks_key)
+        if task_filter:
+            complaints = complaints.filter(task_filter)
+    
     # Фильтрация по статусу
     status_filter = request.GET.get('status')
     if status_filter:
@@ -71,27 +139,47 @@ def complaint_list(request):
         complaints = complaints.filter(reason_id=reason_filter)
     
     # Фильтрация по инициатору (мои рекламации)
-    if request.GET.get('my_complaints'):
-        complaints = complaints.filter(initiator=request.user)
+    my_complaints_filter = request.GET.get('my_complaints')
+    assigned_filter = request.GET.get('assigned_to_me')
     
-    # Фильтрация по получателю (назначенные мне)
-    if request.GET.get('assigned_to_me'):
-        if request.user.role == 'manager':
-            # Для менеджера - рекламации где он менеджер заказа или получатель
-            complaints = complaints.filter(Q(manager=request.user) | Q(recipient=request.user))
-        else:
-            # Для остальных - только получатель
-            complaints = complaints.filter(recipient=request.user)
+    if my_complaints_filter and assigned_filter:
+        assigned_condition = (
+            Q(manager=request.user) | Q(recipient=request.user)
+            if request.user.role == 'manager'
+            else Q(recipient=request.user)
+        )
+        complaints = complaints.filter(Q(initiator=request.user) | assigned_condition)
+    else:
+        if my_complaints_filter:
+            complaints = complaints.filter(initiator=request.user)
+    
+        if assigned_filter:
+            if request.user.role == 'manager':
+                complaints = complaints.filter(Q(manager=request.user) | Q(recipient=request.user))
+            elif request.user.role == 'service_manager':
+                complaints = complaints.filter(Q(recipient=request.user))
+            elif request.user.role == 'installer':
+                complaints = complaints.filter(installer_assigned=request.user)
+            else:
+                complaints = complaints.filter(recipient=request.user)
     
     # Поиск
-    search_query = request.GET.get('search')
+    search_query = request.GET.get('search', '').strip()
     if search_query:
-        complaints = complaints.filter(
+        search_conditions = (
             Q(order_number__icontains=search_query) |
             Q(client_name__icontains=search_query) |
             Q(contact_person__icontains=search_query) |
             Q(address__icontains=search_query)
         )
+        
+        normalized_phone_query = ''.join(ch for ch in search_query if ch.isdigit())
+        phone_conditions = Q(contact_phone__icontains=search_query)
+        if normalized_phone_query:
+            regex_pattern = '[^0-9]*'.join(normalized_phone_query)
+            phone_conditions |= Q(contact_phone__iregex=regex_pattern)
+        
+        complaints = complaints.filter(search_conditions | phone_conditions)
     
     # Сортировка
     sort_by = request.GET.get('sort', '-created_at')
@@ -214,6 +302,51 @@ def complaint_detail(request, pk):
 
 
 @login_required(login_url='/api/v1/login/')
+@complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True)
+def complaint_edit(request, pk):
+    """Редактирование рекламации сервис-менеджером."""
+    complaint = get_object_or_404(
+        Complaint.objects.select_related(
+            'initiator',
+            'recipient',
+            'manager',
+            'production_site',
+            'reason'
+        ),
+        pk=pk
+    )
+    # Разрешаем редактирование инициатору, СМ и пользователям с расширенными правами
+    if not (
+        complaint.initiator == request.user or
+        request.user.role in ['service_manager', 'admin', 'leader']
+    ):
+        messages.error(request, 'У вас нет прав для редактирования этой рекламации')
+        return redirect('projects:complaint_detail', pk=complaint.id)
+
+    form = ComplaintEditForm(
+        request.POST or None,
+        request.FILES or None,
+        instance=complaint,
+        user=request.user,
+    )
+
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Данные рекламации обновлены')
+            return redirect('projects:complaint_detail', pk=complaint.id)
+        else:
+            messages.error(request, 'Исправьте ошибки в форме')
+
+    context = {
+        'complaint': complaint,
+        'form': form,
+    }
+
+    return render(request, 'projects/complaint_edit.html', context)
+
+
+@login_required(login_url='/api/v1/login/')
 def complaint_create(request):
     """Создание новой рекламации"""
     
@@ -303,6 +436,8 @@ def complaint_create(request):
                     address=request.POST.get('address'),
                     contact_person=request.POST.get('contact_person'),
                     contact_phone=request.POST.get('contact_phone'),
+                    additional_info=request.POST.get('additional_info', '').strip(),
+                    assignee_comment=request.POST.get('assignee_comment', '').strip(),
                     document_package_link=request.POST.get('document_package_link', ''),
                 )
                 
@@ -682,7 +817,7 @@ def installer_planning(request):
     # Получаем рекламации, назначенные ЭТОМУ монтажнику
     # Включаем и тип "installer" и тип "manager" (где СМ запланировал монтаж)
     complaints = Complaint.objects.filter(
-        installer_assigned=request.user
+        Q(installer_assigned=request.user) | Q(initiator=request.user)
     ).select_related(
         'initiator', 'recipient', 'manager', 'production_site', 'reason'
     ).order_by('-created_at')
@@ -890,7 +1025,10 @@ def or_factory_complaints(request):
                 # ОР одобряет рекламацию - запуск в производство
                 sm_name = complaint.recipient.get_full_name() or complaint.recipient.username
                 complaint.factory_approve()
-                messages.success(request, f'Рекламация одобрена фабрикой. Уведомление отправлено СМ ({sm_name}) на согласование с клиентом.')
+                messages.success(
+                    request,
+                    f'Ответ фабрики сохранён. Статус рекламации обновлён на «Ответ получен», уведомление отправлено СМ ({sm_name}) для согласования с клиентом.'
+                )
                 
             elif action == 'factory_reject':
                 # ОР отказывает в рекламации

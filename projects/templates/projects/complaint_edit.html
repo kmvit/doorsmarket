@@ -1,0 +1,201 @@
+{% extends 'users/base.html' %}
+{% load static %}
+
+{% block title %}Редактирование рекламации #{{ complaint.id }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-10">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-fadeIn">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Редактирование рекламации</h1>
+                <p class="mt-1 text-sm text-gray-600">#{{ complaint.id }} • {{ complaint.order_number }}</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <a href="{% url 'projects:complaint_detail' complaint.id %}"
+                   class="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    К карточке рекламации
+                </a>
+            </div>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="space-y-8">
+            {% csrf_token %}
+
+            <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-6 md:p-8">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Назначение</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Тип рекламации</label>
+                        {{ form.complaint_type }}
+                        {% if form.complaint_type.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.complaint_type.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">{{ form.complaint_type.help_text }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Получатель (СМ)</label>
+                        {{ form.recipient }}
+                        {% if form.recipient.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.recipient.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">{{ form.recipient.help_text }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Менеджер заказа</label>
+                        {{ form.manager }}
+                        {% if form.manager.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.manager.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">{{ form.manager.help_text }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-6 md:p-8">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Основная информация</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Производственная площадка</label>
+                        {{ form.production_site }}
+                        {% if form.production_site.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.production_site.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Причина рекламации</label>
+                        {{ form.reason }}
+                        {% if form.reason.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.reason.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Номер заказа</label>
+                        {{ form.order_number }}
+                        {% if form.order_number.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.order_number.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Наименование клиента</label>
+                        {{ form.client_name }}
+                        {% if form.client_name.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.client_name.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Адрес</label>
+                        {{ form.address }}
+                        {% if form.address.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.address.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Контактное лицо</label>
+                        {{ form.contact_person }}
+                        {% if form.contact_person.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.contact_person.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Телефон</label>
+                        {{ form.contact_phone }}
+                        {% if form.contact_phone.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.contact_phone.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Дополнительная информация</label>
+                        {{ form.additional_info }}
+                        {% if form.additional_info.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.additional_info.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">Необязательное поле для любых дополнительных деталей по рекламации.</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Комментарий менеджеру/монтажнику</label>
+                        {{ form.assignee_comment }}
+                        {% if form.assignee_comment.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.assignee_comment.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">Сообщите исполнителю, на что обратить внимание, какие документы собрать или что сказать клиенту. Поле необязательное.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-6 md:p-8">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Документы и материалы</h2>
+                <div class="grid grid-cols-1 gap-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Ссылка на пакет документов</label>
+                        {{ form.document_package_link }}
+                        {% if form.document_package_link.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.document_package_link.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Коммерческое предложение (файл)</label>
+                        {% if complaint.commercial_offer %}
+                            <p class="text-sm text-gray-600 mb-2">
+                                Текущий файл: 
+                                <a href="{{ complaint.commercial_offer.url }}" target="_blank" class="text-primary-600 underline">
+                                    {{ complaint.commercial_offer.name }}
+                                </a>
+                            </p>
+                        {% endif %}
+                        {{ form.commercial_offer }}
+                        {% if form.commercial_offer.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.commercial_offer.errors.0 }}</p>
+                        {% else %}
+                            <p class="mt-1 text-xs text-gray-500">Можно загрузить новый файл. Чтобы удалить текущий, отметьте чекбокс «Очистить».</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Комментарий к коммерческому предложению</label>
+                        {{ form.commercial_offer_text }}
+                        {% if form.commercial_offer_text.errors %}
+                            <p class="mt-1 text-sm text-red-600">{{ form.commercial_offer_text.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <a href="{% url 'projects:complaint_detail' complaint.id %}"
+                   class="inline-flex items-center justify-center px-6 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors">
+                    Отмена
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-primary-600 to-cyan-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Сохранить изменения
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

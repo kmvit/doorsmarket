@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     complaint_list,
     complaint_detail,
+    complaint_edit,
     complaint_create,
     shipping_registry,
     shipping_detail,
@@ -25,7 +26,7 @@ urlpatterns = [
     
     # Создание и редактирование
     path('complaints/create/', complaint_create, name='complaint_create'),
-    path('complaints/<int:pk>/edit/', complaint_detail, name='complaint_edit'),  # TODO: создать view для редактирования
+    path('complaints/<int:pk>/edit/', complaint_edit, name='complaint_edit'),
     
     # Реестры
     path('shipping-registry/', shipping_registry, name='shipping_registry'),
