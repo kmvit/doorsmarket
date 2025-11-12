@@ -293,7 +293,7 @@ class Complaint(models.Model):
             self._create_notification(
                 recipient=or_user,
                 notification_type='pc',
-                title='Новая рекламация от фабрики',
+                title='Новая рекламация',
                 message=f'Рекламация #{self.id} (заказ {self.order_number}) требует решения отдела рекламаций. Срок ответа: 2 рабочих дня. Клиент: {self.client_name}'
             )
     
