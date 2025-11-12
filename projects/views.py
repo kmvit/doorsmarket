@@ -163,6 +163,16 @@ def complaint_list(request):
             else:
                 complaints = complaints.filter(recipient=request.user)
     
+    # Исключаем закрытые рекламации по умолчанию
+    exclude_closed_param = request.GET.get('exclude_closed')
+    if exclude_closed_param is None:
+        exclude_closed = True
+    else:
+        exclude_closed = exclude_closed_param not in ['0', 'false', 'False']
+    
+    if exclude_closed:
+        complaints = complaints.exclude(status='closed')
+    
     # Поиск
     search_query = request.GET.get('search', '').strip()
     if search_query:
@@ -216,6 +226,7 @@ def complaint_list(request):
         'current_status': status_filter,
         'current_reason': reason_filter,
         'search_query': search_query,
+        'exclude_closed': exclude_closed,
     }
     
     return render(request, 'projects/complaint_list.html', context)

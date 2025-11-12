@@ -12,14 +12,6 @@
                 <p class="text-sm text-gray-600 mt-1">{{ complaint.created_at|date:"d.m.Y H:i" }} | {{ complaint.order_number }}</p>
             </div>
             <div class="flex items-center space-x-3">
-                {% if user.role in 'service_manager,manager,admin,leader,complaint_department' %}
-                <a href="{% url 'projects:complaint_history' complaint.id %}" class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-200">
-                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    История
-                </a>
-                {% endif %}
                 {% if complaint.status == 'new' %}
                     <span class="px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-green-100 text-green-800">
                         {{ complaint.get_status_display }}
@@ -338,6 +330,14 @@
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                     <h2 class="text-lg font-bold text-gray-900 mb-4">Действия</h2>
                     <div class="space-y-2">
+                        {% if user.role in 'service_manager,manager,admin,leader,complaint_department' %}
+                        <a href="{% url 'projects:complaint_history' complaint.id %}" class="block w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all duration-200">
+                            <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            История
+                        </a>
+                        {% endif %}
                         
                         {% if user.role == 'service_manager' or user.role == 'complaint_department' or user.role == 'admin' or user.role == 'leader' or user == complaint.initiator %}
                             <!-- Действия для СМ, ОР, админов, лидеров и инициатора -->
