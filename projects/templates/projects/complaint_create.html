@@ -77,7 +77,7 @@
                     </div>
                     {% endif %}
 
-                    {% if user.role == 'service_manager' or user.role == 'installer' or user.role == 'admin' or user.role == 'leader' or user.role == 'complaint_department' %}
+                    {% if user.role == 'service_manager' or user.role == 'installer' or user.role == 'admin' or user.role == 'leader' or user.role == 'complaint_department' or user.role == 'manager' %}
                     <!-- Выбор менеджера (обязательное поле) -->
                     <div class="md:col-span-2">
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
@@ -90,18 +90,6 @@
                             {% endfor %}
                         </select>
                         <p class="text-xs text-gray-500 mt-1">Выберите менеджера, ответственного за заказ</p>
-                    </div>
-                    {% elif user.role == 'manager' %}
-                    <!-- Для менеджера - автоматически подставляется как менеджер заказа -->
-                    <div class="md:col-span-2">
-                        <div class="bg-green-50 border border-green-200 rounded-xl p-4">
-                            <p class="text-sm text-green-700">
-                                <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                                </svg>
-                                <strong>Менеджер заказа:</strong> Вы автоматически назначаетесь менеджером этого заказа
-                            </p>
-                        </div>
                     </div>
                     {% endif %}
                 </div>
