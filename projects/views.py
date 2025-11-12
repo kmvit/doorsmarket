@@ -417,13 +417,8 @@ def complaint_create(request):
                     else:
                         recipient = User.objects.get(id=recipient_id)
                 
-                # Определяем менеджера заказа
-                # Если инициатор - менеджер, автоматически назначаем его
-                if request.user.role == 'manager':
-                    final_manager_id = request.user.id
-                else:
-                    # Для СМ и других - используем выбранного менеджера из формы
-                    final_manager_id = manager_id
+                # Определяем менеджера заказа (все инициаторы выбирают вручную)
+                final_manager_id = manager_id
                     
                 # Валидация: менеджер заказа обязателен для всех
                 if not final_manager_id:
