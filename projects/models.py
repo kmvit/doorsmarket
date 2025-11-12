@@ -470,11 +470,13 @@ class Complaint(models.Model):
     def mark_on_warehouse(self):
         """Товар готов на складе"""
         self.status = ComplaintStatus.ON_WAREHOUSE
-        self.added_to_shipping_registry_at = timezone.now()
-        self.save()
-        
+        self.save(update_fields=['status'])
+
+        # Гарантируем наличие записи в реестре
+        self.add_to_shipping_registry()
+
         print(f"[DEBUG] Товар на складе для рекламации #{self.id}, тип: {self.complaint_type}")
-        
+
         # Уведомления менеджеру и СМ
         if self.manager:
             # Уведомление менеджеру в личный кабинет
@@ -487,7 +489,7 @@ class Complaint(models.Model):
             )
         else:
             print(f"[DEBUG] Менеджер не назначен для рекламации #{self.id}")
-        
+
         # Уведомление СМ в личный кабинет
         sm_recipient = self._get_service_manager()
         if sm_recipient:
@@ -504,16 +506,18 @@ class Complaint(models.Model):
                 title='Товар на складе',
                 message=f'Рекламация #{self.id} - товар на складе, запланируйте монтаж'
             )
-    
-    def add_to_shipping_registry(self, doors_count=1, lift_type='our', lift_method='elevator', 
+
+    def add_to_shipping_registry(self, doors_count=1, lift_type='our', lift_method='elevator',
                                   payment_status='', delivery_destination='client', comments=''):
         """Добавляет рекламацию в реестр на отгрузку"""
         from .models import ShippingRegistry
-        
+
         # Проверяем, нет ли уже записи
-        if hasattr(self, 'shipping_entry') and self.shipping_entry:
+        try:
             return self.shipping_entry
-        
+        except ShippingRegistry.DoesNotExist:
+            pass
+
         # Создаем новую запись
         entry = ShippingRegistry.objects.create(
             complaint=self,
@@ -532,10 +536,9 @@ class Complaint(models.Model):
             comments=comments,
             planned_shipping_date=self.planned_shipping_date,
         )
-        
         self.added_to_shipping_registry_at = timezone.now()
-        self.save()
-        
+        self.save(update_fields=['added_to_shipping_registry_at'])
+
         return entry
     
     def plan_shipping(self, shipping_date):
@@ -546,6 +549,9 @@ class Complaint(models.Model):
         else:
             self.status = ComplaintStatus.SHIPPING_PLANNED
         self.save()
+
+        # Добавляем запись в реестр на отгрузку
+        self.add_to_shipping_registry()
     
     def plan_installation_by_sm(self, installer, installation_date):
         """СМ планирует монтаж"""
