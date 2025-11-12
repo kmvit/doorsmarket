@@ -31,7 +31,13 @@ def role_required(allowed_roles):
     return decorator
 
 
-def complaint_access_required(check_initiator=False, check_recipient=False, check_manager=False, check_installer=False):
+def complaint_access_required(
+        check_initiator=False,
+        check_recipient=False,
+        check_manager=False,
+        check_installer=False,
+        allow_manager_all=False,
+):
     """
     Декоратор для проверки доступа к конкретной рекламации
     
@@ -61,6 +67,9 @@ def complaint_access_required(check_initiator=False, check_recipient=False, chec
                     
                     # Проверяем различные условия доступа
                     has_access = False
+                    
+                    if allow_manager_all and request.user.role == 'manager':
+                        has_access = True
                     
                     if check_initiator and complaint.initiator == request.user:
                         has_access = True

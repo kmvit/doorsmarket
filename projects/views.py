@@ -222,7 +222,13 @@ def complaint_list(request):
 
 
 @login_required(login_url='/api/v1/login/')
-@complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True, check_installer=True)
+@complaint_access_required(
+    check_initiator=True,
+    check_recipient=True,
+    check_manager=True,
+    check_installer=True,
+    allow_manager_all=True,
+)
 def complaint_detail(request, pk):
     """Детальная страница рекламации"""
     
