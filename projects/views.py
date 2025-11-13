@@ -138,9 +138,9 @@ def complaint_list(request):
     if reason_filter:
         complaints = complaints.filter(reason_id=reason_filter)
     
-    # Фильтрация по инициатору (мои рекламации)
-    my_complaints_filter = request.GET.get('my_complaints')
-    assigned_filter = request.GET.get('assigned_to_me')
+    # Фильтрация по инициатору (созданные мной) и назначению
+    my_complaints_filter = request.GET.get('created_by_me')
+    assigned_filter = request.GET.get('my_orders')
     
     if my_complaints_filter and assigned_filter:
         assigned_condition = (
@@ -227,6 +227,8 @@ def complaint_list(request):
         'current_reason': reason_filter,
         'search_query': search_query,
         'exclude_closed': exclude_closed,
+        'created_by_me': bool(my_complaints_filter),
+        'my_orders': bool(assigned_filter),
     }
     
     return render(request, 'projects/complaint_list.html', context)
@@ -309,10 +311,28 @@ def complaint_detail(request, pk):
         return redirect('projects:complaint_detail', pk=complaint.id)
     
     from datetime import date
+    
+    closure_reason = None
+    if complaint.status == 'closed':
+        closure_prefix = 'Рекламация завершена сервис-менеджером'
+        comments_list = list(complaint.comments.all())
+        for comment in reversed(comments_list):
+            if comment.text.startswith(closure_prefix):
+                if 'Причина:' in comment.text:
+                    closure_reason = comment.text.split('Причина:', 1)[1].strip()
+                    if not closure_reason:
+                        closure_reason = 'Не указана'
+                elif 'без указанной причины' in comment.text.lower():
+                    closure_reason = 'Не указана'
+                else:
+                    closure_reason = comment.text.replace(closure_prefix, '').strip() or 'Не указана'
+                break
+    
     context = {
         'complaint': complaint,
         'today': date.today().isoformat(),
         'available_installers': User.objects.filter(role='installer'),
+        'closure_reason': closure_reason,
     }
     
     return render(request, 'projects/complaint_detail.html', context)
@@ -429,7 +449,7 @@ def complaint_create(request):
                         recipient = User.objects.get(id=recipient_id)
                 
                 # Определяем менеджера заказа (все инициаторы выбирают вручную)
-                final_manager_id = manager_id
+                    final_manager_id = manager_id
                     
                 # Валидация: менеджер заказа обязателен для всех
                 if not final_manager_id:
@@ -545,13 +565,9 @@ def shipping_registry(request):
     ).all()
     
     # Фильтрация по городам
-    # Администратор, Руководитель и Менеджер видят все
-    if request.user.role in ['admin', 'leader', 'manager']:
+    # Администратор, Руководитель, Менеджер и СМ видят все
+    if request.user.role in ['admin', 'leader', 'manager', 'service_manager']:
         pass  # Без фильтрации
-    # СМ видит только по своему городу
-    elif request.user.role == 'service_manager':
-        if request.user.city:
-            shipping_entries = shipping_entries.filter(manager__city=request.user.city)
     # ОР видит все
     # complaint_department - без дополнительной фильтрации
     
@@ -655,6 +671,13 @@ def complaint_process(request, pk):
     if request.method == 'POST':
         action = request.POST.get('action')
         
+        if action == 'update_assignee_comment':
+            new_comment = request.POST.get('assignee_comment', '').strip()
+            complaint.assignee_comment = new_comment
+            complaint.save(update_fields=['assignee_comment'])
+            messages.success(request, 'Комментарий для исполнителя обновлён.')
+            return redirect('projects:complaint_process', pk=complaint.id)
+
         if action == 'set_type_installer':
             installer_id = request.POST.get('installer')
             if installer_id:
@@ -725,11 +748,18 @@ def complaint_process(request, pk):
             complaint.completion_date = timezone.now()
             complaint.save()
             
+            closure_reason = request.POST.get('closure_reason', '').strip()
+            
             # Создаем комментарий о завершении
+            if closure_reason:
+                comment_text = f'Рекламация завершена сервис-менеджером. Причина: {closure_reason}'
+            else:
+                comment_text = 'Рекламация завершена сервис-менеджером без указанной причины'
+            
             ComplaintComment.objects.create(
                 complaint=complaint,
                 author=request.user,
-                text=f'Рекламация завершена сервис-менеджером без дальнейшей обработки'
+                text=comment_text
             )
             
             # Уведомляем участников
@@ -749,7 +779,10 @@ def complaint_process(request, pk):
                     message=f'Рекламация #{complaint.id} завершена сервис-менеджером'
                 )
             
-            messages.success(request, 'Рекламация успешно завершена')
+            if closure_reason:
+                messages.success(request, 'Рекламация успешно завершена. Причина сохранена в комментарии.')
+            else:
+                messages.warning(request, 'Рекламация завершена, но причина не указана. Комментарий сохранен без причины.')
         
         elif action == 'change_installer':
             # СМ может заменить монтажника
@@ -1088,12 +1121,8 @@ def complaint_history(request, pk):
     complaint = get_object_or_404(Complaint, pk=pk)
     
     # Проверка прав доступа
-    # Менеджер видит все, СМ - только по своему городу
-    if request.user.role == 'service_manager':
-        if request.user.city and complaint.manager and complaint.manager.city != request.user.city:
-            messages.error(request, 'У вас нет доступа к этой рекламации')
-            return redirect('projects:complaint_list')
-    elif request.user.role not in ['manager', 'admin', 'leader', 'complaint_department']:
+    # Менеджер, СМ, Админ, Лидер и ОР видят историю всех рекламаций
+    if request.user.role not in ['manager', 'service_manager', 'admin', 'leader', 'complaint_department']:
         messages.error(request, 'У вас нет доступа к истории рекламаций')
         return redirect('projects:complaint_detail', pk=complaint.id)
     
@@ -1351,8 +1380,8 @@ def sm_dispute_decision(request, pk):
     complaint = get_object_or_404(Complaint, pk=pk)
     
     # Проверка, что рекламация в правильном статусе
-    if complaint.status not in ['factory_approved', 'sm_response_overdue']:
-        messages.error(request, 'Рекламация не находится на этапе согласования с клиентом')
+    if complaint.status not in ['factory_approved', 'sm_response_overdue', 'factory_rejected']:
+        messages.error(request, 'Рекламация не находится на этапе ответов фабрике')
         return redirect('projects:complaint_detail', pk=complaint.id)
     
     if request.method == 'POST':
@@ -1388,7 +1417,7 @@ def sm_dispute_decision(request, pk):
                 text=f'СМ оспорил решение фабрики. Аргументы: {dispute_arguments}'
             )
             
-            messages.success(request, 'Решение фабрики оспорено. Рекламация отправлена в ОР на повторное рассмотрение.')
+            messages.success(request, 'Рекламация отправлена фабрике на повторное рассмотрение.')
         else:
             messages.error(request, 'Укажите аргументы спора')
     

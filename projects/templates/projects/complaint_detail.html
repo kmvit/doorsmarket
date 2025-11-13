@@ -39,6 +39,22 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Основная информация -->
             <div class="lg:col-span-2 space-y-6">
+                {% if complaint.status == 'closed' and closure_reason %}
+                <div class="p-4 border border-gray-200 rounded-3xl bg-gradient-to-r from-gray-50 to-gray-100 shadow-sm flex items-start space-x-3">
+                    <div class="flex-shrink-0">
+                        <div class="h-10 w-10 bg-gray-600 rounded-xl flex items-center justify-center">
+                            <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900 mb-1">Причина закрытия</h3>
+                        <p class="text-sm text-gray-700 whitespace-pre-line">{{ closure_reason }}</p>
+                    </div>
+                </div>
+                {% endif %}
+                
                 <!-- Информация о заказе -->
                 <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                     <div class="flex items-center justify-between mb-4">
@@ -528,25 +544,36 @@
                         {% if user.role == 'service_manager' and complaint.complaint_type == 'factory' %}
                             <!-- Действия для СМ по фабричным рекламациям -->
                             
-                            {% if complaint.status in 'factory_approved,sm_response_overdue' %}
-                            <!-- СМ согласовывает решение с клиентом или оспаривает -->
-                            <div class="p-4 border-2 border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50 mb-3">
+                        {% if complaint.status == 'factory_approved' or complaint.status == 'sm_response_overdue' or complaint.status == 'factory_rejected' %}
+                            <!-- СМ реагирует на решение фабрики -->
+                            <div class="p-4 border-2 {% if complaint.status == 'factory_rejected' %}border-red-300 bg-gradient-to-br from-red-50 to-rose-50{% else %}border-blue-300 bg-gradient-to-br from-blue-50 to-cyan-50{% endif %} rounded-xl mb-3">
                                 <h4 class="text-sm font-semibold text-gray-900 mb-2 flex items-center">
+                                    {% if complaint.status == 'factory_rejected' %}
+                                    <svg class="h-5 w-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-12.728 12.728m0-12.728L18.364 18.364"/>
+                                    </svg>
+                                    Ответ на отказ фабрики
+                                    {% else %}
                                     <svg class="h-5 w-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                                     </svg>
                                     Согласование с клиентом
+                                    {% endif %}
                                 </h4>
                                 <p class="text-xs text-gray-700 mb-3">
-                                    {% if complaint.status == 'sm_response_overdue' %}
+                                    {% if complaint.status == 'factory_rejected' %}
+                                        <span class="text-red-600 font-semibold">Фабрика отклонила рекламацию.</span>
+                                        Подготовьте аргументы и при необходимости вложения, чтобы вернуть заявку на повторное рассмотрение.
+                                    {% elif complaint.status == 'sm_response_overdue' %}
                                         <span class="text-red-600 font-semibold">⚠️ Просрочено!</span>
                                         Фабрика ожидает подтверждения. Свяжитесь с клиентом как можно скорее.
                                     {% else %}
                                         <span class="text-green-600 font-semibold">✓ Ответ получен от фабрики</span>
-                                        Согласуйте решение с клиентом или оспорьте его, если не согласны.
+                                        Озвучьте клиенту решение или верните его в фабрику, если не согласны.
                                     {% endif %}
                                 </p>
 
+                                {% if complaint.status != 'factory_rejected' %}
                                 <!-- Кнопка "Ответ фабрики согласован" -->
                                 <button onclick="showClientAgreementForm()" class="block w-full px-4 py-2 mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
                                     <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,35 +604,36 @@
                                         </div>
                                     </form>
                                 </div>
+                                {% endif %}
 
-                                <!-- Кнопка "Оспорить решение" -->
+                                <!-- Кнопка "Вернуть на повторное рассмотрение" -->
                                 <button onclick="showDisputeForm()" class="block w-full px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
                                     <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                                     </svg>
-                                    ⚠ Оспорить решение
+                                    {% if complaint.status == 'factory_rejected' %}↺ Вернуть фабрике{% else %}⚠ Оспорить решение{% endif %}
                                 </button>
 
-                                <!-- Форма оспаривания (скрыта по умолчанию) -->
+                                <!-- Форма возврата/оспаривания (скрыта по умолчанию) -->
                                 <div id="dispute-form" class="hidden mt-3 p-3 bg-white border-2 border-red-200 rounded-xl">
                                     <form method="post" action="{% url 'projects:sm_dispute_decision' complaint.id %}" enctype="multipart/form-data">
                                         {% csrf_token %}
                                         <div class="mb-3">
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">Аргументы спора <span class="text-red-500">*</span></label>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Аргументы для фабрики <span class="text-red-500">*</span></label>
                                             <textarea name="dispute_arguments" rows="4" required 
                                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                      placeholder="Опишите почему вы не согласны с решением фабрики, приведите аргументы..."></textarea>
+                                                      placeholder="Опишите детали и аргументы, почему решение фабрики нужно пересмотреть..."></textarea>
                                         </div>
                                         <div class="mb-3">
                                             <label class="block text-sm font-medium text-gray-700 mb-2">Дополнительные документы/фото/видео</label>
                                             <input type="file" name="dispute_attachments" multiple accept="image/*,video/*,.pdf,.doc,.docx"
                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500">
-                                            <p class="text-xs text-gray-500 mt-1">Можно прикрепить фото, видео или документы для подтверждения аргументов</p>
+                                            <p class="text-xs text-gray-500 mt-1">Прикрепите доказательства или уточняющие документы для повторного рассмотрения.</p>
                                         </div>
                                         <div class="flex space-x-2">
                                             <button type="submit" 
                                                     class="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">
-                                                Оспорить решение
+                                                {% if complaint.status == 'factory_rejected' %}Отправить фабрике{% else %}Оспорить решение{% endif %}
                                             </button>
                                             <button type="button" onclick="hideDisputeForm()"
                                                     class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors">

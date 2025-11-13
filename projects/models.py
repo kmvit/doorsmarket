@@ -311,13 +311,13 @@ class Complaint(models.Model):
                 recipient=sm_recipient,
                 notification_type='pc',
                 title='Получен ответ от фабрики',
-                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой. Согласуйте решение с клиентом или оспорьте его при необходимости.'
+                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой. Озвучьте клиенту решение и при необходимости оспорьте его.'
             )
             self._create_notification(
                 recipient=sm_recipient,
                 notification_type='push',
                 title='Ответ от фабрики',
-                message=f'Получен ответ фабрики по рекламации #{self.id}. Согласуйте решение с клиентом.'
+                message=f'Получен ответ фабрики по рекламации #{self.id}. Озвучьте клиенту решение.'
             )
             print(f"[DEBUG] Уведомление создано успешно")
     
