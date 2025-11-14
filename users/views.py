@@ -309,11 +309,7 @@ class WebDashboardView(View):
             )
         elif user.role == 'service_manager':
             if user.city:
-                city_filter = (
-                    Q(initiator__city=user.city) |
-                    Q(recipient__city=user.city) |
-                    Q(manager__city=user.city)
-                )
+                city_filter = Q(initiator__city=user.city)
             else:
                 city_filter = Q()
 

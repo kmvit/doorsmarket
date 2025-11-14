@@ -15,7 +15,7 @@
       "address": "Москва, ул. Ленина, д. 45, кв. 12",
       "contact_person": "Иванов Сергей Петрович",
       "contact_phone": "+79161234567",
-      "problem_description": "Обнаружен производственный дефект на раме окна. Трещина в углу профиля.",
+      "additional_info": "Обнаружен производственный дефект на раме окна. Трещина в углу профиля.",
       "document_package_link": "https://example.com/docs/package1",
       "status": "new"
     }
@@ -36,7 +36,7 @@
       "address": "Санкт-Петербург, Невский пр., д. 100, офис 25",
       "contact_person": "Новиков Андрей Александрович",
       "contact_phone": "+79219876543",
-      "problem_description": "При доставке повреждено стекло. Требуется замена стеклопакета.",
+      "additional_info": "При доставке повреждено стекло. Требуется замена стеклопакета.",
       "document_package_link": "",
       "status": "in_progress"
     }
@@ -57,7 +57,7 @@
       "address": "Москва, ул. Арбат, д. 25",
       "contact_person": "Смирнов Олег Викторович",
       "contact_phone": "+79269998877",
-      "problem_description": "Неправильно установлена фурнитура, дверь не закрывается.",
+      "additional_info": "Неправильно установлена фурнитура, дверь не закрывается.",
       "document_package_link": "https://example.com/docs/package3",
       "status": "resolved"
     }
@@ -78,7 +78,7 @@
       "address": "Казань, ул. Баумана, д. 75, кв. 88",
       "contact_person": "Петрова Елена Ивановна",
       "contact_phone": "+79050001122",
-      "problem_description": "Неверно указаны размеры при замере. Окно не подходит по проему.",
+      "additional_info": "Неверно указаны размеры при замере. Окно не подходит по проему.",
       "document_package_link": "",
       "status": "new"
     }
@@ -99,7 +99,7 @@
       "address": "Москва, ул. Парковая, д. 12, кв. 45",
       "contact_person": "Кузнецова Анна Сергеевна",
       "contact_phone": "+79167778899",
-      "problem_description": "Клиент просит изменить цвет профиля. Пошли навстречу.",
+      "additional_info": "Клиент просит изменить цвет профиля. Пошли навстречу.",
       "document_package_link": "https://example.com/docs/package5",
       "status": "closed"
     }

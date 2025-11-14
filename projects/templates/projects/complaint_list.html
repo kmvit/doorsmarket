@@ -185,6 +185,18 @@
                             {% endfor %}
                         </select>
                     </div>
+
+                    {% if cities %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Город</label>
+                        <select name="city" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white">
+                            <option value="">Все города</option>
+                            {% for city in cities %}
+                                <option value="{{ city.id }}" {% if selected_city_id == city.id|stringformat:"s" %}selected{% endif %}>{{ city.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <input type="hidden" name="exclude_closed" value="0">

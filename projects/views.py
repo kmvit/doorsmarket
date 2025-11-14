@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
-from users.models import User
+from users.models import User, City
 from .forms import ComplaintEditForm
 from .models import (
     Complaint,
@@ -33,32 +33,15 @@ def complaint_list(request):
         'reason'
     ).prefetch_related('defective_products', 'attachments')
     
-    # Фильтрация по ролям и городам
+    # Фильтрация по ролям
     # 1. Монтажник видит только назначенные ему (независимо от города)
     if request.user.role == 'installer':
         complaints = complaints.filter(
             Q(initiator=request.user) | Q(installer_assigned=request.user)
         )
-    # 2. Администратор, Руководитель и Менеджер видят все по всем городам
-    elif request.user.role in ['admin', 'leader', 'manager']:
+    # 2. Администратор, Руководитель, Менеджер и СМ - базовый набор, дальнейшие ограничения ниже
+    elif request.user.role in ['admin', 'leader', 'manager', 'service_manager']:
         pass  # Без фильтрации
-    # 3. СМ видит все рекламации по своему городу + свои рекламации
-    elif request.user.role == 'service_manager':
-        if request.user.city:
-            complaints = complaints.filter(
-                Q(initiator=request.user) |
-                Q(recipient=request.user) |
-                Q(manager=request.user) |
-                Q(initiator__city=request.user.city) |
-                Q(recipient__city=request.user.city) |
-                Q(manager__city=request.user.city)
-            )
-        else:
-            complaints = complaints.filter(
-                Q(initiator=request.user) |
-                Q(recipient=request.user) |
-                Q(manager=request.user)
-            )
     # 4. ОР видит только фабричные рекламации (по всем городам)
     elif request.user.role == 'complaint_department':
         complaints = complaints.filter(complaint_type='factory')
@@ -173,6 +156,31 @@ def complaint_list(request):
     if exclude_closed:
         complaints = complaints.exclude(status='closed')
     
+    # Фильтрация по городам
+    cities = None
+    selected_city_id = request.GET.get('city', '').strip()
+
+    if request.user.role in ['admin', 'complaint_department']:
+        cities = City.objects.order_by('name')
+        if selected_city_id:
+            complaints = complaints.filter(
+                Q(initiator__city_id=selected_city_id) |
+                Q(recipient__city_id=selected_city_id) |
+                Q(manager__city_id=selected_city_id)
+            )
+    else:
+        user_city = getattr(request.user, 'city', None)
+        if request.user.role == 'service_manager':
+            personal_filter = Q(initiator=request.user)
+            if user_city:
+                city_filter = Q(initiator__city=user_city)
+                complaints = complaints.filter(city_filter | personal_filter)
+            else:
+                complaints = complaints.filter(personal_filter)
+        elif request.user.role in ['manager', 'leader'] and user_city:
+            city_filter = Q(initiator__city=user_city)
+            complaints = complaints.filter(city_filter)
+
     # Поиск
     search_query = request.GET.get('search', '').strip()
     if search_query:
@@ -226,6 +234,8 @@ def complaint_list(request):
         'current_status': status_filter,
         'current_reason': reason_filter,
         'search_query': search_query,
+        'cities': cities,
+        'selected_city_id': selected_city_id,
         'exclude_closed': exclude_closed,
         'created_by_me': bool(my_complaints_filter),
         'my_orders': bool(assigned_filter),
@@ -388,6 +398,14 @@ def complaint_create(request):
     """Создание новой рекламации"""
     
     if request.method == 'POST':
+        def get_service_manager_for_city(city):
+            qs = User.objects.filter(role='service_manager')
+            if city:
+                sm = qs.filter(city=city).first()
+                if sm:
+                    return sm
+            return qs.first()
+        
         try:
             with transaction.atomic():
                 # Получаем данные из формы
@@ -442,7 +460,7 @@ def complaint_create(request):
                 else:
                     # Если инициатор - менеджер или монтажник, получатель - первый СМ
                     if request.user.role in ['manager', 'installer']:
-                        recipient = User.objects.filter(role='service_manager').first()
+                        recipient = get_service_manager_for_city(getattr(request.user, 'city', None))
                         if not recipient:
                             messages.error(request, 'Не найден сервис-менеджер для назначения')
                             raise ValueError('No service manager found')
@@ -882,6 +900,10 @@ def installer_planning(request):
         complaints = complaints.filter(status__in=['installation_planned', 'both_planned'])
     elif filter_type == 'completed':
         complaints = complaints.filter(status__in=['under_sm_review', 'completed'])
+    elif filter_type == 'closed':
+        complaints = complaints.filter(status=ComplaintStatus.CLOSED)
+    else:
+        complaints = complaints.exclude(status=ComplaintStatus.CLOSED)
     
     # Обработка POST-запроса (назначение даты или перенос)
     if request.method == 'POST':
@@ -947,6 +969,7 @@ def installer_planning(request):
         'needs_planning': Complaint.objects.filter(**base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']).count(),
         'planned': Complaint.objects.filter(**base_filter, status__in=['installation_planned', 'both_planned']).count(),
         'completed': Complaint.objects.filter(**base_filter, status__in=['under_sm_review', 'completed']).count(),
+        'closed': Complaint.objects.filter(**base_filter, status=ComplaintStatus.CLOSED).count(),
     }
     
     context = {

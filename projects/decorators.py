@@ -83,8 +83,20 @@ def complaint_access_required(
                     if check_installer and complaint.installer_assigned == request.user:
                         has_access = True
                     
-                    # СМ и ОР имеют доступ ко всем рекламациям
-                    if request.user.role in ['service_manager', 'complaint_department']:
+                    user_city = getattr(request.user, 'city', None)
+                    city_matches = False
+                    if user_city:
+                        initiator_city = getattr(complaint.initiator, 'city', None)
+                        if initiator_city and initiator_city.id == user_city.id:
+                            city_matches = True
+                    
+                    # СМ видит только рекламации своего города или те, где он участвовал напрямую
+                    if request.user.role == 'service_manager':
+                        if city_matches or complaint.initiator == request.user or complaint.recipient == request.user or complaint.manager == request.user:
+                            has_access = True
+                    
+                    # ОР и админские роли имеют полный доступ
+                    if request.user.role == 'complaint_department':
                         has_access = True
                     
                     if not has_access:
