@@ -395,6 +395,7 @@ def complaint_create(request):
                 manager_id = request.POST.get('manager')
                 production_site_id = request.POST.get('production_site')
                 reason_id = request.POST.get('reason')
+                final_manager_id = manager_id
                 
                 # Валидация обязательных полей
                 required_fields = [production_site_id, reason_id, 
@@ -449,8 +450,6 @@ def complaint_create(request):
                         recipient = User.objects.get(id=recipient_id)
                 
                 # Определяем менеджера заказа (все инициаторы выбирают вручную)
-                    final_manager_id = manager_id
-                    
                 # Валидация: менеджер заказа обязателен для всех
                 if not final_manager_id:
                     messages.error(request, 'Необходимо указать менеджера заказа')
