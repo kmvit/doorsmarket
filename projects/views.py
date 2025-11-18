@@ -146,7 +146,7 @@ def complaint_list(request):
             else:
                 complaints = complaints.filter(recipient=request.user)
     
-    # Исключаем закрытые рекламации по умолчанию
+    # Исключаем закрытые и выполненные рекламации по умолчанию
     exclude_closed_param = request.GET.get('exclude_closed')
     if exclude_closed_param is None:
         exclude_closed = True
@@ -154,7 +154,7 @@ def complaint_list(request):
         exclude_closed = exclude_closed_param not in ['0', 'false', 'False']
     
     if exclude_closed:
-        complaints = complaints.exclude(status='closed')
+        complaints = complaints.exclude(status__in=['closed', 'completed'])
     
     # Фильтрация по городам
     cities = None
@@ -380,6 +380,35 @@ def complaint_edit(request, pk):
     if request.method == 'POST':
         if form.is_valid():
             form.save()
+            
+            # Обрабатываем новые вложения (фото/видео/документы)
+            files = request.FILES.getlist('attachments')
+            for file in files:
+                # Определяем тип файла по расширению
+                file_ext = file.name.lower().split('.')[-1]
+                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                    attachment_type = 'photo'
+                elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
+                    attachment_type = 'video'
+                else:
+                    attachment_type = 'document'
+                
+                ComplaintAttachment.objects.create(
+                    complaint=complaint,
+                    file=file,
+                    attachment_type=attachment_type
+                )
+            
+            # Обрабатываем новые коммерческие предложения
+            commercial_offers = request.FILES.getlist('commercial_offers')
+            for co_file in commercial_offers:
+                ComplaintAttachment.objects.create(
+                    complaint=complaint,
+                    file=co_file,
+                    attachment_type='commercial_offer',
+                    description='Коммерческое предложение'
+                )
+            
             messages.success(request, 'Данные рекламации обновлены')
             return redirect('projects:complaint_detail', pk=complaint.id)
         else:

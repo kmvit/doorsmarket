@@ -364,19 +364,29 @@ class Complaint(models.Model):
     
     def sm_dispute_factory_decision(self, arguments):
         """СМ оспаривает решение фабрики"""
-        self.status = ComplaintStatus.FACTORY_DISPUTE
+        # Если рекламация была отклонена, при повторной отправке ставим статус "отправлена" (ожидает ответа)
+        if self.status == ComplaintStatus.FACTORY_REJECTED:
+            self.status = ComplaintStatus.SENT
+            notification_title = 'Рекламация отправлена повторно'
+            notification_message = f'СМ дополнил и отправил повторно рекламацию #{self.id} (заказ {self.order_number}) на фабрику. Ожидается ответ.'
+        else:
+            # Для других случаев (например, оспаривание одобренного решения) оставляем статус "спор"
+            self.status = ComplaintStatus.FACTORY_DISPUTE
+            notification_title = '🔴 Спор с фабрикой'
+            notification_message = f'СМ оспаривает решение фабрики по рекламации #{self.id} (заказ {self.order_number}). Требуется повторное рассмотрение.'
+        
         self.dispute_arguments = arguments
         self.save()
         
-        # Уведомления ОР о споре
+        # Уведомления ОР
         from users.models import User
         or_users = User.objects.filter(role='complaint_department')
         for or_user in or_users:
             self._create_notification(
                 recipient=or_user,
                 notification_type='pc',
-                title='🔴 Спор с фабрикой',
-                message=f'СМ оспаривает решение фабрики по рекламации #{self.id} (заказ {self.order_number}). Требуется повторное рассмотрение.'
+                title=notification_title,
+                message=notification_message
             )
     
     def plan_installation(self, installer, installation_date):

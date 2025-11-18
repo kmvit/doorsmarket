@@ -252,15 +252,29 @@ class WebDashboardView(View):
         from django.db.models import Q
         
         summaries = []
-        base_url = reverse('projects:complaint_list')
         
-        def add_summary(key, label, query):
+        # Для монтажника используем страницу планирования, для остальных - список рекламаций
+        if user.role == 'installer':
+            base_url = reverse('projects:installer_planning')
+        else:
+            base_url = reverse('projects:complaint_list')
+        
+        def add_summary(key, label, query, url_param=None):
             count = Complaint.objects.filter(query).count()
+            # Для монтажника формируем URL с параметром filter, для остальных - с my_tasks
+            if user.role == 'installer':
+                if url_param:
+                    url = f"{base_url}?filter={url_param}"
+                else:
+                    url = base_url  # Для "В работе" без фильтра
+            else:
+                url = f"{base_url}?my_tasks={key}"
+            
             summaries.append({
                 'key': key,
                 'label': label,
                 'count': count,
-                'url': f"{base_url}?my_tasks={key}",
+                'url': url,
             })
         
         completed_statuses = {
@@ -274,22 +288,26 @@ class WebDashboardView(View):
             add_summary(
                 'in_work',
                 'В работе',
-                (Q(installer_assigned=user) | Q(initiator=user)) & Q(status__in=active_statuses)
+                (Q(installer_assigned=user) | Q(initiator=user)) & Q(status__in=active_statuses),
+                url_param=None  # Без фильтра - показываем все активные
             )
             add_summary(
                 'needs_planning',
                 'Требуют планирования',
-                Q(installer_assigned=user, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned'])
+                Q(installer_assigned=user, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']),
+                url_param='needs_planning'
             )
             add_summary(
                 'planned',
                 'Запланированные работы',
-                Q(installer_assigned=user, status__in=['installation_planned', 'both_planned'])
+                Q(installer_assigned=user, status__in=['installation_planned', 'both_planned']),
+                url_param='planned'
             )
             add_summary(
                 'completed',
                 'Ожидают проверки',
-                Q(installer_assigned=user, status__in=['under_sm_review', 'completed'])
+                Q(installer_assigned=user, status__in=['under_sm_review', 'completed']),
+                url_param='completed'
             )
         elif user.role == 'manager':
             add_summary(
