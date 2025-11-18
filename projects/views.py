@@ -999,15 +999,22 @@ def installer_planning(request):
         
         return redirect('projects:installer_planning')
     
-    # Статистика
-    base_filter = {'installer_assigned': request.user} if request.user.role == 'installer' else {'installer_assigned__isnull': False}
+    # Статистика - используем тот же фильтр, что и для основного списка
+    if request.user.role == 'installer':
+        # Для монтажника считаем все его задачи (и назначенные, и созданные им)
+        stats_base_filter = Q(installer_assigned=request.user) | Q(initiator=request.user)
+    elif request.user.role in ['admin', 'leader']:
+        # Для админа и руководителя - все рекламации с назначенным монтажником
+        stats_base_filter = Q(installer_assigned__isnull=False)
+    else:
+        stats_base_filter = Q()
     
     stats = {
-        'total': Complaint.objects.filter(**base_filter).count(),
-        'needs_planning': Complaint.objects.filter(**base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']).count(),
-        'planned': Complaint.objects.filter(**base_filter, status__in=['installation_planned', 'both_planned']).count(),
-        'completed': Complaint.objects.filter(**base_filter, status__in=['under_sm_review', 'completed']).count(),
-        'closed': Complaint.objects.filter(**base_filter, status=ComplaintStatus.CLOSED).count(),
+        'total': Complaint.objects.filter(stats_base_filter).count(),
+        'needs_planning': Complaint.objects.filter(stats_base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']).count(),
+        'planned': Complaint.objects.filter(stats_base_filter, status__in=['installation_planned', 'both_planned']).count(),
+        'completed': Complaint.objects.filter(stats_base_filter, status__in=['under_sm_review', 'completed']).count(),
+        'closed': Complaint.objects.filter(stats_base_filter, status=ComplaintStatus.CLOSED).count(),
     }
     
     context = {
