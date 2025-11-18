@@ -305,7 +305,7 @@ class WebDashboardView(View):
             )
             add_summary(
                 'completed',
-                'Ожидают проверки',
+                'Завершено',
                 Q(installer_assigned=user, status__in=['under_sm_review', 'completed']),
                 url_param='completed'
             )

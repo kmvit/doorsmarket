@@ -94,6 +94,25 @@
             </a>
         </div>
 
+        <!-- Фильтры -->
+        <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-6 mb-6">
+            <form method="get" class="space-y-4">
+                <input type="hidden" name="exclude_closed" value="0">
+                {% if request.GET.filter %}
+                <input type="hidden" name="filter" value="{{ request.GET.filter }}">
+                {% endif %}
+                <div class="flex flex-wrap gap-2 items-center">
+                    <label class="inline-flex items-center px-4 py-2 bg-purple-50 text-purple-700 rounded-xl cursor-pointer hover:bg-purple-100 transition-colors">
+                        <input type="checkbox" name="exclude_closed" value="1" class="mr-2" {% if exclude_closed %}checked{% endif %} onchange="this.form.submit()">
+                        Кроме завершенных
+                    </label>
+                    <a href="{% url 'projects:installer_planning' %}" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors">
+                        Сбросить
+                    </a>
+                </div>
+            </form>
+        </div>
+
         <!-- Список задач -->
         <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
             {% if complaints %}

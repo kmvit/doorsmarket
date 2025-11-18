@@ -921,6 +921,13 @@ def installer_planning(request):
             'initiator', 'recipient', 'manager', 'production_site', 'reason', 'installer_assigned'
         ).order_by('-created_at')
     
+    # Исключаем закрытые и выполненные рекламации по умолчанию
+    exclude_closed_param = request.GET.get('exclude_closed')
+    if exclude_closed_param is None:
+        exclude_closed = True
+    else:
+        exclude_closed = exclude_closed_param not in ['0', 'false', 'False']
+    
     # Фильтрация по статусу
     filter_type = request.GET.get('filter')
     if filter_type == 'needs_planning':
@@ -932,7 +939,9 @@ def installer_planning(request):
     elif filter_type == 'closed':
         complaints = complaints.filter(status=ComplaintStatus.CLOSED)
     else:
-        complaints = complaints.exclude(status=ComplaintStatus.CLOSED)
+        # По умолчанию исключаем закрытые и выполненные рекламации, если чекбокс включен
+        if exclude_closed:
+            complaints = complaints.exclude(status__in=['closed', 'completed'])
     
     # Обработка POST-запроса (назначение даты или перенос)
     if request.method == 'POST':
@@ -1004,6 +1013,7 @@ def installer_planning(request):
     context = {
         'complaints': complaints,
         'stats': stats,
+        'exclude_closed': exclude_closed,
     }
     
     return render(request, 'projects/installer_tasks.html', context)
