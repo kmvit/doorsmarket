@@ -24,6 +24,7 @@ urlpatterns = [
     path('', RedirectView.as_view(pattern_name='users:web_login', permanent=False)),
     path('admin/', admin.site.urls),
     path('api/v1/', include('users.urls')),
+    path('api/v1/', include('projects.api_urls')),
     path('', include('projects.urls')),
 ]
 

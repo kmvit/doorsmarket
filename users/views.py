@@ -105,6 +105,25 @@ class CityListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
 
 
+class UserListView(generics.ListAPIView):
+    """Список пользователей с фильтрацией по роли"""
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = User.objects.filter(is_active=True).select_related('city')
+        
+        # Фильтрация по роли
+        role = self.request.query_params.get('role')
+        if role:
+            queryset = queryset.filter(role=role)
+        
+        # Сортировка
+        queryset = queryset.order_by('first_name', 'last_name', 'username')
+        
+        return queryset
+
+
 # ===== Веб-интерфейс (Template Views) =====
 
 from django.shortcuts import render, redirect

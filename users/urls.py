@@ -7,6 +7,7 @@ from .views import (
     ChangePasswordView,
     LogoutView,
     CityListView,
+    UserListView,
     # Web Views
     WebLoginView,
     WebRegisterView,
@@ -35,6 +36,7 @@ urlpatterns = [
     
     # Справочники
     path('cities/', CityListView.as_view(), name='cities'),
+    path('users/', UserListView.as_view(), name='users'),
     
     # ===== Web Interface =====
     
