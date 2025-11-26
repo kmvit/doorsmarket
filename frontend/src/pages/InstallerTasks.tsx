@@ -7,7 +7,7 @@ import Button from '../components/common/Button'
 const InstallerTasks = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { complaints, isLoading, fetchComplaints, filters, setFilters } = useComplaintsStore()
+  const { complaints, isLoading, fetchComplaints, setFilters } = useComplaintsStore()
   const [excludeClosed, setExcludeClosed] = useState(true)
 
   useEffect(() => {
