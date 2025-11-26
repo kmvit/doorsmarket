@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { User, LoginResponse } from '../types/auth'
 import { authAPI } from '../api/auth'
+import { resetRedirectFlag } from '../api/client'
+import { pushNotificationService } from '../services/push'
 
 interface AuthStore {
   user: User | null
@@ -42,12 +44,21 @@ export const useAuthStore = create<AuthStore>()(
           // Теперь получаем информацию о пользователе (токен уже в заголовках)
           const user = response.user || await authAPI.getMe()
           
+          resetRedirectFlag() // Сбрасываем флаг редиректа при успешной авторизации
+          // Очищаем флаги ошибки авторизации для уведомлений
+          sessionStorage.removeItem('notification_auth_error')
+          sessionStorage.removeItem('notification_token_expired')
           set({
             user,
             accessToken: response.access,
             refreshToken: response.refresh,
             isAuthenticated: true,
             isLoading: false,
+          })
+          
+          // Подписываемся на push-уведомления в фоне (не блокируем процесс входа)
+          pushNotificationService.subscribe().catch((error) => {
+            console.warn('Не удалось подписаться на push-уведомления:', error)
           })
         } catch (error: any) {
           set({
@@ -70,12 +81,21 @@ export const useAuthStore = create<AuthStore>()(
           // Теперь получаем информацию о пользователе (токен уже в заголовках)
           const user = response.user || await authAPI.getMe()
           
+          resetRedirectFlag() // Сбрасываем флаг редиректа при успешной авторизации
+          // Очищаем флаги ошибки авторизации для уведомлений
+          sessionStorage.removeItem('notification_auth_error')
+          sessionStorage.removeItem('notification_token_expired')
           set({
             user,
             accessToken: response.access,
             refreshToken: response.refresh,
             isAuthenticated: true,
             isLoading: false,
+          })
+          
+          // Подписываемся на push-уведомления в фоне (не блокируем процесс регистрации)
+          pushNotificationService.subscribe().catch((error) => {
+            console.warn('Не удалось подписаться на push-уведомления:', error)
           })
         } catch (error: any) {
           set({
@@ -88,6 +108,10 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: async () => {
         try {
+          // Отписываемся от push-уведомлений при выходе
+          await pushNotificationService.unsubscribe().catch((error) => {
+            console.warn('Не удалось отписаться от push-уведомлений:', error)
+          })
           await authAPI.logout()
         } catch (error) {
           console.error('Logout error:', error)
@@ -121,12 +145,20 @@ export const useAuthStore = create<AuthStore>()(
           set({ isLoading: true })
           try {
             const user = await authAPI.getMe()
+            resetRedirectFlag() // Сбрасываем флаг редиректа при успешной проверке
+            // Очищаем флаг ошибки авторизации для уведомлений
+            sessionStorage.removeItem('notification_auth_error')
             set({
               user,
               accessToken: token,
               refreshToken: localStorage.getItem('refresh_token'),
               isAuthenticated: true,
               isLoading: false,
+            })
+            
+            // Подписываемся на push-уведомления в фоне (если пользователь уже авторизован)
+            pushNotificationService.subscribe().catch((error) => {
+              console.warn('Не удалось подписаться на push-уведомления:', error)
             })
           } catch (error) {
             set({

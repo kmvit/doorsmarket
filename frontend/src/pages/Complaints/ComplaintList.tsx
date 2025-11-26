@@ -15,7 +15,6 @@ const ComplaintList = () => {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { complaints, isLoading, error, fetchComplaints, filters, setFilters, clearFilters } = useComplaintsStore()
-  const [stats, setStats] = useState<any>({})
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [cities, setCities] = useState<City[]>([])
@@ -23,6 +22,12 @@ const ComplaintList = () => {
   const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
+    // Проверяем наличие токена перед загрузкой данных
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      return
+    }
+
     // Обработка параметров URL
     const myTasks = searchParams.get('my_tasks')
     const needsPlanning = searchParams.get('needs_planning')
@@ -86,22 +91,8 @@ const ComplaintList = () => {
       fetchComplaints()
     }
     
-    loadStats()
     loadReferences()
   }, [searchParams])
-
-  const loadStats = async () => {
-    try {
-      const response = await apiClient.get('/dashboard/stats/')
-      const statsData: any = {}
-      response.data.stats.forEach((stat: any) => {
-        statsData[stat.key] = stat.count
-      })
-      setStats(statsData)
-    } catch (error) {
-      console.error('Error loading stats:', error)
-    }
-  }
 
   const loadReferences = async () => {
     try {

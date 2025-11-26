@@ -120,3 +120,21 @@ class ChangePasswordSerializer(serializers.Serializer):
             })
         return attrs
 
+
+class PushSubscriptionSerializer(serializers.Serializer):
+    """Сериализатор для push-подписки"""
+    endpoint = serializers.URLField()
+    keys = serializers.DictField(
+        child=serializers.CharField(),
+        allow_empty=False
+    )
+
+    def validate(self, attrs):
+        keys = attrs.get('keys') or {}
+        missing = [key for key in ('p256dh', 'auth') if key not in keys or not keys[key]]
+        if missing:
+            raise serializers.ValidationError({
+                'keys': f"Отсутствуют ключи: {', '.join(missing)}"
+            })
+        return attrs
+

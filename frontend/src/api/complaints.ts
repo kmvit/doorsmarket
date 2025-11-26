@@ -8,6 +8,8 @@ import {
   ComplaintAttachment,
   ComplaintComment,
 } from '../types/complaints'
+import { complaintUtils, cacheUtils } from '../services/offline'
+import { requestQueue } from '../services/sync'
 
 export const complaintsAPI = {
   // Получить список рекламаций
@@ -22,14 +24,125 @@ export const complaintsAPI = {
       })
     }
     
+    const cacheKey = `complaints_list_${params.toString()}`
+    
+    try {
     const response = await apiClient.get(`/complaints/?${params.toString()}`)
+      
+      // Сохраняем в кеш при успешном запросе
+      if (response.data?.results) {
+        console.log(`[ComplaintsAPI] Сохранение ${response.data.results.length} рекламаций в IndexedDB`)
+        await complaintUtils.saveList(response.data.results)
+        await cacheUtils.set(cacheKey, response.data, 5 * 60 * 1000) // 5 минут
+        console.log(`[ComplaintsAPI] Данные сохранены в IndexedDB и кеш`)
+      }
+      
     return response.data
+    } catch (error: any) {
+      console.log(`[ComplaintsAPI] Ошибка загрузки рекламаций:`, error.message || error)
+      
+      // Если ошибка авторизации, не пытаемся использовать офлайн данные
+      if (error.message?.includes('авторизация') || error.message?.includes('HTML') || error.message?.includes('401') || error.response?.status === 401) {
+        console.log(`[ComplaintsAPI] Ошибка авторизации, не используем офлайн данные`)
+        throw error
+      }
+      
+      // Если офлайн или ошибка сети, пытаемся получить из кеша или IndexedDB
+      if (!navigator.onLine || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        console.log(`[ComplaintsAPI] Офлайн режим или ошибка сети, загружаем из кеша/IndexedDB`)
+        const cached = await cacheUtils.get(cacheKey)
+        if (cached) {
+          console.log(`[ComplaintsAPI] Данные найдены в кеше`)
+          return cached
+        }
+        
+        // Если кеша нет, возвращаем данные из IndexedDB
+        const list = await complaintUtils.getList()
+        console.log(`[ComplaintsAPI] Загружено ${list.length} рекламаций из IndexedDB`)
+        return {
+          results: list,
+          count: list.length,
+        }
+      }
+      
+      // Даже если интернет есть, но запрос не прошел (кроме авторизации), 
+      // пытаемся загрузить из IndexedDB как fallback
+      console.log(`[ComplaintsAPI] Интернет есть, но запрос не прошел, пытаемся загрузить из IndexedDB`)
+      try {
+        const cached = await cacheUtils.get(cacheKey)
+        if (cached) {
+          console.log(`[ComplaintsAPI] Данные найдены в кеше (fallback)`)
+          return cached
+        }
+        
+        const list = await complaintUtils.getList()
+        console.log(`[ComplaintsAPI] Загружено ${list.length} рекламаций из IndexedDB (fallback)`)
+        if (list.length > 0) {
+          return {
+            results: list,
+            count: list.length,
+          }
+        }
+      } catch (offlineError) {
+        console.warn('[ComplaintsAPI] Не удалось загрузить данные из IndexedDB:', offlineError)
+      }
+      
+      throw error
+    }
   },
 
   // Получить детальную информацию о рекламации
   getDetail: async (id: number): Promise<Complaint> => {
+    const cacheKey = `complaint_detail_${id}`
+    
+    try {
     const response = await apiClient.get(`/complaints/${id}/`)
+      
+      // Сохраняем в кеш при успешном запросе
+      if (response.data) {
+        await complaintUtils.saveDetail(response.data)
+        await cacheUtils.set(cacheKey, response.data, 5 * 60 * 1000) // 5 минут
+      }
+      
     return response.data
+    } catch (error: any) {
+      // Если ошибка авторизации, не пытаемся использовать офлайн данные
+      if (error.message?.includes('авторизация') || error.message?.includes('HTML') || error.message?.includes('401') || error.response?.status === 401) {
+        throw error
+      }
+      
+      // Если офлайн или ошибка сети, пытаемся получить из кеша или IndexedDB
+      if (!navigator.onLine || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        const cached = await cacheUtils.get(cacheKey)
+        if (cached) {
+          return cached
+        }
+        
+        // Если кеша нет, возвращаем данные из IndexedDB
+        const detail = await complaintUtils.getDetail(id)
+        if (detail) {
+          return detail
+        }
+      }
+      
+      // Даже если интернет есть, но запрос не прошел (кроме авторизации), 
+      // пытаемся загрузить из IndexedDB как fallback
+      try {
+        const cached = await cacheUtils.get(cacheKey)
+        if (cached) {
+          return cached
+        }
+        
+        const detail = await complaintUtils.getDetail(id)
+        if (detail) {
+          return detail
+        }
+      } catch (offlineError) {
+        console.warn('Не удалось загрузить данные из IndexedDB:', offlineError)
+      }
+      
+      throw error
+    }
   },
 
   // Создать рекламацию
@@ -52,12 +165,24 @@ export const complaintsAPI = {
       })
     }
     
+    try {
     const response = await apiClient.post('/complaints/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     })
     return response.data
+    } catch (error: any) {
+      // Если офлайн, добавляем в очередь
+      if (!navigator.onLine) {
+        await requestQueue.add('POST', '/complaints/', formData, {
+          'Content-Type': 'multipart/form-data',
+        })
+        // Возвращаем временный объект для оптимистичного обновления
+        throw new Error('Запрос добавлен в очередь для синхронизации')
+      }
+      throw error
+    }
   },
 
   // Обновить рекламацию
@@ -86,12 +211,29 @@ export const complaintsAPI = {
       })
     }
     
+    try {
     const response = await apiClient.patch(`/complaints/${id}/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     })
+      
+      // Обновляем кеш
+      if (response.data) {
+        await complaintUtils.saveDetail(response.data)
+      }
+      
     return response.data
+    } catch (error: any) {
+      // Если офлайн, добавляем в очередь
+      if (!navigator.onLine) {
+        await requestQueue.add('PATCH', `/complaints/${id}/`, formData, {
+          'Content-Type': 'multipart/form-data',
+        })
+        throw new Error('Запрос добавлен в очередь для синхронизации')
+      }
+      throw error
+    }
   },
 
   // Действия с рекламацией

@@ -4,12 +4,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import User, City
+from .models import User, City, PushSubscription
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
     ChangePasswordSerializer,
-    CitySerializer
+    CitySerializer,
+    PushSubscriptionSerializer
 )
 
 
@@ -74,6 +75,42 @@ class ChangePasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class PushSubscribeView(APIView):
+    """Регистрация push-подписки"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PushSubscriptionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        keys = data['keys']
+
+        subscription, _ = PushSubscription.objects.update_or_create(
+            user=request.user,
+            endpoint=data['endpoint'],
+            defaults={
+                'p256dh': keys['p256dh'],
+                'auth': keys['auth'],
+                'is_active': True,
+            }
+        )
+        # Деактивируем остальные подписки пользователя
+        PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PushUnsubscribeView(APIView):
+    """Отписка от push-уведомлений"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        updated = PushSubscription.objects.filter(user=request.user, is_active=True).update(is_active=False)
+        status_code = status.HTTP_200_OK if updated else status.HTTP_204_NO_CONTENT
+        body = {'deactivated': updated} if updated else None
+        return Response(body, status=status_code)
+
+
 class LogoutView(APIView):
     """Выход пользователя (добавление токена в черный список)"""
     permission_classes = [permissions.IsAuthenticated]
@@ -122,8 +159,6 @@ class UserListView(generics.ListAPIView):
         queryset = queryset.order_by('first_name', 'last_name', 'username')
         
         return queryset
-
-
 # ===== Веб-интерфейс (Template Views) =====
 
 from django.shortcuts import render, redirect

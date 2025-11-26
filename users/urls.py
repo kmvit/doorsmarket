@@ -8,6 +8,8 @@ from .views import (
     LogoutView,
     CityListView,
     UserListView,
+    PushSubscribeView,
+    PushUnsubscribeView,
     # Web Views
     WebLoginView,
     WebRegisterView,
@@ -33,6 +35,8 @@ urlpatterns = [
     # Управление пользователем
     path('auth/me/', UserDetailView.as_view(), name='user_detail'),
     path('auth/change-password/', ChangePasswordView.as_view(), name='change_password'),
+    path('auth/push-subscribe/', PushSubscribeView.as_view(), name='push_subscribe'),
+    path('auth/push-unsubscribe/', PushUnsubscribeView.as_view(), name='push_unsubscribe'),
     
     # Справочники
     path('cities/', CityListView.as_view(), name='cities'),
@@ -47,11 +51,11 @@ urlpatterns = [
     path('dashboard/', WebDashboardView.as_view(), name='web_dashboard'),
     
     # Управление пользователями
-    path('users/', user_list, name='user_list'),
+    path('web/users/', user_list, name='user_list'),
     
     # Уведомления и задачи
-    path('notifications/', notifications_list, name='notifications_list'),
-    path('notifications/<int:notification_id>/read/', mark_notification_read, name='mark_notification_read'),
-    path('notifications/mark-all-read/', mark_all_notifications_read, name='mark_all_notifications_read'),
+    path('web/notifications/', notifications_list, name='notifications_list'),
+    path('web/notifications/<int:notification_id>/read/', mark_notification_read, name='mark_notification_read'),
+    path('web/notifications/mark-all-read/', mark_all_notifications_read, name='mark_all_notifications_read'),
 ]
 

@@ -5,21 +5,74 @@ import { ROLE_DISPLAY } from '../../utils/constants'
 import apiClient from '../../api/client'
 
 const Header = () => {
-  const { user, logout } = useAuthStore()
+  const { user, logout, isAuthenticated, isLoading } = useAuthStore()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
 
   // Загрузка количества непрочитанных уведомлений
   useEffect(() => {
-    if (user) {
-      apiClient.get('/notifications/?is_read=false')
-        .then(response => {
-          setUnreadNotificationsCount(Array.isArray(response.data) ? response.data.length : (response.data.count || 0))
-        })
-        .catch(() => {})
+    // Не делаем запрос, пока идет загрузка или пользователь не авторизован
+    if (isLoading || !isAuthenticated || !user) {
+      setUnreadNotificationsCount(0)
+      return
     }
-  }, [user])
+
+    // Проверяем наличие токена
+    const token = localStorage.getItem('access_token')
+    if (!token) {
+      setUnreadNotificationsCount(0)
+      return
+    }
+
+    // Проверяем, не было ли уже ошибки авторизации для уведомлений
+    const notificationAuthErrorKey = 'notification_auth_error'
+    const notificationTokenExpiredKey = 'notification_token_expired'
+    const hasAuthError = sessionStorage.getItem(notificationAuthErrorKey) === 'true'
+    const tokenExpired = sessionStorage.getItem(notificationTokenExpiredKey) === 'true'
+    
+    if (hasAuthError || tokenExpired) {
+      // Если была ошибка авторизации или токены истекли, не делаем запрос
+      setUnreadNotificationsCount(0)
+      return
+    }
+
+    let cancelled = false
+
+    // Делаем запрос после того, как проверка аутентификации завершена
+    const loadNotifications = async () => {
+      if (cancelled) return
+
+      try {
+        const response = await apiClient.get('/notifications/?is_read=false')
+        if (cancelled) return
+        
+        // Очищаем флаги ошибки авторизации при успешном запросе
+        sessionStorage.removeItem(notificationAuthErrorKey)
+        sessionStorage.removeItem('notification_token_expired')
+        
+        setUnreadNotificationsCount(Array.isArray(response.data) ? response.data.length : (response.data.count || 0))
+      } catch (error: any) {
+        if (cancelled) return
+        
+        // Игнорируем ошибки авторизации - они обрабатываются интерцептором
+        if (error.response?.status === 401 || error.response?.status === 302 || error.message?.includes('авторизация')) {
+          // Устанавливаем флаг, чтобы не делать повторные запросы
+          sessionStorage.setItem(notificationAuthErrorKey, 'true')
+          setUnreadNotificationsCount(0)
+          return
+        }
+      }
+    }
+
+    // Небольшая задержка, чтобы убедиться, что все инициализации завершены
+    const timer = setTimeout(loadNotifications, 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [user, isAuthenticated, isLoading])
 
   const handleLogout = async () => {
     await logout()
@@ -32,7 +85,8 @@ const Header = () => {
 
   const isActive = (path: string) => location.pathname === path
 
-  if (!user) return null
+  // Не показываем Header, если пользователь не авторизован
+  if (!isAuthenticated || !user) return null
 
   return (
     <nav className="relative z-20 bg-white/90 backdrop-blur-md shadow-lg border-b border-gray-200">

@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'marketingdoors.middleware.APIAuthenticationMiddleware',  # Перехватывает редиректы для API
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -161,7 +162,13 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
+    # Кастомный обработчик исключений для предотвращения редиректов
+    'EXCEPTION_HANDLER': 'marketingdoors.exceptions.custom_exception_handler',
 }
+
+# Настройка для предотвращения редиректов на API запросы
+LOGIN_URL = '/api/v1/login/'  # Веб-страница логина
+LOGIN_REDIRECT_URL = '/api/v1/dashboard/'  # Редирект после логина
 
 # JWT Settings
 from datetime import timedelta

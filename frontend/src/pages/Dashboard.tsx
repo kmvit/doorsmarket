@@ -18,11 +18,27 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      // Проверяем наличие токена перед запросом
+      const token = localStorage.getItem('access_token')
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
       try {
         const response = await apiClient.get('/dashboard/stats/')
+        if (response.data && response.data.stats && Array.isArray(response.data.stats)) {
         setStats(response.data.stats)
-      } catch (error) {
+        } else {
+          setStats([])
+        }
+      } catch (error: any) {
         console.error('Error fetching dashboard stats:', error)
+        setStats([])
+        // Если ошибка авторизации, не пытаемся загружать снова
+        if (error.response?.status === 401 || error.message?.includes('авторизация') || error.message?.includes('401')) {
+          return
+        }
       } finally {
         setIsLoading(false)
       }
@@ -41,14 +57,6 @@ const Dashboard = () => {
       leader: 'Руководитель подразделения',
     }
     return roles[role] || role
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen py-12 px-4 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    )
   }
 
   return (
@@ -72,7 +80,11 @@ const Dashboard = () => {
           )}
         </div>
 
-        {stats.length > 0 && (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          </div>
+        ) : stats.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {stats.map((stat) => (
               <Link

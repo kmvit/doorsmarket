@@ -9,6 +9,11 @@ import ComplaintEdit from './pages/Complaints/ComplaintEdit'
 import ComplaintProcess from './pages/Complaints/ComplaintProcess'
 import ComplaintHistory from './pages/Complaints/ComplaintHistory'
 import InstallerTasks from './pages/InstallerTasks'
+import ShippingRegistryPage from './pages/ShippingRegistry'
+import ShippingRegistryDetail from './pages/ShippingRegistryDetail'
+import ManagerProduction from './pages/ManagerProduction'
+import Notifications from './pages/Notifications'
+import Offline from './pages/Offline'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
 
@@ -99,6 +104,47 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/shipping-registry"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ShippingRegistryPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/shipping-registry/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ShippingRegistryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/manager/production"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ManagerProduction />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Notifications />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/offline" element={<Offline />} />
               <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
       </Routes>
     </Router>

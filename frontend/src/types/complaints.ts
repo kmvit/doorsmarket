@@ -174,3 +174,57 @@ export interface ComplaintFilters {
   ordering?: string
 }
 
+// Shipping Registry types
+export type LiftType = 'our' | 'client'
+export type LiftMethod = 'elevator' | 'manual'
+export type OrderType = 'main' | 'complaint'
+export type DeliveryDestination = 'client' | 'warehouse'
+export type DeliveryStatus = 'pending' | 'in_transit' | 'delivered' | 'cancelled'
+
+export interface ShippingRegistry {
+  id: number
+  complaint: ComplaintListItem | null
+  complaint_id: number | null
+  created_at: string
+  order_number: string
+  manager: User
+  manager_id: number
+  client_name: string
+  address: string
+  contact_person: string
+  contact_phone: string
+  doors_count: number
+  lift_type: LiftType
+  lift_type_display: string
+  lift_method: LiftMethod
+  lift_method_display: string
+  order_type: OrderType
+  order_type_display: string
+  payment_status: string
+  delivery_destination: DeliveryDestination
+  delivery_destination_display: string
+  comments: string
+  delivery_status: DeliveryStatus
+  delivery_status_display: string
+  client_rating: number | null
+  planned_shipping_date: string | null
+  actual_shipping_date: string | null
+}
+
+export interface ShippingRegistryFilters {
+  order_type?: OrderType
+  delivery_status?: DeliveryStatus
+  manager?: number
+  delivery_destination?: DeliveryDestination
+  search?: string
+  ordering?: string
+}
+
+export interface ShippingRegistryStats {
+  total: number
+  pending: number
+  in_transit: number
+  delivered: number
+  complaints: number
+}
+

@@ -12,7 +12,6 @@ const InstallerTasks = () => {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { complaints, isLoading, error, fetchComplaints, filters, setFilters, clearFilters } = useComplaintsStore()
-  const [stats, setStats] = useState<any>({})
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
   const [excludeClosed, setExcludeClosed] = useState(true)
 
@@ -60,21 +59,7 @@ const InstallerTasks = () => {
     setFilters(urlFilters)
     setLocalFilters(urlFilters)
     fetchComplaints(urlFilters)
-    loadStats()
   }, [searchParams])
-
-  const loadStats = async () => {
-    try {
-      const response = await apiClient.get('/dashboard/stats/')
-      const statsData: any = {}
-      response.data.stats.forEach((stat: any) => {
-        statsData[stat.key] = stat.count
-      })
-      setStats(statsData)
-    } catch (error) {
-      console.error('Error loading stats:', error)
-    }
-  }
 
   const handleExcludeClosedChange = (checked: boolean) => {
     setExcludeClosed(checked)
@@ -160,7 +145,6 @@ const InstallerTasks = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">В работе</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.in_work || 0}</p>
               </div>
             </div>
           </Link>
@@ -179,7 +163,6 @@ const InstallerTasks = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-white">Нужно запланировать</p>
-                <p className="text-2xl font-bold text-white">{stats.needs_planning || 0}</p>
               </div>
             </div>
           </Link>
@@ -198,7 +181,6 @@ const InstallerTasks = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Запланировано</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.planned || 0}</p>
               </div>
             </div>
           </Link>
@@ -217,7 +199,6 @@ const InstallerTasks = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Завершено</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.completed || 0}</p>
               </div>
             </div>
           </Link>

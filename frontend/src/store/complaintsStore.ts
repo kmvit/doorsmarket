@@ -38,16 +38,19 @@ export const useComplaintsStore = create<ComplaintsStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const currentFilters = filters || get().filters
+      console.log('[ComplaintsStore] Загрузка рекламаций с фильтрами:', currentFilters)
       const response = await complaintsAPI.getList(currentFilters)
       // DRF возвращает {results: [], count: number} или просто массив
       const complaintsList = Array.isArray(response) ? response : (response.results || [])
       const total = Array.isArray(response) ? response.length : (response.count || 0)
+      console.log(`[ComplaintsStore] Загружено ${complaintsList.length} рекламаций, всего: ${total}`)
       set({
         complaints: complaintsList,
         totalCount: total,
         isLoading: false,
       })
     } catch (error: any) {
+      console.error('[ComplaintsStore] Ошибка загрузки рекламаций:', error)
       set({
         error: error.response?.data?.detail || 'Ошибка загрузки рекламаций',
         isLoading: false,

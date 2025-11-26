@@ -976,30 +976,76 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ShippingRegistryViewSet(viewsets.ModelViewSet):
-    """ViewSet для реестра отгрузки"""
+    """
+    ViewSet для реестра отгрузки
+    
+    list: Список записей реестра с фильтрацией по ролям
+    retrieve: Детальная информация о записи
+    create: Создание новой записи в реестре
+    update: Обновление записи
+    partial_update: Частичное обновление записи
+    stats: Статистика по реестру
+    """
     serializer_class = ShippingRegistrySerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['order_number', 'client_name', 'address', 'contact_person']
-    ordering_fields = ['created_at', 'planned_shipping_date']
+    search_fields = ['order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
+    ordering_fields = ['created_at', 'planned_shipping_date', 'delivery_status']
     ordering = ['-created_at']
     filterset_fields = ['order_type', 'delivery_status', 'manager', 'delivery_destination']
     
     def get_queryset(self):
-        """Фильтрация по ролям"""
+        """
+        Фильтрация по ролям согласно логике из views.py
+        
+        Администратор, Руководитель, Менеджер и СМ видят все записи
+        ОР видит все записи
+        """
         user = self.request.user
+        
+        # Проверка прав доступа согласно @role_required из views.py
+        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader']
+        if user.role not in allowed_roles:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("У вас нет прав для доступа к реестру на отгрузку")
+        
         queryset = ShippingRegistry.objects.select_related(
             'complaint',
             'manager'
         )
         
-        if user.role == 'manager':
-            queryset = queryset.filter(manager=user)
-        elif user.role == 'leader':
-            if user.city:
-                queryset = queryset.filter(manager__city=user.city)
+        # Фильтрация по городам
+        # Администратор, Руководитель, Менеджер и СМ видят все
+        if user.role in ['admin', 'leader', 'manager', 'service_manager']:
+            pass  # Без фильтрации
+        # ОР видит все
+        # complaint_department - без дополнительной фильтрации
         
         return queryset
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Статистика по реестру на отгрузку
+        
+        Возвращает:
+        - total: Всего записей
+        - pending: Ожидает отгрузки
+        - in_transit: В пути
+        - delivered: Доставлено
+        - complaints: Рекламации
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        stats = {
+            'total': queryset.count(),
+            'pending': queryset.filter(delivery_status='pending').count(),
+            'in_transit': queryset.filter(delivery_status='in_transit').count(),
+            'delivered': queryset.filter(delivery_status='delivered').count(),
+            'complaints': queryset.filter(order_type='complaint').count(),
+        }
+        
+        return Response(stats)
 
 
 class ProductionSiteViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1104,7 +1150,6 @@ class DashboardStatsView(APIView):
             # Формируем URL для фронтенда
             if user.role == 'installer':
                 # Для монтажника используем страницу задач с параметром filter
-                # В Django это projects:installer_planning, во фронтенде /installer/planning
                 if url_param:
                     url = f'/installer/planning?filter={url_param}'
                 else:
@@ -1122,7 +1167,7 @@ class DashboardStatsView(APIView):
             })
         
         if user.role == 'installer':
-            # Базовый фильтр для монтажника (как в Django views)
+            # Базовый фильтр для монтажника
             installer_base_filter = Q(installer_assigned=user) | Q(initiator=user)
             
             add_stat(
@@ -1150,15 +1195,13 @@ class DashboardStatsView(APIView):
                 url_param='completed'
             )
         elif user.role == 'manager':
-            # Для менеджера применяем фильтр по городу (как в Django views)
+            # Для менеджера применяем фильтр по городу
             user_city = getattr(user, 'city', None)
             if user_city:
                 city_filter = Q(initiator__city=user_city)
             else:
                 city_filter = Q()
             
-            # Базовый фильтр для менеджера: все рекламации из его города, исключая закрытые
-            # (как в Django views - статистика считается после всех фильтров)
             base_filter = city_filter & ~Q(status__in=['closed', 'completed', 'resolved'])
             
             add_stat(
@@ -1190,17 +1233,14 @@ class DashboardStatsView(APIView):
             )
         elif user.role == 'service_manager':
             # Для СМ применяем фильтр: рекламации из его города ИЛИ созданные им
-            # (как в Django views и в get_queryset)
             user_city = getattr(user, 'city', None)
             if user_city:
                 city_filter = Q(initiator__city=user_city)
                 personal_filter = Q(initiator=user)
                 base_filter = city_filter | personal_filter
             else:
-                # Если нет города, видит только созданные им
                 base_filter = Q(initiator=user)
             
-            # Исключаем закрытые для статистики
             base_filter_active = base_filter & ~Q(status__in=['closed', 'completed', 'resolved'])
             
             add_stat(
@@ -1262,3 +1302,5 @@ class DashboardStatsView(APIView):
             )
         
         return Response({'stats': stats})
+
+
