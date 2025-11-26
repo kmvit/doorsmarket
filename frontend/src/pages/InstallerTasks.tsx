@@ -2,16 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../store/complaintsStore'
 import { useAuthStore } from '../store/authStore'
-import { complaintsAPI } from '../api/complaints'
 import { ComplaintFilters } from '../types/complaints'
-import apiClient from '../api/client'
 import Button from '../components/common/Button'
 
 const InstallerTasks = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user } = useAuthStore()
-  const { complaints, isLoading, error, fetchComplaints, filters, setFilters, clearFilters } = useComplaintsStore()
+  const { complaints, isLoading, fetchComplaints, filters, setFilters } = useComplaintsStore()
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
   const [excludeClosed, setExcludeClosed] = useState(true)
 
@@ -61,13 +58,6 @@ const InstallerTasks = () => {
     fetchComplaints(urlFilters)
   }, [searchParams])
 
-  const handleExcludeClosedChange = (checked: boolean) => {
-    setExcludeClosed(checked)
-    const newFilters = { ...localFilters, exclude_closed: checked }
-    setFilters(newFilters)
-    setLocalFilters(newFilters)
-    fetchComplaints(newFilters)
-  }
 
   const getStatusBadge = (complaint: any) => {
     const status = complaint.status

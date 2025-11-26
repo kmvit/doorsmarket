@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
-import { complaintsAPI } from '../../api/complaints'
 import { ComplaintFilters } from '../../types/complaints'
 import { referencesAPI } from '../../api/references'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
@@ -15,7 +14,6 @@ const ComplaintList = () => {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { complaints, isLoading, error, fetchComplaints, filters, setFilters, clearFilters } = useComplaintsStore()
-  const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [cities, setCities] = useState<City[]>([])
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)

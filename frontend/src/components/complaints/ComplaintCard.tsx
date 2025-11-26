@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { ComplaintListItem } from '../../types/complaints'
-import { ROLE_DISPLAY } from '../../utils/constants'
 
 interface ComplaintCardProps {
   complaint: ComplaintListItem

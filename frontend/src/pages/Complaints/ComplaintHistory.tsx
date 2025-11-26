@@ -138,7 +138,7 @@ const ComplaintHistory = () => {
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-500 via-blue-500 to-gray-300"></div>
 
             <div className="space-y-6">
-              {sortedComments.map((comment, index) => (
+              {sortedComments.map((comment) => (
                 <div key={comment.id} className="relative pl-20 animate-fadeIn">
                   {/* Иконка события */}
                   <div className="absolute left-0 flex items-center justify-center">

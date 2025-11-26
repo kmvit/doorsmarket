@@ -7,7 +7,6 @@ import { referencesAPI } from '../../api/references'
 import { User } from '../../types/auth'
 import Button from '../../components/common/Button'
 import { ROLE_DISPLAY } from '../../utils/constants'
-import AttachmentList from '../../components/complaints/AttachmentList'
 import AttachmentUpload from '../../components/complaints/AttachmentUpload'
 
 const ComplaintDetail = () => {
@@ -24,7 +23,6 @@ const ComplaintDetail = () => {
   })
   const [isUpdatingContact, setIsUpdatingContact] = useState(false)
   const [installers, setInstallers] = useState<User[]>([])
-  const [managers, setManagers] = useState<User[]>([])
   const [showForms, setShowForms] = useState<{
     planInstallation?: boolean
     changeInstaller?: boolean
@@ -52,12 +50,8 @@ const ComplaintDetail = () => {
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const [installersData, managersData] = await Promise.all([
-          referencesAPI.getUsersByRole('installer'),
-          referencesAPI.getUsersByRole('manager'),
-        ])
+        const installersData = await referencesAPI.getUsersByRole('installer')
         setInstallers(installersData || [])
-        setManagers(managersData || [])
       } catch (error) {
         console.error('Ошибка загрузки пользователей:', error)
       }
@@ -147,10 +141,6 @@ const ComplaintDetail = () => {
     user.role === 'leader'
   )
 
-  const canProcess = user && (
-    user.role === 'service_manager' ||
-    user.role === 'admin'
-  )
 
   const canEditContact = user && (
     user.role === 'service_manager' ||
@@ -181,7 +171,7 @@ const ComplaintDetail = () => {
     }
   }
 
-  const handleAction = async (action: string, data?: any) => {
+  const handleAction = async (action: string) => {
     if (!id) return
 
     setIsProcessing(true)

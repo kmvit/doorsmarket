@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { complaintsAPI } from '../api/complaints'
 import { ComplaintListItem } from '../types/complaints'
 import Button from '../components/common/Button'
