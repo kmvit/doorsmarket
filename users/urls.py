@@ -2,13 +2,14 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import (
     # API Views
+    PushSubscribeView,
+    PushUnsubscribeView,
     RegisterView,
     UserDetailView,
     ChangePasswordView,
     LogoutView,
     CityListView,
     UserListView,
-    PushSubscribeView,
     PushUnsubscribeView,
     # Web Views
     WebLoginView,
