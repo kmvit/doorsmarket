@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import Header from './Header'
 import OfflineIndicator from '../common/OfflineIndicator'
+import InstallPrompt from '../common/InstallPrompt'
 
 interface LayoutProps {
   children: ReactNode
@@ -17,6 +18,7 @@ const Layout = ({ children }: LayoutProps) => {
         <p>&copy; 2025 Marketing Doors. Все права защищены.</p>
       </footer>
       <OfflineIndicator />
+      <InstallPrompt />
     </div>
   )
 }

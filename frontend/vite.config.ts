@@ -12,13 +12,15 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'icon-192x192.png', 'icon-512x512.png'],
       manifest: {
         name: 'Marketing Doors',
-        short_name: 'MD',
-        description: 'Система управления рекламациями',
+        short_name: 'Marketing Doors',
+        description: 'Система управления рекламациями Marketing Doors',
         theme_color: '#0ea5e9',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: '/',
+        scope: '/',
+        id: '/',
         icons: [
           {
             src: '/icon-192x192.png',
