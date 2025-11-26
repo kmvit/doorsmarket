@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../store/complaintsStore'
-import { useAuthStore } from '../store/authStore'
 import { ComplaintFilters } from '../types/complaints'
 import Button from '../components/common/Button'
 
@@ -9,7 +8,6 @@ const InstallerTasks = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { complaints, isLoading, fetchComplaints, filters, setFilters } = useComplaintsStore()
-  const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
   const [excludeClosed, setExcludeClosed] = useState(true)
 
   useEffect(() => {
@@ -54,7 +52,6 @@ const InstallerTasks = () => {
     
     setExcludeClosed(urlFilters.exclude_closed || false)
     setFilters(urlFilters)
-    setLocalFilters(urlFilters)
     fetchComplaints(urlFilters)
   }, [searchParams])
 

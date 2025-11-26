@@ -4,7 +4,7 @@ import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
 import { ComplaintFilters } from '../../types/complaints'
 import { referencesAPI } from '../../api/references'
-import { ProductionSite, ComplaintReason } from '../../types/complaints'
+import { ComplaintReason } from '../../types/complaints'
 import { City } from '../../types/auth'
 import apiClient from '../../api/client'
 import Button from '../../components/common/Button'
@@ -95,7 +95,6 @@ const ComplaintList = () => {
   const loadReferences = async () => {
     try {
       const promises: Promise<any>[] = [
-        referencesAPI.getProductionSites(),
         referencesAPI.getComplaintReasons(),
       ]
       
@@ -105,10 +104,9 @@ const ComplaintList = () => {
       }
       
       const results = await Promise.all(promises)
-      setProductionSites(results[0])
-      setReasons(results[1])
+      setReasons(results[0])
       if (user?.role === 'admin' || user?.role === 'complaint_department') {
-        setCities(results[2] || [])
+        setCities(results[1] || [])
       }
     } catch (error) {
       console.error('Error loading references:', error)
