@@ -630,6 +630,7 @@ class Complaint(models.Model):
                 body=message,
                 url=f'/complaints/{self.id}' if self.id else '/notifications',
             )
+            logger.info('Push отправлен пользователю %s для рекламации #%s', recipient.username, self.id)
         except Exception as exc:
             logger.error(
                 'Ошибка отправки push-уведомления пользователю %s: %s',
