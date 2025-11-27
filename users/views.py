@@ -84,28 +84,28 @@ class PushSubscribeView(APIView):
         logger = logging.getLogger(__name__)
         
         try:
-        serializer = PushSubscriptionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        keys = data['keys']
+            serializer = PushSubscriptionSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            keys = data['keys']
 
             logger.info(f'Регистрация push-подписки для пользователя {request.user.username}, endpoint: {data["endpoint"][:50]}...')
 
             try:
                 subscription, created = PushSubscription.objects.update_or_create(
-            user=request.user,
-            endpoint=data['endpoint'],
-            defaults={
-                'p256dh': keys['p256dh'],
-                'auth': keys['auth'],
-                'is_active': True,
-            }
-        )
-        # Деактивируем остальные подписки пользователя
-        PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
+                    user=request.user,
+                    endpoint=data['endpoint'],
+                    defaults={
+                        'p256dh': keys['p256dh'],
+                        'auth': keys['auth'],
+                        'is_active': True,
+                    }
+                )
+                # Деактивируем остальные подписки пользователя
+                PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
 
                 logger.info(f'Push-подписка {"создана" if created else "обновлена"} для пользователя {request.user.username}, ID: {subscription.id}')
-        return Response(status=status.HTTP_204_NO_CONTENT)
+                return Response(status=status.HTTP_204_NO_CONTENT)
             except Exception as e:
                 logger.error(f'Ошибка при сохранении push-подписки в БД: {e}', exc_info=True)
                 return Response(
