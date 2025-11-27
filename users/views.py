@@ -88,7 +88,7 @@ class PushSubscribeView(APIView):
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
             keys = data['keys']
-
+            
             logger.info(f'Регистрация push-подписки для пользователя {request.user.username}, endpoint: {data["endpoint"][:50]}...')
 
             try:
@@ -103,7 +103,7 @@ class PushSubscribeView(APIView):
                 )
                 # Деактивируем остальные подписки пользователя
                 PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
-
+                
                 logger.info(f'Push-подписка {"создана" if created else "обновлена"} для пользователя {request.user.username}, ID: {subscription.id}')
                 return Response(status=status.HTTP_204_NO_CONTENT)
             except Exception as e:

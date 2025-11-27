@@ -61,37 +61,87 @@ self.addEventListener('push', (event: PushEvent) => {
   let notificationData = { ...defaultNotification }
 
   if (event.data) {
-    const rawText = event.data.text()
-    let parsedData: any | null = null
+    // Читаем данные из push-события
+    const processData = async () => {
+      let rawText: string | null = null
+      let parsedData: any | null = null
 
-    if (rawText) {
       try {
-        parsedData = JSON.parse(rawText)
-      } catch {
-        parsedData = null
+        // Сначала пытаемся прочитать как текст
+        rawText = await event.data!.text()
+        
+        if (rawText) {
+          // Пытаемся распарсить как JSON
+          try {
+            parsedData = JSON.parse(rawText)
+          } catch {
+            // Если не JSON, оставляем parsedData = null, используем rawText как есть
+            parsedData = null
+          }
+        }
+      } catch (error) {
+        console.error('[Service Worker] Ошибка чтения данных push-уведомления:', error)
       }
+
+      // Если данные успешно распарсены как JSON объект
+      if (parsedData && typeof parsedData === 'object') {
+        notificationData = {
+          ...notificationData,
+          title: parsedData.title || notificationData.title,
+          body: parsedData.message || parsedData.body || notificationData.body,
+          icon: parsedData.icon || notificationData.icon,
+          badge: parsedData.badge || notificationData.badge,
+          tag: parsedData.tag || `notification-${parsedData.id || Date.now()}`,
+          data: {
+            ...parsedData,
+            url: parsedData.url || '/notifications',
+          },
+        }
+      } else if (rawText) {
+        // Если это просто текст (не JSON)
+        notificationData = {
+          ...notificationData,
+          body: rawText,
+        }
+      }
+
+      const notificationOptions: NotificationOptions = {
+        body: notificationData.body,
+        icon: notificationData.icon,
+        badge: notificationData.badge,
+        tag: notificationData.tag,
+        data: notificationData.data,
+        requireInteraction: false,
+      }
+
+      ;(notificationOptions as any).actions = [
+        { action: 'open', title: 'Открыть' },
+        { action: 'close', title: 'Закрыть' },
+      ]
+
+      return self.registration.showNotification(notificationData.title, notificationOptions)
     }
 
-    if (parsedData && typeof parsedData === 'object') {
-      notificationData = {
-        ...notificationData,
-        title: parsedData.title || notificationData.title,
-        body: parsedData.message || parsedData.body || notificationData.body,
-        icon: parsedData.icon || notificationData.icon,
-        badge: parsedData.badge || notificationData.badge,
-        tag: parsedData.tag || `notification-${parsedData.id || Date.now()}`,
-        data: {
-          ...parsedData,
-          url: parsedData.url || '/notifications',
-        },
-      }
-    } else if (rawText) {
-      notificationData = {
-        ...notificationData,
-        body: rawText,
-      }
-    }
+    event.waitUntil(processData())
+    return
   }
+
+  // Если нет данных, показываем уведомление с дефолтными значениями
+  const notificationOptions: NotificationOptions = {
+    body: notificationData.body,
+    icon: notificationData.icon,
+    badge: notificationData.badge,
+    tag: notificationData.tag,
+    data: notificationData.data,
+    requireInteraction: false,
+  }
+
+  ;(notificationOptions as any).actions = [
+    { action: 'open', title: 'Открыть' },
+    { action: 'close', title: 'Закрыть' },
+  ]
+
+  event.waitUntil(self.registration.showNotification(notificationData.title, notificationOptions))
 
   const notificationOptions: NotificationOptions = {
     body: notificationData.body,
