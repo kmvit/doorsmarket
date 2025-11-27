@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { User, LoginResponse } from '../types/auth'
 import { authAPI } from '../api/auth'
 import { resetRedirectFlag } from '../api/client'
+import { pushNotificationService } from '../services/push'
 
 interface AuthStore {
   user: User | null
@@ -109,7 +110,7 @@ export const useAuthStore = create<AuthStore>()(
       logout: async () => {
         try {
           // Отписываемся от push-уведомлений при выходе
-          await pushNotificationService.unsubscribe().catch((error) => {
+          await pushNotificationService.unsubscribe().catch((error: unknown) => {
             console.warn('Не удалось отписаться от push-уведомлений:', error)
           })
           await authAPI.logout()
