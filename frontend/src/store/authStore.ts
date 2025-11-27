@@ -35,6 +35,7 @@ export const useAuthStore = create<AuthStore>()(
       login: async (username: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
+          console.log('[Auth] Начало процесса входа...')
           const response: LoginResponse = await authAPI.login(username, password)
           
           // Сначала сохраняем токены в localStorage, чтобы они были доступны для последующих запросов
@@ -43,17 +44,21 @@ export const useAuthStore = create<AuthStore>()(
           
           // Теперь получаем информацию о пользователе (токен уже в заголовках)
           const user = response.user || await authAPI.getMe()
+          console.log('[Auth] Вход успешен, пользователь:', user.username)
           
           resetRedirectFlag() // Сбрасываем флаг редиректа при успешной авторизации
           // Очищаем флаги ошибки авторизации для уведомлений
           sessionStorage.removeItem('notification_auth_error')
           sessionStorage.removeItem('notification_token_expired')
+          
+          // Устанавливаем состояние АТОМАРНО, чтобы избежать гонок условий
           set({
             user,
             accessToken: response.access,
             refreshToken: response.refresh,
             isAuthenticated: true,
             isLoading: false,
+            error: null,
           })
           
           // Подписываемся на push-уведомления в фоне (не блокируем процесс входа)
@@ -61,9 +66,11 @@ export const useAuthStore = create<AuthStore>()(
             console.warn('Не удалось подписаться на push-уведомления:', error)
           })
         } catch (error: any) {
+          console.error('[Auth] Ошибка входа:', error)
           set({
             error: error.response?.data?.detail || 'Ошибка входа',
             isLoading: false,
+            isAuthenticated: false,
           })
           throw error
         }
@@ -141,26 +148,49 @@ export const useAuthStore = create<AuthStore>()(
 
       checkAuth: async () => {
         const token = localStorage.getItem('access_token')
-        if (token) {
-          set({ isLoading: true })
-          try {
-            const user = await authAPI.getMe()
-            resetRedirectFlag() // Сбрасываем флаг редиректа при успешной проверке
-            // Очищаем флаг ошибки авторизации для уведомлений
-            sessionStorage.removeItem('notification_auth_error')
-            set({
-              user,
-              accessToken: token,
-              refreshToken: localStorage.getItem('refresh_token'),
-              isAuthenticated: true,
-              isLoading: false,
-            })
-            
-            // Подписываемся на push-уведомления в фоне (если пользователь уже авторизован)
-            pushNotificationService.subscribe().catch((error) => {
-              console.warn('Не удалось подписаться на push-уведомления:', error)
-            })
-          } catch (error) {
+        if (!token) {
+          // Если нет токена, убеждаемся, что состояние чистое
+          set({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+          })
+          return
+        }
+
+        // Если уже загружаем или проверяем, не запускаем повторную проверку
+        const currentState = useAuthStore.getState()
+        if (currentState.isLoading) {
+          return
+        }
+
+        set({ isLoading: true })
+        try {
+          console.log('[Auth] Проверка аутентификации...')
+          const user = await authAPI.getMe()
+          console.log('[Auth] Проверка успешна, пользователь:', user.username)
+          resetRedirectFlag() // Сбрасываем флаг редиректа при успешной проверке
+          // Очищаем флаг ошибки авторизации для уведомлений
+          sessionStorage.removeItem('notification_auth_error')
+          sessionStorage.removeItem('notification_token_expired')
+          set({
+            user,
+            accessToken: token,
+            refreshToken: localStorage.getItem('refresh_token'),
+            isAuthenticated: true,
+            isLoading: false,
+          })
+          
+          // Подписываемся на push-уведомления в фоне (если пользователь уже авторизован)
+          pushNotificationService.subscribe().catch((error) => {
+            console.warn('Не удалось подписаться на push-уведомления:', error)
+          })
+        } catch (error: any) {
+          console.error('[Auth] Ошибка проверки аутентификации:', error)
+          // Очищаем только если это реальная ошибка авторизации
+          if (error.response?.status === 401 || error.message?.includes('авторизация')) {
             set({
               user: null,
               accessToken: null,
@@ -170,6 +200,9 @@ export const useAuthStore = create<AuthStore>()(
             })
             localStorage.removeItem('access_token')
             localStorage.removeItem('refresh_token')
+          } else {
+            // Если это другая ошибка (сеть и т.д.), не сбрасываем состояние
+            set({ isLoading: false })
           }
         }
       },

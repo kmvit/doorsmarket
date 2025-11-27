@@ -13,16 +13,23 @@ initOfflineDB().then(() => {
 
 // Проверка аутентификации при загрузке
 const checkInitialAuth = async () => {
-  const { checkAuth } = useAuthStore.getState()
-  await checkAuth()
+  const token = localStorage.getItem('access_token')
+  if (token) {
+    const { checkAuth } = useAuthStore.getState()
+    // Проверяем только если есть токен, но не блокируем рендеринг
+    checkAuth().catch((error) => {
+      console.warn('[Main] Ошибка при начальной проверке аутентификации:', error)
+    })
+  }
 }
 
-// Выполняем проверку и рендерим приложение
-checkInitialAuth().finally(() => {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  )
-})
+// Рендерим приложение сразу, проверка аутентификации идет параллельно
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+
+// Запускаем проверку аутентификации после рендера
+checkInitialAuth()
 

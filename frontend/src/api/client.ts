@@ -47,13 +47,20 @@ apiClient.interceptors.request.use(
 )
 
 // Функция для безопасного перенаправления на логин
-const redirectToLogin = () => {
-  if (isRedirecting) {
+const redirectToLogin = (skipCheck?: boolean) => {
+  if (isRedirecting && !skipCheck) {
     return // Уже перенаправляем, не делаем это снова
   }
   
   // Проверяем, что мы не на странице логина
   if (window.location.pathname === '/login') {
+    return
+  }
+  
+  // Проверяем, не происходит ли push-подписка (по флагу в sessionStorage)
+  const isPushInProgress = sessionStorage.getItem('push_subscribe_in_progress') === 'true'
+  if (isPushInProgress && !skipCheck) {
+    console.warn('[API] Редирект заблокирован - выполняется push-подписка')
     return
   }
   
@@ -80,8 +87,12 @@ apiClient.interceptors.response.use(
     }
     
     // Проверяем, что ответ - это JSON, а не HTML
-    if (typeof response.data === 'string' && response.data.trim().startsWith('<!DOCTYPE')) {
+    // Исключаем запросы к push-subscribe и push-unsubscribe из редиректа
+    const url = response.config?.url || ''
+    const isPushRequest = url.includes('/push-subscribe') || url.includes('/push-unsubscribe') || url.includes('/vapid-public-key')
+    if (typeof response.data === 'string' && response.data.trim().startsWith('<!DOCTYPE') && !isPushRequest) {
       // Получен HTML вместо JSON - вероятно, перенаправление на страницу логина
+      console.warn('[API] Получен HTML ответ для:', url)
       redirectToLogin()
       return Promise.reject(new Error('Получен HTML ответ вместо JSON. Требуется авторизация.'))
     }
@@ -153,17 +164,20 @@ apiClient.interceptors.response.use(
         // Очищаем токены и редиректим на логин
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-        // Для запросов к notifications просто возвращаем ошибку, не редиректим
-        if (originalRequest.url?.includes('/notifications/')) {
+        // Для запросов к notifications и push просто возвращаем ошибку, не редиректим
+        const url = originalRequest.url || ''
+        const isProtectedRequest = url.includes('/notifications/') || url.includes('/push-subscribe') || url.includes('/push-unsubscribe') || url.includes('/vapid-public-key')
+        if (isProtectedRequest) {
+          console.warn('[API] Ошибка авторизации для защищенного запроса (без редиректа):', url)
           return Promise.reject(new Error('Требуется авторизация'))
         }
         redirectToLogin()
         return Promise.reject(new Error('Требуется авторизация'))
       }
 
-      // Для уведомлений - проверяем, не было ли уже попытки обновления токена
-      // Используем отдельный флаг для предотвращения бесконечного цикла
-      const isNotificationRequest = originalRequest.url?.includes('/notifications/')
+        // Для уведомлений и push подписки - проверяем, не было ли уже попытки обновления токена
+        // Используем отдельный флаг для предотвращения бесконечного цикла
+        const isNotificationRequest = originalRequest.url?.includes('/notifications/') || originalRequest.url?.includes('/push-subscribe') || originalRequest.url?.includes('/push-unsubscribe')
       const notificationRetryKey = `notification_retry_${originalRequest.url}`
       const notificationRetryCount = parseInt(sessionStorage.getItem(notificationRetryKey) || '0', 10)
       
@@ -237,7 +251,7 @@ apiClient.interceptors.response.use(
           localStorage.removeItem('access_token')
           localStorage.removeItem('refresh_token')
           
-          // Для уведомлений устанавливаем флаг, чтобы полностью прекратить запросы
+          // Для уведомлений и push устанавливаем флаг, чтобы полностью прекратить запросы
           if (isNotificationRequest) {
             sessionStorage.setItem('notification_auth_error', 'true')
             sessionStorage.setItem('notification_token_expired', 'true')
@@ -260,9 +274,9 @@ apiClient.interceptors.response.use(
       }
     }
     
-    // Если это повторный запрос к уведомлениям после обновления токена и снова 401
+    // Если это повторный запрос к уведомлениям или push после обновления токена и снова 401
     // Просто возвращаем ошибку, не пытаемся обновлять токен снова
-    if (error.response?.status === 401 && originalRequest._retry && originalRequest.url?.includes('/notifications/')) {
+    if (error.response?.status === 401 && originalRequest._retry && (originalRequest.url?.includes('/notifications/') || originalRequest.url?.includes('/push-subscribe') || originalRequest.url?.includes('/push-unsubscribe'))) {
       const notificationRetryKey = `notification_retry_${originalRequest.url}`
       sessionStorage.removeItem(notificationRetryKey)
       console.warn('Уведомления: запрос с обновленным токеном все еще возвращает 401, прекращаем попытки')

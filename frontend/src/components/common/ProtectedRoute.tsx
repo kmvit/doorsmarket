@@ -9,6 +9,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore()
   const hasCheckedAuth = useRef(false)
+  const isChecking = useRef(false)
 
   useEffect(() => {
     // Проверяем наличие токена
@@ -16,18 +17,30 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     
     // Если нет токена, сразу не авторизован
     if (!token) {
+      hasCheckedAuth.current = true
       return
     }
 
-    // Если уже авторизован, не проверяем
+    // Если уже авторизован, не проверяем повторно
     if (isAuthenticated) {
+      hasCheckedAuth.current = true
+      isChecking.current = false
+      return
+    }
+
+    // Если уже проверяем, не запускаем еще одну проверку
+    if (isChecking.current || isLoading) {
       return
     }
 
     // Если не авторизован и еще не проверяли - проверяем
-    if (!hasCheckedAuth.current && !isLoading) {
+    if (!hasCheckedAuth.current) {
       hasCheckedAuth.current = true
-      checkAuth()
+      isChecking.current = true
+      console.log('[ProtectedRoute] Вызываем checkAuth()')
+      checkAuth().finally(() => {
+        isChecking.current = false
+      })
     }
   }, [isAuthenticated, isLoading, checkAuth])
 

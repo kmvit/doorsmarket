@@ -18,25 +18,31 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      // Проверяем наличие токена перед запросом
+      // Проверяем наличие токена и аутентификации
       const token = localStorage.getItem('access_token')
-      if (!token) {
+      if (!token || !user) {
+        console.log('[Dashboard] Нет токена или пользователя, пропускаем загрузку статистики')
         setIsLoading(false)
         return
       }
 
+      console.log('[Dashboard] Загружаем статистику...')
       try {
         const response = await apiClient.get('/dashboard/stats/')
+        console.log('[Dashboard] Статистика получена:', response.data)
         if (response.data && response.data.stats && Array.isArray(response.data.stats)) {
-        setStats(response.data.stats)
+          setStats(response.data.stats)
+          console.log('[Dashboard] Установлено статистик:', response.data.stats.length)
         } else {
+          console.warn('[Dashboard] Неверный формат данных статистики:', response.data)
           setStats([])
         }
       } catch (error: any) {
-        console.error('Error fetching dashboard stats:', error)
+        console.error('[Dashboard] Ошибка загрузки статистики:', error)
         setStats([])
         // Если ошибка авторизации, не пытаемся загружать снова
         if (error.response?.status === 401 || error.message?.includes('авторизация') || error.message?.includes('401')) {
+          console.error('[Dashboard] Ошибка авторизации при загрузке статистики')
           return
         }
       } finally {
@@ -44,8 +50,11 @@ const Dashboard = () => {
       }
     }
 
-    fetchStats()
-  }, [])
+    // Загружаем статистику только если пользователь авторизован
+    if (user) {
+      fetchStats()
+    }
+  }, [user])
 
   const getRoleDisplay = (role: string) => {
     const roles: Record<string, string> = {
@@ -137,8 +146,8 @@ const Dashboard = () => {
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Быстрые действия</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <a
-              href="/complaints"
+            <Link
+              to="/complaints"
               className="flex items-center p-4 bg-gradient-to-r from-primary-50 to-cyan-50 rounded-xl hover:shadow-lg transition-all duration-200 group"
             >
               <div className="flex-shrink-0">
@@ -152,10 +161,10 @@ const Dashboard = () => {
                 <p className="text-sm font-semibold text-gray-900">Список рекламаций</p>
                 <p className="text-xs text-gray-600">Просмотр всех заявок</p>
               </div>
-            </a>
+            </Link>
 
-            <a
-              href="/complaints/create"
+            <Link
+              to="/complaints/create"
               className="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl hover:shadow-lg transition-all duration-200 group"
             >
               <div className="flex-shrink-0">
@@ -169,7 +178,7 @@ const Dashboard = () => {
                 <p className="text-sm font-semibold text-gray-900">Создать рекламацию</p>
                 <p className="text-xs text-gray-600">Новая заявка</p>
               </div>
-            </a>
+            </Link>
           </div>
         </div>
       </div>

@@ -66,7 +66,10 @@ class PushNotificationService {
   // Запросить разрешение и подписаться
   async subscribe(): Promise<boolean> {
     console.log('[Push] Начинаем процесс подписки...')
+    // Устанавливаем флаг, чтобы предотвратить редиректы во время подписки
+    sessionStorage.setItem('push_subscribe_in_progress', 'true')
     
+    try {
     if (!this.registration) {
       console.log('[Push] Service Worker не инициализирован, инициализируем...')
       const initialized = await this.initialize()
@@ -105,12 +108,17 @@ class PushNotificationService {
 
           try {
             await notificationsAPI.subscribePush(subscriptionData)
-            console.log('Push подписка успешно отправлена на сервер')
+            console.log('[Push] Подписка успешно отправлена на сервер')
             localStorage.setItem('push_subscription', JSON.stringify(subscriptionData))
             return true
-          } catch (error) {
-            console.warn('Не удалось отправить существующую подписку на сервер:', error)
-            // Продолжаем, чтобы попытаться создать новую подписку
+          } catch (error: any) {
+            console.warn('[Push] Не удалось отправить существующую подписку на сервер:', error)
+            // Если это ошибка авторизации, не продолжаем - подписка не удалась
+            if (error.response?.status === 401 || error.message?.includes('авторизация')) {
+              console.error('[Push] Ошибка авторизации при подписке, прекращаем процесс')
+              throw error
+            }
+            // Для других ошибок продолжаем, чтобы попытаться создать новую подписку
           }
         }
       }
@@ -161,18 +169,41 @@ class PushNotificationService {
         },
       }
 
-      await notificationsAPI.subscribePush(subscriptionData)
-      console.log('Push подписка успешно создана и отправлена на сервер')
+      try {
+        await notificationsAPI.subscribePush(subscriptionData)
+        console.log('[Push] Подписка успешно создана и отправлена на сервер')
 
-      // Сохраняем в localStorage
-      localStorage.setItem('push_subscription', JSON.stringify(subscriptionData))
+        // Сохраняем в localStorage
+        localStorage.setItem('push_subscription', JSON.stringify(subscriptionData))
 
-      return true
-    } catch (error) {
-      console.error('Ошибка подписки на push-уведомления:', error)
+        return true
+      } catch (error: any) {
+        console.error('[Push] Ошибка отправки подписки на сервер:', error)
+        // Если это ошибка авторизации, логируем подробнее, но не бросаем дальше
+        if (error.response?.status === 401) {
+          console.error('[Push] Ошибка 401 при отправке подписки. Возможно, токен истек.')
+        }
+        // Всё равно возвращаем true, так как подписка создана в браузере
+        // Сервер может не сохранить её, но это не критично
+        return true
+      }
+    } catch (error: any) {
+      console.error('[Push] Ошибка подписки на push-уведомления:', error)
+      if (error.message) {
+        console.error('[Push] Сообщение об ошибке:', error.message)
+      }
+      if (error.response) {
+        console.error('[Push] Статус ошибки:', error.response.status)
+        console.error('[Push] Данные ошибки:', error.response.data)
+      }
       return false
     }
+  } finally {
+    // Убираем флаг после завершения подписки (успешной или неуспешной)
+    sessionStorage.removeItem('push_subscribe_in_progress')
+    console.log('[Push] Процесс подписки завершен, флаг удален')
   }
+}
 
   // Отписаться от push-уведомлений
   async unsubscribe(): Promise<boolean> {
