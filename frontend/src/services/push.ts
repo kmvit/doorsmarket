@@ -44,8 +44,29 @@ class PushNotificationService {
     }
 
     try {
-      // Регистрируем Service Worker
-      this.registration = await navigator.serviceWorker.ready
+      // Ищем существующую регистрацию
+      if (!this.registration) {
+        const existingRegistration = await navigator.serviceWorker.getRegistration('/')
+        if (existingRegistration) {
+          this.registration = existingRegistration
+          console.log('[Push] Найден существующий Service Worker:', existingRegistration.scope)
+        } else {
+          console.log('[Push] Регистрируем Service Worker для push-уведомлений...')
+          this.registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          console.log('[Push] Service Worker зарегистрирован:', this.registration.scope)
+        }
+      }
+
+      // Ждем готовности Service Worker
+      const readyRegistration = await navigator.serviceWorker.ready
+      if (readyRegistration) {
+        this.registration = readyRegistration
+      }
+
+      if (!this.registration) {
+        console.error('[Push] Service Worker не зарегистрирован, push недоступны')
+        return false
+      }
 
       // Проверяем существующую подписку
       this.subscription = await this.registration.pushManager.getSubscription()
