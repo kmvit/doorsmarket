@@ -254,9 +254,44 @@ class PushNotificationService {
     sessionStorage.setItem('push_subscribe_in_progress', 'true')
 
     try {
+      // Собираем данные о текущей подписке (для информирования сервера)
+      let subscriptionData: PushSubscriptionData | null = null
+
+      // Пытаемся получить данные из активной подписки браузера
+      if (this.subscription) {
+        try {
+          const p256dhKey = this.subscription.getKey('p256dh')
+          const authKey = this.subscription.getKey('auth')
+
+          if (p256dhKey && authKey) {
+            subscriptionData = {
+              endpoint: this.subscription.endpoint,
+              keys: {
+                p256dh: this.arrayBufferToBase64(p256dhKey),
+                auth: this.arrayBufferToBase64(authKey),
+              },
+            }
+          }
+        } catch (error) {
+          console.warn('[Push] Не удалось получить ключи активной подписки:', error)
+        }
+      }
+
+      // Если в браузере нет подписки, пробуем взять сохранённую из localStorage
+      if (!subscriptionData) {
+        const storedSubscription = localStorage.getItem('push_subscription')
+        if (storedSubscription) {
+          try {
+            subscriptionData = JSON.parse(storedSubscription) as PushSubscriptionData
+          } catch (error) {
+            console.warn('[Push] Не удалось разобрать сохранённую подписку из localStorage:', error)
+          }
+        }
+      }
+
       // Отписываемся на сервере (даже если нет подписки в браузере)
       try {
-        await notificationsAPI.unsubscribePush()
+        await notificationsAPI.unsubscribePush(subscriptionData || undefined)
         console.log('[Push] Отписка на сервере выполнена')
       } catch (error: any) {
         // Если ошибка 500 - не критично, продолжаем

@@ -101,11 +101,14 @@ class PushSubscribeView(APIView):
                         'is_active': True,
                     }
                 )
-                # Деактивируем остальные подписки пользователя
-                PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
-                
                 logger.info(f'Push-подписка {"создана" if created else "обновлена"} для пользователя {request.user.username}, ID: {subscription.id}')
-                return Response(status=status.HTTP_204_NO_CONTENT)
+                return Response(
+                    {
+                        'created': created,
+                        'subscription_id': subscription.id,
+                    },
+                    status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+                )
             except Exception as e:
                 logger.error(f'Ошибка при сохранении push-подписки в БД: {e}', exc_info=True)
                 return Response(
@@ -125,10 +128,24 @@ class PushUnsubscribeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        endpoint = request.data.get('endpoint')
+        keys = request.data.get('keys') or {}
+
+        if endpoint:
+            updated = PushSubscription.objects.filter(
+                user=request.user,
+                endpoint=endpoint,
+            ).update(is_active=False)
+            if updated:
+                return Response({'deactivated': updated}, status=status.HTTP_200_OK)
+            # Если конкретная подписка не найдена, не считаем это ошибкой
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # Если endpoint не передан, деактивируем все активные подписки пользователя
         updated = PushSubscription.objects.filter(user=request.user, is_active=True).update(is_active=False)
-        status_code = status.HTTP_200_OK if updated else status.HTTP_204_NO_CONTENT
-        body = {'deactivated': updated} if updated else None
-        return Response(body, status=status_code)
+        if updated:
+            return Response({'deactivated': updated, 'note': 'Все подписки пользователя деактивированы'}, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PushSubscriptionStatusView(APIView):

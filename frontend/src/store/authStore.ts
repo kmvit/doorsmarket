@@ -3,7 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { User, LoginResponse } from '../types/auth'
 import { authAPI } from '../api/auth'
 import { resetRedirectFlag } from '../api/client'
-import { pushNotificationService } from '../services/push'
 
 interface AuthStore {
   user: User | null
@@ -57,14 +56,11 @@ export const useAuthStore = create<AuthStore>()(
             accessToken: response.access,
             refreshToken: response.refresh,
             isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          })
-          
-          // Подписываемся на push-уведомления в фоне (не блокируем процесс входа)
-          pushNotificationService.subscribe().catch((error) => {
-            console.warn('Не удалось подписаться на push-уведомления:', error)
-          })
+          isLoading: false,
+          error: null,
+        })
+        
+        // НЕ подписываемся автоматически - пользователь должен сделать это вручную через кнопку
         } catch (error: any) {
           console.error('[Auth] Ошибка входа:', error)
           set({
@@ -97,13 +93,10 @@ export const useAuthStore = create<AuthStore>()(
             accessToken: response.access,
             refreshToken: response.refresh,
             isAuthenticated: true,
-            isLoading: false,
-          })
-          
-          // Подписываемся на push-уведомления в фоне (не блокируем процесс регистрации)
-          pushNotificationService.subscribe().catch((error) => {
-            console.warn('Не удалось подписаться на push-уведомления:', error)
-          })
+          isLoading: false,
+        })
+        
+        // НЕ подписываемся автоматически - пользователь должен сделать это вручную через кнопку
         } catch (error: any) {
           set({
             error: error.response?.data?.detail || 'Ошибка регистрации',

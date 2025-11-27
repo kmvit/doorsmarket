@@ -172,8 +172,14 @@ export const notificationsAPI = {
   },
 
   // Отписка от push уведомлений
-  unsubscribePush: async (): Promise<void> => {
-    await apiClient.post('/auth/push-unsubscribe/')
+  unsubscribePush: async (subscription?: PushSubscriptionData): Promise<void> => {
+    const payload = subscription
+      ? {
+          endpoint: subscription.endpoint,
+          keys: subscription.keys,
+        }
+      : {}
+    await apiClient.post('/auth/push-unsubscribe/', payload)
   },
 
   // Получить публичный VAPID ключ с сервера
