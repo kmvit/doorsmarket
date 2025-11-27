@@ -123,41 +123,24 @@ self.addEventListener('push', (event: PushEvent) => {
     }
 
     event.waitUntil(processData())
-    return
+  } else {
+    // Если нет данных, показываем уведомление с дефолтными значениями
+    const notificationOptions: NotificationOptions = {
+      body: notificationData.body,
+      icon: notificationData.icon,
+      badge: notificationData.badge,
+      tag: notificationData.tag,
+      data: notificationData.data,
+      requireInteraction: false,
+    }
+
+    ;(notificationOptions as any).actions = [
+      { action: 'open', title: 'Открыть' },
+      { action: 'close', title: 'Закрыть' },
+    ]
+
+    event.waitUntil(self.registration.showNotification(notificationData.title, notificationOptions))
   }
-
-  // Если нет данных, показываем уведомление с дефолтными значениями
-  const notificationOptions: NotificationOptions = {
-    body: notificationData.body,
-    icon: notificationData.icon,
-    badge: notificationData.badge,
-    tag: notificationData.tag,
-    data: notificationData.data,
-    requireInteraction: false,
-  }
-
-  ;(notificationOptions as any).actions = [
-    { action: 'open', title: 'Открыть' },
-    { action: 'close', title: 'Закрыть' },
-  ]
-
-  event.waitUntil(self.registration.showNotification(notificationData.title, notificationOptions))
-
-  const notificationOptions: NotificationOptions = {
-    body: notificationData.body,
-    icon: notificationData.icon,
-    badge: notificationData.badge,
-    tag: notificationData.tag,
-    data: notificationData.data,
-    requireInteraction: false,
-  }
-
-  ;(notificationOptions as any).actions = [
-    { action: 'open', title: 'Открыть' },
-    { action: 'close', title: 'Закрыть' },
-  ]
-
-  event.waitUntil(self.registration.showNotification(notificationData.title, notificationOptions))
 })
 
 self.addEventListener('notificationclick', (event: NotificationEvent) => {
