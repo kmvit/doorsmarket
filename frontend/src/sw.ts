@@ -61,25 +61,34 @@ self.addEventListener('push', (event: PushEvent) => {
   let notificationData = { ...defaultNotification }
 
   if (event.data) {
-    try {
-      const data = event.data.json()
+    const rawText = event.data.text()
+    let parsedData: any | null = null
+
+    if (rawText) {
+      try {
+        parsedData = JSON.parse(rawText)
+      } catch {
+        parsedData = null
+      }
+    }
+
+    if (parsedData && typeof parsedData === 'object') {
       notificationData = {
         ...notificationData,
-        title: data.title || notificationData.title,
-        body: data.message || data.body || notificationData.body,
-        icon: data.icon || notificationData.icon,
-        badge: data.badge || notificationData.badge,
-        tag: data.tag || `notification-${data.id || Date.now()}`,
+        title: parsedData.title || notificationData.title,
+        body: parsedData.message || parsedData.body || notificationData.body,
+        icon: parsedData.icon || notificationData.icon,
+        badge: parsedData.badge || notificationData.badge,
+        tag: parsedData.tag || `notification-${parsedData.id || Date.now()}`,
         data: {
-          ...data,
-          url: data.url || '/notifications',
+          ...parsedData,
+          url: parsedData.url || '/notifications',
         },
       }
-    } catch (error) {
-      console.error('[Service Worker] Ошибка парсинга данных push-уведомления:', error)
+    } else if (rawText) {
       notificationData = {
         ...notificationData,
-        body: event.data?.text() || notificationData.body,
+        body: rawText,
       }
     }
   }
