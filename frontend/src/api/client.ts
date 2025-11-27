@@ -177,7 +177,8 @@ apiClient.interceptors.response.use(
 
         // Для уведомлений и push подписки - проверяем, не было ли уже попытки обновления токена
         // Используем отдельный флаг для предотвращения бесконечного цикла
-        const isNotificationRequest = originalRequest.url?.includes('/notifications/') || originalRequest.url?.includes('/push-subscribe') || originalRequest.url?.includes('/push-unsubscribe')
+        const url = originalRequest.url || ''
+        const isNotificationRequest = url.includes('/notifications/') || url.includes('/push-subscribe') || url.includes('/push-unsubscribe') || url.includes('/push-status') || url.includes('/vapid-public-key')
       const notificationRetryKey = `notification_retry_${originalRequest.url}`
       const notificationRetryCount = parseInt(sessionStorage.getItem(notificationRetryKey) || '0', 10)
       
@@ -276,11 +277,20 @@ apiClient.interceptors.response.use(
     
     // Если это повторный запрос к уведомлениям или push после обновления токена и снова 401
     // Просто возвращаем ошибку, не пытаемся обновлять токен снова
-    if (error.response?.status === 401 && originalRequest._retry && (originalRequest.url?.includes('/notifications/') || originalRequest.url?.includes('/push-subscribe') || originalRequest.url?.includes('/push-unsubscribe'))) {
+    const url = originalRequest.url || ''
+    const isPushOrNotificationRequest = url.includes('/notifications/') || url.includes('/push-subscribe') || url.includes('/push-unsubscribe') || url.includes('/push-status') || url.includes('/vapid-public-key')
+    if (error.response?.status === 401 && originalRequest._retry && isPushOrNotificationRequest) {
       const notificationRetryKey = `notification_retry_${originalRequest.url}`
       sessionStorage.removeItem(notificationRetryKey)
       console.warn('Уведомления: запрос с обновленным токеном все еще возвращает 401, прекращаем попытки')
       return Promise.reject(new Error('Требуется авторизация'))
+    }
+
+    // Для серверных ошибок (500+) на push-запросах - логируем, но не редиректим
+    if (error.response?.status >= 500 && isPushOrNotificationRequest) {
+      console.error(`[API] Серверная ошибка ${error.response.status} для push/notification запроса:`, url, error.response?.data)
+      // Не редиректим, просто возвращаем ошибку
+      return Promise.reject(error)
     }
 
     return Promise.reject(error)

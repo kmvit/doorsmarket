@@ -31,7 +31,7 @@ const Dashboard = () => {
         const response = await apiClient.get('/dashboard/stats/')
         console.log('[Dashboard] Статистика получена:', response.data)
         if (response.data && response.data.stats && Array.isArray(response.data.stats)) {
-          setStats(response.data.stats)
+        setStats(response.data.stats)
           console.log('[Dashboard] Установлено статистик:', response.data.stats.length)
         } else {
           console.warn('[Dashboard] Неверный формат данных статистики:', response.data)
@@ -52,7 +52,7 @@ const Dashboard = () => {
 
     // Загружаем статистику только если пользователь авторизован
     if (user) {
-      fetchStats()
+    fetchStats()
     }
   }, [user])
 

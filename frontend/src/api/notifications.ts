@@ -186,5 +186,20 @@ export const notificationsAPI = {
       throw error
     }
   },
+
+  // Проверить статус push-подписки на сервере
+  getPushSubscriptionStatus: async (): Promise<{ has_subscription: boolean; count: number }> => {
+    try {
+      const response = await apiClient.get('/auth/push-status/')
+      return response.data
+    } catch (error: any) {
+      console.error('Ошибка проверки статуса push-подписки на сервере:', error)
+      // Если ошибка авторизации, считаем что подписки нет
+      if (error.response?.status === 401) {
+        return { has_subscription: false, count: 0 }
+      }
+      throw error
+    }
+  },
 }
 

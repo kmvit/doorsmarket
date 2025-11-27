@@ -4,6 +4,7 @@ from .views import (
     # API Views
     PushSubscribeView,
     PushUnsubscribeView,
+    PushSubscriptionStatusView,
     VapidPublicKeyView,
     RegisterView,
     UserDetailView,
@@ -38,6 +39,7 @@ urlpatterns = [
     path('auth/change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('auth/push-subscribe/', PushSubscribeView.as_view(), name='push_subscribe'),
     path('auth/push-unsubscribe/', PushUnsubscribeView.as_view(), name='push_unsubscribe'),
+    path('auth/push-status/', PushSubscriptionStatusView.as_view(), name='push_status'),
     path('auth/vapid-public-key/', VapidPublicKeyView.as_view(), name='vapid_public_key'),
     
     # Справочники

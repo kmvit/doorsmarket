@@ -113,12 +113,22 @@ class PushNotificationService {
             return true
           } catch (error: any) {
             console.warn('[Push] Не удалось отправить существующую подписку на сервер:', error)
-            // Если это ошибка авторизации, не продолжаем - подписка не удалась
-            if (error.response?.status === 401 || error.message?.includes('авторизация')) {
-              console.error('[Push] Ошибка авторизации при подписке, прекращаем процесс')
-              throw error
+            // Если это ошибка 500 - это проблема на сервере, не критично
+            if (error.response?.status === 500) {
+              console.error('[Push] Ошибка 500 на сервере при сохранении подписки. Подписка есть в браузере, но не сохранена на сервере.')
+              // Возвращаем true, так как подписка работает в браузере
+              // Можно попробовать сохранить позже
+              return true
             }
-            // Для других ошибок продолжаем, чтобы попытаться создать новую подписку
+            // Если это ошибка авторизации, не продолжаем создавать новую подписку
+            if (error.response?.status === 401 || error.message?.includes('авторизация')) {
+              console.error('[Push] Ошибка авторизации при сохранении существующей подписки. Подписка есть в браузере, но не сохранена на сервере.')
+              // Возвращаем false, чтобы показать пользователю, что подписка не полностью активна
+              return false
+            }
+            // Для других ошибок - подписка есть в браузере, возвращаем true
+            console.warn('[Push] Другая ошибка при сохранении на сервер, но подписка есть в браузере')
+            return true
           }
         }
       }
@@ -179,6 +189,13 @@ class PushNotificationService {
         return true
       } catch (error: any) {
         console.error('[Push] Ошибка отправки подписки на сервер:', error)
+        // Если это ошибка 500 - это проблема на сервере, подписка работает в браузере
+        if (error.response?.status === 500) {
+          console.error('[Push] Ошибка 500 на сервере. Подписка создана в браузере, но не сохранена на сервере.')
+          // Возвращаем true, так как подписка работает в браузере
+          // Пользователь может попробовать подписаться снова позже
+          return true
+        }
         // Если это ошибка авторизации, логируем подробнее, но не бросаем дальше
         if (error.response?.status === 401) {
           console.error('[Push] Ошибка 401 при отправке подписки. Возможно, токен истек.')
@@ -207,23 +224,50 @@ class PushNotificationService {
 
   // Отписаться от push-уведомлений
   async unsubscribe(): Promise<boolean> {
-    if (!this.subscription) {
-      return true
-    }
-
+    // Устанавливаем флаг, чтобы предотвратить редиректы во время отписки
+    sessionStorage.setItem('push_subscribe_in_progress', 'true')
+    
     try {
-      const unsubscribed = await this.subscription.unsubscribe()
-      if (unsubscribed) {
+      // Отписываемся на сервере (даже если нет подписки в браузере)
+      try {
         await notificationsAPI.unsubscribePush()
-        this.subscription = null
-        localStorage.removeItem('push_subscription')
-        console.log('Отписка от push-уведомлений выполнена')
-        return true
+        console.log('[Push] Отписка на сервере выполнена')
+      } catch (error: any) {
+        // Если ошибка 500 - не критично, продолжаем
+        if (error.response?.status === 500) {
+          console.warn('[Push] Ошибка 500 при отписке на сервере, но продолжаем отписку в браузере')
+        } else {
+          console.warn('[Push] Ошибка при отписке на сервере:', error)
+        }
       }
-      return false
+      
+      // Отписываемся в браузере, если есть подписка
+      if (this.subscription) {
+        try {
+          const unsubscribed = await this.subscription.unsubscribe()
+          if (unsubscribed) {
+            this.subscription = null
+            localStorage.removeItem('push_subscription')
+            console.log('[Push] Отписка в браузере выполнена')
+          }
+        } catch (error) {
+          console.warn('[Push] Ошибка отписки в браузере:', error)
+          // Продолжаем, даже если отписка в браузере не удалась
+        }
+      }
+      
+      // Очищаем подписку локально
+      this.subscription = null
+      localStorage.removeItem('push_subscription')
+      
+      return true
     } catch (error) {
-      console.error('Ошибка отписки от push-уведомлений:', error)
+      console.error('[Push] Ошибка отписки от push-уведомлений:', error)
       return false
+    } finally {
+      // Убираем флаг после завершения отписки
+      sessionStorage.removeItem('push_subscribe_in_progress')
+      console.log('[Push] Процесс отписки завершен, флаг удален')
     }
   }
 

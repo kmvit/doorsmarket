@@ -23,10 +23,27 @@ export default function PushNotificationButton() {
 
   const checkSubscriptionStatus = async () => {
     try {
-      const subscribed = await pushNotificationService.isSubscribed()
-      setIsSubscribed(subscribed)
+      // Проверяем подписку в браузере
+      const browserSubscribed = await pushNotificationService.isSubscribed()
+      
+      // Проверяем подписку на сервере (опционально, не блокируем, если ошибка)
+      let serverSubscribed = false
+      try {
+        const { notificationsAPI } = await import('../../api/notifications')
+        const serverStatus = await notificationsAPI.getPushSubscriptionStatus()
+        serverSubscribed = serverStatus.has_subscription
+      } catch (error: any) {
+        // Если не удалось проверить на сервере, считаем что на сервере нет подписки
+        // (но не показываем ошибку пользователю)
+        console.warn('[Push] Не удалось проверить статус подписки на сервере:', error)
+        serverSubscribed = false
+      }
+      
+      // Подписка активна только если она есть и в браузере, и на сервере
+      setIsSubscribed(browserSubscribed && serverSubscribed)
     } catch (error) {
-      console.error('Ошибка проверки статуса подписки:', error)
+      console.error('[Push] Ошибка проверки статуса подписки:', error)
+      setIsSubscribed(false)
     }
   }
 
@@ -66,13 +83,19 @@ export default function PushNotificationButton() {
       const success = await pushNotificationService.unsubscribe()
       if (success) {
         setIsSubscribed(false)
+        setPermission(Notification.permission)
       }
     } catch (err: any) {
-      console.error('Ошибка отписки:', err)
-      setError(err.message || 'Произошла ошибка при отписке')
+      console.error('[Push] Ошибка отписки:', err)
+      // При ошибке всё равно считаем, что отписка выполнена локально
+      setIsSubscribed(false)
+      setError(err.message || 'Произошла ошибка при отписке, но подписка отключена локально')
     } finally {
       setIsLoading(false)
-      await checkSubscriptionStatus()
+      // Проверяем статус после отписки
+      setTimeout(() => {
+        checkSubscriptionStatus()
+      }, 500)
     }
   }
 

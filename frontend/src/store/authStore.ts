@@ -166,27 +166,25 @@ export const useAuthStore = create<AuthStore>()(
           return
         }
 
-        set({ isLoading: true })
-        try {
+          set({ isLoading: true })
+          try {
           console.log('[Auth] Проверка аутентификации...')
-          const user = await authAPI.getMe()
+            const user = await authAPI.getMe()
           console.log('[Auth] Проверка успешна, пользователь:', user.username)
-          resetRedirectFlag() // Сбрасываем флаг редиректа при успешной проверке
-          // Очищаем флаг ошибки авторизации для уведомлений
-          sessionStorage.removeItem('notification_auth_error')
+            resetRedirectFlag() // Сбрасываем флаг редиректа при успешной проверке
+            // Очищаем флаг ошибки авторизации для уведомлений
+            sessionStorage.removeItem('notification_auth_error')
           sessionStorage.removeItem('notification_token_expired')
-          set({
-            user,
-            accessToken: token,
-            refreshToken: localStorage.getItem('refresh_token'),
-            isAuthenticated: true,
-            isLoading: false,
-          })
-          
-          // Подписываемся на push-уведомления в фоне (если пользователь уже авторизован)
-          pushNotificationService.subscribe().catch((error) => {
-            console.warn('Не удалось подписаться на push-уведомления:', error)
-          })
+            set({
+              user,
+              accessToken: token,
+              refreshToken: localStorage.getItem('refresh_token'),
+              isAuthenticated: true,
+              isLoading: false,
+            })
+            
+            // НЕ подписываемся автоматически - пользователь должен сделать это вручную через кнопку
+            // Автоматическая подписка вызывала проблемы с 500 ошибками
         } catch (error: any) {
           console.error('[Auth] Ошибка проверки аутентификации:', error)
           // Очищаем только если это реальная ошибка авторизации

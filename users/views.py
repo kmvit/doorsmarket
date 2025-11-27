@@ -80,24 +80,44 @@ class PushSubscribeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        serializer = PushSubscriptionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        keys = data['keys']
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            serializer = PushSubscriptionSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            keys = data['keys']
+            
+            logger.info(f'Регистрация push-подписки для пользователя {request.user.username}, endpoint: {data["endpoint"][:50]}...')
 
-        subscription, _ = PushSubscription.objects.update_or_create(
-            user=request.user,
-            endpoint=data['endpoint'],
-            defaults={
-                'p256dh': keys['p256dh'],
-                'auth': keys['auth'],
-                'is_active': True,
-            }
-        )
-        # Деактивируем остальные подписки пользователя
-        PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
-
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            try:
+                subscription, created = PushSubscription.objects.update_or_create(
+                    user=request.user,
+                    endpoint=data['endpoint'],
+                    defaults={
+                        'p256dh': keys['p256dh'],
+                        'auth': keys['auth'],
+                        'is_active': True,
+                    }
+                )
+                # Деактивируем остальные подписки пользователя
+                PushSubscription.objects.filter(user=request.user).exclude(id=subscription.id).update(is_active=False)
+                
+                logger.info(f'Push-подписка {"создана" if created else "обновлена"} для пользователя {request.user.username}, ID: {subscription.id}')
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except Exception as e:
+                logger.error(f'Ошибка при сохранении push-подписки в БД: {e}', exc_info=True)
+                return Response(
+                    {'error': f'Ошибка при сохранении подписки: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        except Exception as e:
+            logger.error(f'Ошибка при регистрации push-подписки: {e}', exc_info=True)
+            return Response(
+                {'error': str(e), 'detail': 'Ошибка при обработке запроса подписки'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class PushUnsubscribeView(APIView):
@@ -109,6 +129,18 @@ class PushUnsubscribeView(APIView):
         status_code = status.HTTP_200_OK if updated else status.HTTP_204_NO_CONTENT
         body = {'deactivated': updated} if updated else None
         return Response(body, status=status_code)
+
+
+class PushSubscriptionStatusView(APIView):
+    """Проверка статуса push-подписки на сервере"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        active_subscriptions = PushSubscription.objects.filter(user=request.user, is_active=True)
+        return Response({
+            'has_subscription': active_subscriptions.exists(),
+            'count': active_subscriptions.count()
+        })
 
 
 class VapidPublicKeyView(APIView):
