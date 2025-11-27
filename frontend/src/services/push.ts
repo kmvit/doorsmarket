@@ -1,12 +1,40 @@
 import { notificationsAPI } from '../api/notifications'
 import { PushSubscriptionData } from '../types/notifications'
 
-// VAPID public key (должен быть получен с backend)
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
+// VAPID public key (может быть из .env или получен с сервера)
+let VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
+let vapidKeyPromise: Promise<string> | null = null
 
 class PushNotificationService {
   private registration: ServiceWorkerRegistration | null = null
   private subscription: PushSubscription | null = null
+
+  // Получить VAPID публичный ключ (с кешированием)
+  async getVapidPublicKey(): Promise<string> {
+    // Если ключ уже есть из .env, используем его
+    if (VAPID_PUBLIC_KEY) {
+      return VAPID_PUBLIC_KEY
+    }
+
+    // Если запрос уже в процессе, ждём его
+    if (vapidKeyPromise) {
+      return vapidKeyPromise
+    }
+
+    // Запрашиваем ключ с сервера
+    vapidKeyPromise = notificationsAPI.getVapidPublicKey()
+      .then((key) => {
+        VAPID_PUBLIC_KEY = key
+        return key
+      })
+      .catch((error) => {
+        vapidKeyPromise = null // Сбрасываем, чтобы можно было повторить
+        console.error('Не удалось получить VAPID ключ с сервера:', error)
+        throw error
+      })
+
+    return vapidKeyPromise
+  }
 
   // Инициализация push-уведомлений
   async initialize(): Promise<boolean> {
@@ -37,17 +65,23 @@ class PushNotificationService {
 
   // Запросить разрешение и подписаться
   async subscribe(): Promise<boolean> {
+    console.log('[Push] Начинаем процесс подписки...')
+    
     if (!this.registration) {
+      console.log('[Push] Service Worker не инициализирован, инициализируем...')
       const initialized = await this.initialize()
       if (!initialized && !this.registration) {
+        console.error('[Push] Не удалось инициализировать Service Worker')
         return false
       }
     }
 
     if (!this.registration) {
-      console.error('Service Worker не зарегистрирован')
+      console.error('[Push] Service Worker не зарегистрирован')
       return false
     }
+    
+    console.log('[Push] Service Worker готов:', this.registration.scope)
 
     try {
       // Проверяем, есть ли уже подписка
@@ -82,15 +116,29 @@ class PushNotificationService {
       }
 
       // Если подписки нет или не удалось отправить существующую, создаем новую
+      console.log('[Push] Подписки нет, создаём новую...')
+      
       // Запрашиваем разрешение
+      console.log('[Push] Текущее разрешение:', Notification.permission)
       const permission = await Notification.requestPermission()
+      console.log('[Push] Новое разрешение:', permission)
+      
       if (permission !== 'granted') {
-        console.warn('Разрешение на уведомления не получено')
+        console.warn('[Push] Разрешение на уведомления не получено. Разрешение:', permission)
         return false
       }
 
+      // Получаем VAPID публичный ключ
+      console.log('[Push] Получаем VAPID публичный ключ...')
+      const vapidPublicKey = await this.getVapidPublicKey()
+      if (!vapidPublicKey) {
+        console.error('[Push] VAPID публичный ключ не получен')
+        return false
+      }
+      console.log('[Push] VAPID ключ получен (первые 20 символов):', vapidPublicKey.substring(0, 20) + '...')
+
       // Создаем подписку
-      const applicationServerKey = this.urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      const applicationServerKey = this.urlBase64ToUint8Array(vapidPublicKey)
       this.subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
@@ -207,15 +255,16 @@ export const pushNotificationService = new PushNotificationService()
 
 // Инициализация при загрузке приложения
 export const initPushNotifications = async (): Promise<void> => {
-  if (!VAPID_PUBLIC_KEY) {
-    console.warn('VAPID_PUBLIC_KEY не настроен, push-уведомления недоступны')
-    return
-  }
-
   try {
+    // Пытаемся получить ключ (либо из .env, либо с сервера)
+    const key = await pushNotificationService.getVapidPublicKey()
+    if (!key) {
+      console.warn('VAPID_PUBLIC_KEY не настроен, push-уведомления недоступны')
+      return
+    }
     await pushNotificationService.initialize()
   } catch (error) {
-    console.error('Ошибка инициализации push-уведомлений:', error)
+    console.warn('Не удалось инициализировать push-уведомления (возможно, ключ не настроен на сервере):', error)
   }
 }
 

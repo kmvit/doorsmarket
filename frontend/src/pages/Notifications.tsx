@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { notificationsAPI } from '../api/notifications'
 import { Notification, NotificationType } from '../types/notifications'
 import { useAuthStore } from '../store/authStore'
+import PushNotificationButton from '../components/common/PushNotificationButton'
 
 const Notifications = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore()
@@ -173,6 +174,19 @@ const Notifications = () => {
           {error}
         </div>
       )}
+
+      {/* Push-уведомления настройка */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg mb-6 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-1">Push-уведомления</h3>
+            <p className="text-sm text-gray-600">
+              Получайте уведомления прямо на ваше устройство, даже когда приложение закрыто
+            </p>
+          </div>
+          <PushNotificationButton />
+        </div>
+      </div>
 
       {/* Фильтры и действия */}
       <div className="bg-white rounded-lg shadow mb-6 p-4">

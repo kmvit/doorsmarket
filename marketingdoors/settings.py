@@ -196,3 +196,10 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
     'https://16c90da0e1be.vps.myjino.ru,http://localhost:3000,http://127.0.0.1:3000'
 ).split(',')
+
+# VAPID Keys for Web Push Notifications
+VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+
+# VAPID Contact Info (email для идентификации сервера)
+VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'admin@marketingdoors.local')

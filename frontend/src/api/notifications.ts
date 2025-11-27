@@ -175,5 +175,16 @@ export const notificationsAPI = {
   unsubscribePush: async (): Promise<void> => {
     await apiClient.post('/auth/push-unsubscribe/')
   },
+
+  // Получить публичный VAPID ключ с сервера
+  getVapidPublicKey: async (): Promise<string> => {
+    try {
+      const response = await apiClient.get('/auth/vapid-public-key/')
+      return response.data.public_key
+    } catch (error) {
+      console.error('Ошибка получения VAPID публичного ключа:', error)
+      throw error
+    }
+  },
 }
 

@@ -111,6 +111,24 @@ class PushUnsubscribeView(APIView):
         return Response(body, status=status_code)
 
 
+class VapidPublicKeyView(APIView):
+    """Получение публичного VAPID ключа для подписки на push-уведомления"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        from django.conf import settings
+        
+        if not settings.VAPID_PUBLIC_KEY:
+            return Response(
+                {'error': 'VAPID публичный ключ не настроен'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        
+        return Response({
+            'public_key': settings.VAPID_PUBLIC_KEY
+        })
+
+
 class LogoutView(APIView):
     """Выход пользователя (добавление токена в черный список)"""
     permission_classes = [permissions.IsAuthenticated]
