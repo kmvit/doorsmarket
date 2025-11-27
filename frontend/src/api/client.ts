@@ -287,8 +287,8 @@ apiClient.interceptors.response.use(
     }
 
     // Для серверных ошибок (500+) на push-запросах - логируем, но не редиректим
-    if (error.response?.status >= 500 && isPushOrNotificationRequest) {
-      console.error(`[API] Серверная ошибка ${error.response.status} для push/notification запроса:`, url, error.response?.data)
+    if (error.response && error.response.status >= 500 && isPushOrNotificationRequest) {
+      console.error(`[API] Серверная ошибка ${error.response.status} для push/notification запроса:`, url, error.response.data)
       // Не редиректим, просто возвращаем ошибку
       return Promise.reject(error)
     }
