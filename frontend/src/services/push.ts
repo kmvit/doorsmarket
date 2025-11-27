@@ -5,6 +5,11 @@ import { PushSubscriptionData } from '../types/notifications'
 let VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
 let vapidKeyPromise: Promise<string> | null = null
 
+const SW_SCOPE = '/'
+const SW_URL = import.meta.env.DEV ? '/dev-sw.js?dev-sw' : '/sw.js'
+const getServiceWorkerOptions = (): RegistrationOptions =>
+  import.meta.env.DEV ? { scope: SW_SCOPE, type: 'module' } : { scope: SW_SCOPE }
+
 class PushNotificationService {
   private registration: ServiceWorkerRegistration | null = null
   private subscription: PushSubscription | null = null
@@ -46,13 +51,13 @@ class PushNotificationService {
     try {
       // Ищем существующую регистрацию
       if (!this.registration) {
-        const existingRegistration = await navigator.serviceWorker.getRegistration('/')
+        const existingRegistration = await navigator.serviceWorker.getRegistration()
         if (existingRegistration) {
           this.registration = existingRegistration
           console.log('[Push] Найден существующий Service Worker:', existingRegistration.scope)
         } else {
           console.log('[Push] Регистрируем Service Worker для push-уведомлений...')
-          this.registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          this.registration = await navigator.serviceWorker.register(SW_URL, getServiceWorkerOptions())
           console.log('[Push] Service Worker зарегистрирован:', this.registration.scope)
         }
       }
@@ -201,13 +206,13 @@ class PushNotificationService {
       }
 
       try {
-        await notificationsAPI.subscribePush(subscriptionData)
+      await notificationsAPI.subscribePush(subscriptionData)
         console.log('[Push] Подписка успешно создана и отправлена на сервер')
 
-        // Сохраняем в localStorage
-        localStorage.setItem('push_subscription', JSON.stringify(subscriptionData))
+      // Сохраняем в localStorage
+      localStorage.setItem('push_subscription', JSON.stringify(subscriptionData))
 
-        return true
+      return true
       } catch (error: any) {
         console.error('[Push] Ошибка отправки подписки на сервер:', error)
         // Если это ошибка 500 - это проблема на сервере, подписка работает в браузере
@@ -240,14 +245,14 @@ class PushNotificationService {
     // Убираем флаг после завершения подписки (успешной или неуспешной)
     sessionStorage.removeItem('push_subscribe_in_progress')
     console.log('[Push] Процесс подписки завершен, флаг удален')
+    }
   }
-}
 
   // Отписаться от push-уведомлений
   async unsubscribe(): Promise<boolean> {
     // Устанавливаем флаг, чтобы предотвратить редиректы во время отписки
     sessionStorage.setItem('push_subscribe_in_progress', 'true')
-    
+
     try {
       // Отписываемся на сервере (даже если нет подписки в браузере)
       try {
@@ -267,8 +272,8 @@ class PushNotificationService {
         try {
           const unsubscribed = await this.subscription.unsubscribe()
           if (unsubscribed) {
-            this.subscription = null
-            localStorage.removeItem('push_subscription')
+        this.subscription = null
+        localStorage.removeItem('push_subscription')
             console.log('[Push] Отписка в браузере выполнена')
           }
         } catch (error) {
@@ -355,9 +360,9 @@ export const initPushNotifications = async (): Promise<void> => {
     // Пытаемся получить ключ (либо из .env, либо с сервера)
     const key = await pushNotificationService.getVapidPublicKey()
     if (!key) {
-      console.warn('VAPID_PUBLIC_KEY не настроен, push-уведомления недоступны')
-      return
-    }
+    console.warn('VAPID_PUBLIC_KEY не настроен, push-уведомления недоступны')
+    return
+  }
     await pushNotificationService.initialize()
   } catch (error) {
     console.warn('Не удалось инициализировать push-уведомления (возможно, ключ не настроен на сервере):', error)

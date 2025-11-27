@@ -120,3 +120,15 @@ print(make_password('your_password'))
 - **Пароль:** `test123456`
 - **URL:** http://localhost:8000/admin/
 
+from django.contrib.auth import get_user_model
+from users.push_utils import send_push_notification
+
+User = get_user_model()
+user = User.objects.first()
+
+send_push_notification(
+    user=user,
+    title='Тестовое уведомление',
+    body='Это тестовое push-уведомление!',
+    url='/notifications'
+)

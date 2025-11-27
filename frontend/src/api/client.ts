@@ -176,7 +176,7 @@ apiClient.interceptors.response.use(
       }
 
         // Для уведомлений и push подписки - проверяем, не было ли уже попытки обновления токена
-        // Используем отдельный флаг для предотвращения бесконечного цикла
+      // Используем отдельный флаг для предотвращения бесконечного цикла
         const url = originalRequest.url || ''
         const isNotificationRequest = url.includes('/notifications/') || url.includes('/push-subscribe') || url.includes('/push-unsubscribe') || url.includes('/push-status') || url.includes('/vapid-public-key')
       const notificationRetryKey = `notification_retry_${originalRequest.url}`

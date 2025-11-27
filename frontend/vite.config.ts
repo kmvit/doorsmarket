@@ -10,6 +10,14 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'icon-192x192.png', 'icon-512x512.png'],
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'service-worker.ts',
+      injectManifest: {
+        swSrc: 'src/service-worker.ts',
+        swDest: 'sw.js',
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      },
       manifest: {
         name: 'Marketing Doors',
         short_name: 'Marketing Doors',
@@ -48,41 +56,10 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\/api\/v1\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 5 * 60 // 5 минут
-              },
-              networkTimeoutSeconds: 10
-            }
-          },
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 дней
-              }
-            }
-          }
-        ],
-        // Включаем обработку push-уведомлений
-        skipWaiting: true,
-        clientsClaim: true,
-      },
       devOptions: {
         enabled: true,
         type: 'module'
-      }
+      },
     })
   ],
   resolve: {
