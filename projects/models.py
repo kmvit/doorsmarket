@@ -629,12 +629,6 @@ class Complaint(models.Model):
                 title=title,
                 body=message,
                 url=f'/complaints/{self.id}' if self.id else '/notifications',
-                data={
-                    'complaint_id': self.id,
-                    'notification_id': notification.id,
-                    'title': title,
-                    'message': message,
-                },
             )
         except Exception as exc:
             logger.error(
