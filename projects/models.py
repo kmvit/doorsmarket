@@ -1,5 +1,7 @@
-from django.db import models
+import logging
+
 from django.conf import settings
+from django.db import models
 from django.utils import timezone
 
 
@@ -598,18 +600,54 @@ class Complaint(models.Model):
         return User.objects.filter(role='service_manager').first()
     
     def _create_notification(self, recipient, notification_type, title, message):
-        """Создание уведомления"""
-        if recipient:
-            from django.utils import timezone
-            Notification.objects.create(
-                complaint=self,
-                recipient=recipient,
-                notification_type=notification_type,
+        """Создание уведомления и отправка push"""
+        if not recipient:
+            return
+
+        logger = logging.getLogger(__name__)
+
+        # Вся логика "pc" переводится в push-канал
+        notify_type = notification_type or 'push'
+        if notify_type == 'pc':
+            notify_type = 'push'
+
+        notification = Notification.objects.create(
+            complaint=self,
+            recipient=recipient,
+            notification_type=notify_type,
+            title=title,
+            message=message,
+            is_sent=False,
+        )
+
+        push_sent = False
+        try:
+            from users.push_utils import send_push_notification
+
+            push_sent = send_push_notification(
+                user=recipient,
                 title=title,
-                message=message,
-                is_sent=True,  # Для PC и Push уведомлений сразу помечаем как отправленные
-                sent_at=timezone.now()
+                body=message,
+                url=f'/complaints/{self.id}' if self.id else '/notifications',
+                data={
+                    'complaint_id': self.id,
+                    'notification_id': notification.id,
+                    'title': title,
+                    'message': message,
+                },
             )
+        except Exception as exc:
+            logger.error(
+                'Ошибка отправки push-уведомления пользователю %s: %s',
+                recipient.username,
+                exc,
+                exc_info=True,
+            )
+
+        if push_sent:
+            notification.is_sent = True
+            notification.sent_at = timezone.now()
+        notification.save(update_fields=['is_sent', 'sent_at'])
 
     def _notify_recipient_on_creation(self):
         """Уведомление первичного получателя о создании рекламации"""
