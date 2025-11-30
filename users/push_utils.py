@@ -4,6 +4,7 @@
 import json
 import logging
 from typing import Dict, Optional
+from urllib.parse import urlparse
 from django.conf import settings
 from pywebpush import webpush, WebPushException
 from .models import PushSubscription, User
@@ -68,11 +69,6 @@ def send_push_notification(
         ],
     }
     
-    # VAPID claims
-    vapid_claims = {
-        'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
-    }
-    
     # Отправляем уведомление на каждую активную подписку
     for subscription in subscriptions:
         try:
@@ -82,6 +78,16 @@ def send_push_notification(
                     'p256dh': subscription.p256dh,
                     'auth': subscription.auth,
                 },
+            }
+            
+            # Извлекаем origin из endpoint'а для VAPID audience claim
+            endpoint_url = urlparse(subscription.endpoint)
+            endpoint_origin = f"{endpoint_url.scheme}://{endpoint_url.netloc}"
+            
+            # VAPID claims с правильным aud (audience) для каждого endpoint'а
+            vapid_claims = {
+                'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
+                'aud': endpoint_origin,
             }
             
             # Отправляем push-уведомление
