@@ -80,15 +80,26 @@ def send_push_notification(
                 },
             }
             
+            # Формируем VAPID claims
+            endpoint_url = urlparse(subscription.endpoint)
+            endpoint_origin = f"{endpoint_url.scheme}://{endpoint_url.netloc}"
+
+            aud_claim = endpoint_origin
+            if endpoint_url.netloc == 'web.push.apple.com':
+                aud_claim = 'https://apple.com'
+
+            vapid_claims = {
+                'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
+                'aud': aud_claim,
+            }
+
             # Отправляем push-уведомление
             # pywebpush автоматически определит формат приватного ключа (base64url или PEM)
             webpush(
                 subscription_info=subscription_info,
                 data=json.dumps(notification_data),
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                vapid_claims={
-                    'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
-                },
+                vapid_claims=vapid_claims,
             )
             
             success_count += 1
