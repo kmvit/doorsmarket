@@ -1,5 +1,20 @@
 import { useState, useEffect } from 'react'
 
+const isIosDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false
+  }
+
+  const userAgent = navigator.userAgent || ''
+  const isClassicIOS = /iPhone|iPad|iPod/.test(userAgent)
+  const isTouchMac =
+    /Macintosh/.test(userAgent) &&
+    typeof document !== 'undefined' &&
+    'ontouchend' in document
+
+  return isClassicIOS || isTouchMac
+}
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
@@ -54,7 +69,7 @@ export default function InstallPrompt() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
 
     // Показываем подсказку для iOS (если не установлено)
-    if (!checkIfInstalled() && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    if (!checkIfInstalled() && isIosDevice()) {
       // Задержка для iOS, чтобы пользователь увидел подсказку
       setTimeout(() => {
         setShowPrompt(true)
@@ -69,7 +84,7 @@ export default function InstallPrompt() {
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
       // Для iOS показываем инструкции
-      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      if (isIosDevice()) {
         alert(
           'Для установки приложения на iPhone/iPad:\n\n' +
           '1. Нажмите кнопку "Поделиться" в Safari\n' +

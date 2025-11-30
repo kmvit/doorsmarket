@@ -185,7 +185,7 @@ class PushNotificationService {
       const applicationServerKey = this.urlBase64ToUint8Array(vapidPublicKey)
       this.subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
+        applicationServerKey: applicationServerKey as unknown as BufferSource,
       })
 
       // Получаем ключи из подписки
