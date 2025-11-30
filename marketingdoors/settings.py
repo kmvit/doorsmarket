@@ -201,5 +201,5 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 
-# VAPID Contact Info (email для идентификации сервера)
-VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'admin@marketingdoors.local')
+# VAPID Contact Info (email/URL для идентификации сервера)
+VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'support@marketingdoors.ru')

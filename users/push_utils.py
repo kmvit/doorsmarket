@@ -84,13 +84,19 @@ def send_push_notification(
             endpoint_url = urlparse(subscription.endpoint)
             endpoint_origin = f"{endpoint_url.scheme}://{endpoint_url.netloc}"
 
-            aud_claim = endpoint_origin
-            if endpoint_url.netloc == 'web.push.apple.com':
-                aud_claim = 'https://apple.com'
+            claim_subject = settings.VAPID_CLAIM_EMAIL.strip() if settings.VAPID_CLAIM_EMAIL else ''
+            if claim_subject.startswith('mailto:'):
+                sub_claim = claim_subject
+            elif '@' in claim_subject:
+                sub_claim = f'mailto:{claim_subject}'
+            elif claim_subject.startswith('http://') or claim_subject.startswith('https://'):
+                sub_claim = claim_subject
+            else:
+                sub_claim = 'mailto:support@marketingdoors.ru'
 
             vapid_claims = {
-                'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
-                'aud': aud_claim,
+                'sub': sub_claim,
+                'aud': endpoint_origin,
             }
 
             # Отправляем push-уведомление
