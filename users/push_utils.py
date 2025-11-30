@@ -96,7 +96,6 @@ def send_push_notification(
                 subscription_info=subscription_info,
                 data=json.dumps(notification_data),
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                vapid_public_key=settings.VAPID_PUBLIC_KEY,
                 vapid_claims=vapid_claims,
             )
             
