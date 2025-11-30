@@ -80,23 +80,15 @@ def send_push_notification(
                 },
             }
             
-            # Извлекаем origin из endpoint'а для VAPID audience claim
-            endpoint_url = urlparse(subscription.endpoint)
-            endpoint_origin = f"{endpoint_url.scheme}://{endpoint_url.netloc}"
-            
-            # VAPID claims с правильным aud (audience) для каждого endpoint'а
-            vapid_claims = {
-                'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
-                'aud': endpoint_origin,
-            }
-            
             # Отправляем push-уведомление
             # pywebpush автоматически определит формат приватного ключа (base64url или PEM)
             webpush(
                 subscription_info=subscription_info,
                 data=json.dumps(notification_data),
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                vapid_claims=vapid_claims,
+                vapid_claims={
+                    'sub': f'mailto:{settings.VAPID_CLAIM_EMAIL}',
+                },
             )
             
             success_count += 1
