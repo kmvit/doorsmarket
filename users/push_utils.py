@@ -96,6 +96,7 @@ def send_push_notification(
                 subscription_info=subscription_info,
                 data=json.dumps(notification_data),
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                vapid_public_key=settings.VAPID_PUBLIC_KEY,
                 vapid_claims=vapid_claims,
             )
             
@@ -105,12 +106,35 @@ def send_push_notification(
         except WebPushException as e:
             failed_count += 1
             logger.error(f'Ошибка отправки push-уведомления: {e}')
+            error_body = ''
+            status_code = None
+            if e.response is not None:
+                status_code = e.response.status_code
+                try:
+                    error_body = e.response.text
+                except Exception:
+                    error_body = str(e.response)
+            logger.debug(
+                'Подробнее об ошибке push: status=%s, body=%s',
+                status_code,
+                error_body,
+            )
             
             # Если подписка невалидна (410 Gone, 404 Not Found), деактивируем её
-            if e.response and e.response.status_code in (410, 404):
+            should_deactivate = False
+            if status_code in (410, 404):
+                should_deactivate = True
+            elif status_code == 403 and error_body and 'BadJwtToken' in error_body:
+                should_deactivate = True
+
+            if should_deactivate:
                 subscription.is_active = False
-                subscription.save()
-                logger.info(f'Подписка {subscription.id} деактивирована (невалидная)')
+                subscription.save(update_fields=['is_active'])
+                logger.info(
+                    'Подписка %s помечена как неактивная (status=%s)',
+                    subscription.id,
+                    status_code,
+                )
             
         except Exception as e:
             failed_count += 1
