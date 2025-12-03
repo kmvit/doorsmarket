@@ -1,5 +1,5 @@
 """
-Утилиты для отправки Web Push уведомлений
+Утилиты для отправки Web Push уведомлений и SMS
 """
 import json
 import logging
@@ -7,6 +7,7 @@ from typing import Dict, Optional
 from urllib.parse import urlparse
 from django.conf import settings
 from pywebpush import webpush, WebPushException
+import requests
 from .models import PushSubscription, User
 
 logger = logging.getLogger(__name__)
@@ -186,4 +187,119 @@ def send_push_to_multiple_users(
             success_count += 1
     
     return success_count
+
+
+def send_sms_notification(
+    user: User,
+    message: str,
+) -> bool:
+    """
+    Отправляет SMS-уведомление пользователю через sms.ru
+    
+    Args:
+        user: Пользователь, которому отправляется SMS
+        message: Текст сообщения
+    
+    Returns:
+        True если SMS успешно отправлено
+    """
+    if not settings.SMS_RU_API_ID:
+        logger.warning('SMS_RU_API_ID не настроен, SMS-уведомления недоступны')
+        return False
+    
+    # Проверяем наличие номера телефона у пользователя
+    if not user.phone_number:
+        logger.debug(f'У пользователя {user.username} не указан номер телефона')
+        return False
+    
+    # Очищаем номер телефона от пробелов и других символов
+    phone_number = user.phone_number.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    
+    # Убираем + если есть
+    if phone_number.startswith('+'):
+        phone_number = phone_number[1:]
+    
+    if not phone_number:
+        logger.warning(f'Номер телефона пользователя {user.username} пустой после очистки')
+        return False
+    
+    try:
+        # Формируем URL для отправки SMS
+        url = 'https://sms.ru/sms/send'
+        params = {
+            'api_id': settings.SMS_RU_API_ID,
+            'to': phone_number,
+            'msg': message,
+            'json': 1,
+        }
+        
+        # Отправляем запрос
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        # Парсим ответ
+        result = response.json()
+        
+        if result.get('status') == 'OK' and result.get('status_code') == 100:
+            # Проверяем статус отправки для конкретного номера
+            sms_data = result.get('sms', {})
+            phone_key = phone_number
+            # Если номер в ответе с другим форматом, ищем его
+            if phone_key not in sms_data:
+                # Пробуем найти номер в любом формате
+                for key in sms_data.keys():
+                    if key.replace('+', '').replace(' ', '') == phone_number:
+                        phone_key = key
+                        break
+            
+            if phone_key in sms_data:
+                sms_status = sms_data[phone_key]
+                if sms_status.get('status') == 'OK' and sms_status.get('status_code') == 100:
+                    logger.info(
+                        'SMS отправлено пользователю %s на номер %s (ID: %s)',
+                        user.username,
+                        phone_number,
+                        sms_status.get('sms_id', 'N/A')
+                    )
+                    return True
+                else:
+                    logger.error(
+                        'Ошибка отправки SMS пользователю %s: %s (код: %s)',
+                        user.username,
+                        sms_status.get('status_text', 'Неизвестная ошибка'),
+                        sms_status.get('status_code', 'N/A')
+                    )
+                    return False
+            else:
+                logger.warning(
+                    'Номер %s не найден в ответе sms.ru для пользователя %s',
+                    phone_number,
+                    user.username
+                )
+                return False
+        else:
+            logger.error(
+                'Ошибка API sms.ru для пользователя %s: %s (код: %s)',
+                user.username,
+                result.get('status', 'ERROR'),
+                result.get('status_code', 'N/A')
+            )
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            'Ошибка сети при отправке SMS пользователю %s: %s',
+            user.username,
+            e,
+            exc_info=True
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            'Неожиданная ошибка при отправке SMS пользователю %s: %s',
+            user.username,
+            e,
+            exc_info=True
+        )
+        return False
 

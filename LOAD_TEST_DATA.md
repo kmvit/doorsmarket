@@ -148,3 +148,8 @@ print(notif.notification_type, notif.is_sent, notif.sent_at)
 from users.models import PushSubscription, User
 user = User.objects.get(username='sm_petrov')  # подставьте логин
 list(PushSubscription.objects.filter(user=user, is_active=True).values('endpoint', 'created_at'))
+
+
+from users.models import PushSubscription
+deleted, _ = PushSubscription.objects.all().delete()
+print(f'Удалено подписок: {deleted}')

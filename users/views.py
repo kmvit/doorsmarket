@@ -367,6 +367,25 @@ class WebDashboardView(View):
         }
         return render(request, 'users/dashboard.html', context)
     
+    def post(self, request):
+        """Обновление номера телефона"""
+        if not request.user.is_authenticated:
+            return redirect('users:web_login')
+        
+        phone_number = request.POST.get('phone_number', '').strip()
+        
+        # Валидация номера телефона (опционально, можно добавить более строгую проверку)
+        if phone_number and len(phone_number) > 20:
+            messages.error(request, 'Номер телефона слишком длинный (максимум 20 символов)')
+            return redirect('users:web_dashboard')
+        
+        # Обновление номера телефона
+        request.user.phone_number = phone_number if phone_number else None
+        request.user.save()
+        
+        messages.success(request, 'Номер телефона успешно обновлен')
+        return redirect('users:web_dashboard')
+    
     def _get_task_summary(self, user):
         """Количество задач по категориям для дашборда"""
         from projects.models import Complaint, ComplaintStatus

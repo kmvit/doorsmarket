@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
+import { authAPI } from '../api/auth'
 
 interface DashboardStat {
   key: string
@@ -12,9 +13,12 @@ interface DashboardStat {
 }
 
 const Dashboard = () => {
-  const { user } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const [stats, setStats] = useState<DashboardStat[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isEditingPhone, setIsEditingPhone] = useState(false)
+  const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
+  const [isSavingPhone, setIsSavingPhone] = useState(false)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -56,6 +60,32 @@ const Dashboard = () => {
     }
   }, [user])
 
+  // Обновляем номер телефона при изменении пользователя
+  useEffect(() => {
+    if (user?.phone_number !== undefined) {
+      setPhoneNumber(user.phone_number || '')
+    }
+  }, [user?.phone_number])
+
+  const handleSavePhone = async () => {
+    setIsSavingPhone(true)
+    try {
+      const phoneValue = phoneNumber.trim() || undefined
+      const updatedUser = await authAPI.updateMe({ phone_number: phoneValue })
+      setUser(updatedUser)
+      setIsEditingPhone(false)
+    } catch (error: any) {
+      alert(error.response?.data?.phone_number?.[0] || error.response?.data?.detail || 'Ошибка при сохранении номера телефона')
+    } finally {
+      setIsSavingPhone(false)
+    }
+  }
+
+  const handleCancelPhoneEdit = () => {
+    setPhoneNumber(user?.phone_number || '')
+    setIsEditingPhone(false)
+  }
+
   const getRoleDisplay = (role: string) => {
     const roles: Record<string, string> = {
       admin: 'Администратор',
@@ -87,6 +117,41 @@ const Dashboard = () => {
               Роль: <span className="font-semibold text-primary-600">{getRoleDisplay(user.role)}</span>
             </p>
           )}
+          <div className="mt-3">
+            <div className="flex items-center gap-3">
+              <p className="text-gray-600">
+                Номер телефона:{' '}
+                <span className="font-semibold text-gray-900">
+                  {user?.phone_number || 'Не указан'}
+                </span>
+              </p>
+              <button
+                onClick={() => isEditingPhone ? handleCancelPhoneEdit() : setIsEditingPhone(true)}
+                className="text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors"
+              >
+                {isEditingPhone ? 'Отмена' : 'Изменить'}
+              </button>
+            </div>
+            {isEditingPhone && (
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+7XXXXXXXXXX"
+                  maxLength={20}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <button
+                  onClick={handleSavePhone}
+                  disabled={isSavingPhone}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingPhone ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {isLoading ? (

@@ -639,7 +639,28 @@ class Complaint(models.Model):
                 exc_info=True,
             )
 
-        if push_sent:
+        sms_sent = False
+        try:
+            from users.push_utils import send_sms_notification
+
+            # Формируем текст SMS из заголовка и сообщения
+            sms_text = f"{title}\n{message}" if title else message
+            sms_sent = send_sms_notification(
+                user=recipient,
+                message=sms_text,
+            )
+            if sms_sent:
+                logger.info('SMS отправлено пользователю %s для рекламации #%s', recipient.username, self.id)
+        except Exception as exc:
+            logger.error(
+                'Ошибка отправки SMS пользователю %s: %s',
+                recipient.username,
+                exc,
+                exc_info=True,
+            )
+
+        # Помечаем уведомление как отправленное, если хотя бы push или SMS отправлены
+        if push_sent or sms_sent:
             notification.is_sent = True
             notification.sent_at = timezone.now()
         notification.save(update_fields=['is_sent', 'sent_at'])

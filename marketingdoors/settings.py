@@ -203,3 +203,6 @@ VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 
 # VAPID Contact Info (email/URL для идентификации сервера)
 VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'support@marketingdoors.ru')
+
+# SMS.ru API Settings
+SMS_RU_API_ID = os.getenv('SMS_RU_API_ID', '')
