@@ -63,6 +63,7 @@ export type ComplaintStatus =
   | 'waiting_installer_date'
   | 'needs_planning'
   | 'installer_not_planned'
+  | 'installer_overdue'
   | 'shipping_planned'
   | 'installation_planned'
   | 'both_planned'

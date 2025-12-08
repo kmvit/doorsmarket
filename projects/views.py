@@ -203,6 +203,16 @@ def complaint_list(request):
     sort_by = request.GET.get('sort', '-created_at')
     complaints = complaints.order_by(sort_by)
     
+    # Проверяем просрочку для рекламаций с монтажником
+    installer_complaints = complaints.filter(
+        installer_assigned__isnull=False,
+        installer_assigned_at__isnull=False
+    ).exclude(
+        status__in=['completed', 'resolved', 'closed']
+    )
+    for complaint in installer_complaints:
+        complaint.check_installer_overdue()
+    
     # Получаем данные для фильтров
     reasons = ComplaintReason.objects.filter(is_active=True)
     statuses = Complaint._meta.get_field('status').choices
@@ -572,7 +582,8 @@ def complaint_create(request):
                     elif complaint_type == 'installer':
                         complaint.installer_assigned_id = installer_id
                         complaint.save()
-                        complaint.set_type_installer()
+                        installer = complaint.installer_assigned
+                        complaint.set_type_installer(installer=installer)
                         messages.success(request, f'Рекламация #{complaint.id} создана и отправлена монтажнику!')
                     elif complaint_type == 'factory':
                         complaint.set_type_factory()
@@ -728,9 +739,9 @@ def complaint_process(request, pk):
             installer_id = request.POST.get('installer')
             if installer_id:
                 installer = User.objects.get(id=installer_id)
-                complaint.set_type_installer()
                 complaint.installer_assigned = installer
                 complaint.save()
+                complaint.set_type_installer(installer=installer)
                 messages.success(request, f'Тип установлен: Монтажник. Назначен: {installer.get_full_name() or installer.username}')
             else:
                 messages.error(request, 'Выберите монтажника')

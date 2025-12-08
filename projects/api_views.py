@@ -203,6 +203,26 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+    def list(self, request, *args, **kwargs):
+        """Переопределяем list для проверки просрочки монтажника"""
+        # Получаем queryset
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Проверяем просрочку для рекламаций с монтажником
+        installer_complaints = queryset.filter(
+            installer_assigned__isnull=False,
+            installer_assigned_at__isnull=False
+        ).exclude(
+            status__in=['completed', 'resolved', 'closed']
+        )
+        
+        for complaint in installer_complaints:
+            complaint.check_installer_overdue()
+        
+        # Возвращаем обновленный queryset через стандартный list
+        response = super().list(request, *args, **kwargs)
+        return response
+    
     def get_object(self):
         """Переопределяем для проверки доступа ОР к фабричным рекламациям"""
         user = self.request.user
@@ -252,7 +272,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 complaint.set_type_manager()
             elif complaint_type == 'installer':
                 # installer_assigned уже установлен в сериализаторе
-                complaint.set_type_installer()
+                installer = complaint.installer_assigned
+                complaint.set_type_installer(installer=installer)
             elif complaint_type == 'factory':
                 complaint.set_type_factory()
         
@@ -312,7 +333,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint_type = request.data.get('complaint_type')
         
         if complaint_type == 'installer':
-            complaint.set_type_installer()
+            installer = complaint.installer_assigned
+            complaint.set_type_installer(installer=installer)
         elif complaint_type == 'manager':
             if not complaint.manager:
                 return Response(

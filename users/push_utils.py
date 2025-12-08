@@ -303,3 +303,115 @@ def send_sms_notification(
         )
         return False
 
+
+def send_sms_to_phone(
+    phone_number: str,
+    message: str,
+) -> bool:
+    """
+    Отправляет SMS-уведомление на указанный номер телефона через sms.ru
+    
+    Args:
+        phone_number: Номер телефона получателя
+        message: Текст сообщения
+    
+    Returns:
+        True если SMS успешно отправлено
+    """
+    if not settings.SMS_RU_API_ID:
+        logger.warning('SMS_RU_API_ID не настроен, SMS-уведомления недоступны')
+        return False
+    
+    if not phone_number:
+        logger.debug('Номер телефона не указан')
+        return False
+    
+    # Очищаем номер телефона от пробелов и других символов
+    cleaned_phone = phone_number.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    
+    # Убираем + если есть
+    if cleaned_phone.startswith('+'):
+        cleaned_phone = cleaned_phone[1:]
+    
+    if not cleaned_phone:
+        logger.warning('Номер телефона пустой после очистки')
+        return False
+    
+    try:
+        # Формируем URL для отправки SMS
+        url = 'https://sms.ru/sms/send'
+        params = {
+            'api_id': settings.SMS_RU_API_ID,
+            'to': cleaned_phone,
+            'msg': message,
+            'json': 1,
+        }
+        
+        # Отправляем запрос
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        # Парсим ответ
+        result = response.json()
+        
+        if result.get('status') == 'OK' and result.get('status_code') == 100:
+            # Проверяем статус отправки для конкретного номера
+            sms_data = result.get('sms', {})
+            phone_key = cleaned_phone
+            # Если номер в ответе с другим форматом, ищем его
+            if phone_key not in sms_data:
+                # Пробуем найти номер в любом формате
+                for key in sms_data.keys():
+                    if key.replace('+', '').replace(' ', '') == cleaned_phone:
+                        phone_key = key
+                        break
+            
+            if phone_key in sms_data:
+                sms_status = sms_data[phone_key]
+                if sms_status.get('status') == 'OK' and sms_status.get('status_code') == 100:
+                    logger.info(
+                        'SMS отправлено на номер %s (ID: %s)',
+                        cleaned_phone,
+                        sms_status.get('sms_id', 'N/A')
+                    )
+                    return True
+                else:
+                    logger.error(
+                        'Ошибка отправки SMS на номер %s: %s (код: %s)',
+                        cleaned_phone,
+                        sms_status.get('status_text', 'Неизвестная ошибка'),
+                        sms_status.get('status_code', 'N/A')
+                    )
+                    return False
+            else:
+                logger.warning(
+                    'Номер %s не найден в ответе sms.ru',
+                    cleaned_phone
+                )
+                return False
+        else:
+            logger.error(
+                'Ошибка API sms.ru для номера %s: %s (код: %s)',
+                cleaned_phone,
+                result.get('status', 'ERROR'),
+                result.get('status_code', 'N/A')
+            )
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            'Ошибка сети при отправке SMS на номер %s: %s',
+            cleaned_phone,
+            e,
+            exc_info=True
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            'Неожиданная ошибка при отправке SMS на номер %s: %s',
+            cleaned_phone,
+            e,
+            exc_info=True
+        )
+        return False
+

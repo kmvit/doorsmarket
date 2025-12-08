@@ -72,12 +72,14 @@ const ComplaintDetail = () => {
   const getStatusBadgeClass = (status: string) => {
     if (status === 'new') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-green-100 text-green-800'
-    } else if (status === 'installer_not_planned') {
+    } else if (status === 'installer_not_planned' || status === 'installer_overdue') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-red-600 text-white border-2 border-red-800 animate-pulse'
     } else if (status === 'in_progress') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-yellow-100 text-yellow-800'
     } else if (status === 'resolved') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-purple-100 text-purple-800'
+    } else if (['factory_response_overdue', 'sm_response_overdue', 'shipping_overdue'].includes(status)) {
+      return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-red-100 text-red-800'
     } else {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-gray-100 text-gray-800'
     }

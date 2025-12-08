@@ -15,6 +15,7 @@ const ComplaintCard = ({ complaint }: ComplaintCardProps) => {
       factory_response_overdue: 'bg-red-100 text-red-800',
       sm_response_overdue: 'bg-red-100 text-red-800',
       shipping_overdue: 'bg-red-100 text-red-800',
+      installer_overdue: 'bg-red-600 text-white border-2 border-red-800',
     }
     return statusColors[status] || 'bg-gray-100 text-gray-800'
   }

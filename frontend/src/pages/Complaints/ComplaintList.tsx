@@ -191,6 +191,15 @@ const ComplaintList = () => {
       )
     }
 
+    // Просроченные статусы (красные)
+    if (status === 'installer_overdue') {
+      return (
+        <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-600 text-white border-2 border-red-800 animate-pulse">
+          ⚠️ ПРОСРОЧЕНА! {statusDisplay}
+        </span>
+      )
+    }
+
     // Остальные статусы
     const statusColors: Record<string, string> = {
       new: 'bg-green-100 text-green-800',
@@ -199,6 +208,9 @@ const ComplaintList = () => {
       factory_approved: 'bg-green-100 text-green-800',
       resolved: 'bg-purple-100 text-purple-800',
       closed: 'bg-gray-100 text-gray-800',
+      factory_response_overdue: 'bg-red-100 text-red-800',
+      sm_response_overdue: 'bg-red-100 text-red-800',
+      shipping_overdue: 'bg-red-100 text-red-800',
     }
 
     const colorClass = statusColors[status] || 'bg-blue-100 text-blue-800'

@@ -60,7 +60,13 @@ const InstallerTasks = () => {
     const status = complaint.status
     const statusDisplay = complaint.status_display
 
-    if (['waiting_installer_date', 'needs_planning'].includes(status)) {
+    if (status === 'installer_overdue') {
+      return (
+        <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-600 text-white border-2 border-red-800 animate-pulse">
+          ⚠️ ПРОСРОЧЕНА! Рекламация не завершена
+        </span>
+      )
+    } else if (['waiting_installer_date', 'needs_planning'].includes(status)) {
       return (
         <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
           Нужно запланировать
