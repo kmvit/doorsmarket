@@ -285,8 +285,13 @@ class Complaint(models.Model):
         """СМ выбирает тип 'Монтажник'"""
         self.complaint_type = ComplaintType.INSTALLER
         self.status = ComplaintStatus.WAITING_INSTALLER_DATE
-        if installer and not self.installer_assigned_at:
-            self.installer_assigned_at = timezone.now()
+        
+        # Устанавливаем монтажника, если передан
+        if installer:
+            self.installer_assigned = installer
+            if not self.installer_assigned_at:
+                self.installer_assigned_at = timezone.now()
+        
         self.save()
         self._create_notification(
             recipient=self.initiator,
@@ -295,8 +300,11 @@ class Complaint(models.Model):
             message=f'Рекламация #{self.id} требует назначения даты монтажа'
         )
         
+        # Определяем монтажника для отправки SMS (используем переданный или уже установленный)
+        installer_for_sms = installer or self.installer_assigned
+        
         # Отправка SMS монтажнику, если он назначен
-        if installer:
+        if installer_for_sms:
             try:
                 # Формируем ссылку на рекламацию
                 frontend_url = getattr(settings, 'FRONTEND_URL', '')
@@ -310,15 +318,15 @@ class Complaint(models.Model):
                 sms_text = f"Нужно запланировать работы по рекламации #{self.id} {complaint_url}"
                 
                 sms_sent = send_sms_notification(
-                    user=installer,
+                    user=installer_for_sms,
                     message=sms_text,
                 )
                 if sms_sent:
-                    logger.info('SMS отправлено монтажнику %s для рекламации #%s', installer.username, self.id)
+                    logger.info('SMS отправлено монтажнику %s для рекламации #%s', installer_for_sms.username, self.id)
             except Exception as exc:
                 logger.error(
                     'Ошибка отправки SMS монтажнику %s: %s',
-                    installer.username,
+                    installer_for_sms.username if installer_for_sms else 'None',
                     exc,
                     exc_info=True,
                 )
@@ -491,6 +499,28 @@ class Complaint(models.Model):
                 title='Монтаж запланирован',
                 message=f'Рекламация #{self.id} (заказ {self.order_number}): Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y %H:%M")}. Клиент: {self.client_name}'
             )
+        
+        # Отправка SMS клиенту
+        if self.contact_phone:
+            try:
+                # Формируем текст SMS с датой монтажа
+                installation_date_str = installation_date.strftime("%d.%m.%Y %H:%M")
+                sms_text = f"По Вашей рекламации запланирован монтаж на {installation_date_str}."
+                
+                sms_sent = send_sms_to_phone(
+                    phone_number=self.contact_phone,
+                    message=sms_text,
+                )
+                if sms_sent:
+                    logger.info('SMS отправлено клиенту на номер %s для рекламации #%s', self.contact_phone, self.id)
+            except Exception as exc:
+                logger.error(
+                    'Ошибка отправки SMS клиенту на номер %s для рекламации #%s: %s',
+                    self.contact_phone,
+                    self.id,
+                    exc,
+                    exc_info=True,
+                )
     
     def mark_completed(self):
         """Монтажник отмечает работу выполненной"""
