@@ -290,7 +290,7 @@ class Complaint(models.Model):
         if installer:
             self.installer_assigned = installer
             if not self.installer_assigned_at:
-                self.installer_assigned_at = timezone.now()
+            self.installer_assigned_at = timezone.now()
         
         self.save()
         self._create_notification(
@@ -430,8 +430,9 @@ class Complaint(models.Model):
         # Отправка SMS клиенту
         if self.contact_phone:
             try:
-                # Формируем текст SMS
-                sms_text = f"Приносим извинения! Срок пр-ва по Вашей рекламации #{self.id}."
+                # Формируем текст SMS с датой производства
+                production_date_str = production_deadline.strftime("%d.%m.%Y")
+                sms_text = f"Приносим извинения! Срок пр-ва по Вашей рекламации {production_date_str}."
                 
                 sms_sent = send_sms_to_phone(
                     phone_number=self.contact_phone,
@@ -520,7 +521,7 @@ class Complaint(models.Model):
                     self.id,
                     exc,
                     exc_info=True,
-                )
+            )
     
     def mark_completed(self):
         """Монтажник отмечает работу выполненной"""
@@ -793,7 +794,7 @@ class Complaint(models.Model):
                     self.id,
                     exc,
                     exc_info=True,
-                )
+        )
     
     def _get_service_manager(self):
         """Определяет СМ для этой рекламации"""

@@ -208,4 +208,4 @@ VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'support@marketingdoors.ru')
 SMS_RU_API_ID = os.getenv('SMS_RU_API_ID', '')
 
 # Frontend URL for generating links in notifications
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://16c90da0e1be.vps.myjino.ru')
