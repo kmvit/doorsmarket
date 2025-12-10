@@ -777,8 +777,9 @@
                                     Товар на складе
                                 </button>
                             </form>
-                            {% elif complaint.status == 'on_warehouse' %}
+                            {% elif complaint.status == 'on_warehouse' or complaint.status == 'installation_planned' %}
                             <!-- Планирование отгрузки -->
+                            {% if not complaint.planned_shipping_date %}
                             <form method="post" action="{% url 'projects:manager_plan_shipping' complaint.id %}">
                                 {% csrf_token %}
                                 <div class="mb-3">
@@ -794,6 +795,7 @@
                                     Отгрузка запланирована
                                 </button>
                             </form>
+                            {% endif %}
                             {% endif %}
                         {% endif %}
                         

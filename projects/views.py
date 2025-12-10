@@ -302,7 +302,7 @@ def complaint_detail(request, pk):
                 complaint.mark_on_warehouse()
                 messages.success(request, 'Товар отмечен как готовый на складе')
             
-            elif action == 'plan-shipping' and complaint.status == 'on_warehouse':
+            elif action == 'plan-shipping' and complaint.status in ['on_warehouse', 'installation_planned']:
                 # Планирование отгрузки
                 shipping_date = request.POST.get('shipping_date')
                 if shipping_date:

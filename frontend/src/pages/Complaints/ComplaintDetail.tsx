@@ -1322,7 +1322,7 @@ const ComplaintDetail = () => {
                       </Button>
                     )}
 
-                    {currentComplaint.status === 'on_warehouse' && (
+                    {(currentComplaint.status === 'on_warehouse' || currentComplaint.status === 'installation_planned') && !currentComplaint.planned_shipping_date && (
                       <div className="p-4 border-2 border-blue-200 rounded-xl bg-blue-50">
                         <h4 className="text-sm font-semibold text-gray-900 mb-3">Планирование отгрузки</h4>
                         <div className="mb-3">

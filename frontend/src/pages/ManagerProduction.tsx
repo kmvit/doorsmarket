@@ -265,7 +265,7 @@ const ManagerProduction = () => {
                               Товар на складе
                             </button>
                           )}
-                          {complaint.status === 'on_warehouse' && (
+                          {(complaint.status === 'on_warehouse' || complaint.status === 'installation_planned') && !complaint.planned_shipping_date && (
                             <button
                               onClick={() => openShippingModal(complaint)}
                               disabled={isProcessing}
