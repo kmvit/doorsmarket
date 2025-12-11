@@ -290,7 +290,7 @@ class Complaint(models.Model):
         if installer:
             self.installer_assigned = installer
             if not self.installer_assigned_at:
-            self.installer_assigned_at = timezone.now()
+                self.installer_assigned_at = timezone.now()
         
         self.save()
         self._create_notification(
