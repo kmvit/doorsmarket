@@ -930,7 +930,11 @@ class DefectiveProduct(models.Model):
         verbose_name='Рекламация'
     )
     product_name = models.CharField(max_length=255, verbose_name='Наименование бракованного изделия')
-    size = models.CharField(max_length=100, verbose_name='Размер изделия')
+    size = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name='Размер изделия'
+    )
     opening_type = models.CharField(
         max_length=100,
         blank=True,
@@ -945,7 +949,9 @@ class DefectiveProduct(models.Model):
         ordering = ['complaint', 'order']
     
     def __str__(self):
-        return f"{self.product_name} ({self.size})"
+        if self.size:
+            return f"{self.product_name} ({self.size})"
+        return f"{self.product_name}"
 
 
 class ComplaintAttachment(models.Model):
