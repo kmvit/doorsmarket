@@ -1,11 +1,12 @@
 """
-Утилиты для отправки Web Push уведомлений и SMS
+Утилиты для отправки Web Push уведомлений, SMS и Email
 """
 import json
 import logging
 from typing import Dict, Optional
 from urllib.parse import urlparse
 from django.conf import settings
+from django.core.mail import send_mail, EmailMessage
 from pywebpush import webpush, WebPushException
 import requests
 from .models import PushSubscription, User
@@ -410,6 +411,66 @@ def send_sms_to_phone(
         logger.error(
             'Неожиданная ошибка при отправке SMS на номер %s: %s',
             cleaned_phone,
+            e,
+            exc_info=True
+        )
+        return False
+
+
+def send_email_notification(
+    to_email: str,
+    subject: str,
+    message: str,
+    html_message: Optional[str] = None,
+) -> bool:
+    """
+    Отправляет email-уведомление на указанный адрес
+    
+    Args:
+        to_email: Email адрес получателя
+        subject: Тема письма
+        message: Текст сообщения (plain text)
+        html_message: HTML версия сообщения (опционально)
+    
+    Returns:
+        True если email успешно отправлен
+    """
+    if not to_email:
+        logger.warning('Email адрес не указан')
+        return False
+    
+    if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+        logger.warning('Настройки email не настроены, email-уведомления недоступны')
+        return False
+    
+    try:
+        if html_message:
+            # Отправляем HTML email
+            email = EmailMessage(
+                subject=subject,
+                body=html_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email],
+            )
+            email.content_subtype = 'html'
+            email.send()
+        else:
+            # Отправляем plain text email
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[to_email],
+                fail_silently=False,
+            )
+        
+        logger.info('Email отправлен на адрес %s с темой "%s"', to_email, subject)
+        return True
+        
+    except Exception as e:
+        logger.error(
+            'Ошибка отправки email на адрес %s: %s',
+            to_email,
             e,
             exc_info=True
         )

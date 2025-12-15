@@ -361,6 +361,45 @@ class Complaint(models.Model):
                 title='Новая рекламация',
                 message=f'Рекламация #{self.id} (заказ {self.order_number}) требует решения отдела рекламаций. Срок ответа: 2 рабочих дня. Клиент: {self.client_name}'
             )
+        
+        # Отправка email на адрес из OR_EMAIL
+        or_email = getattr(settings, 'OR_EMAIL', '')
+        if or_email:
+            try:
+                from users.push_utils import send_email_notification
+                
+                # Формируем ссылку на рекламацию
+                frontend_url = getattr(settings, 'FRONTEND_URL', '')
+                if frontend_url:
+                    complaint_url = f"{frontend_url.rstrip('/')}/complaints/{self.id}"
+                else:
+                    complaint_url = f"/complaints/{self.id}"
+                
+                # Формируем тему и текст письма
+                subject = f'Новая рекламация #{self.id} - требует решения отдела рекламаций'
+                message = (
+                    f'Поступила новая рекламация #{self.id}, требующая решения отдела рекламаций.\n\n'
+                    f'Заказ: {self.order_number}\n'
+                    f'Клиент: {self.client_name}\n'
+                    f'Срок ответа: 2 рабочих дня\n\n'
+                    f'Ссылка на рекламацию: {complaint_url}'
+                )
+                
+                email_sent = send_email_notification(
+                    to_email=or_email,
+                    subject=subject,
+                    message=message,
+                )
+                if email_sent:
+                    logger.info('Email отправлен на адрес %s для рекламации #%s', or_email, self.id)
+            except Exception as exc:
+                logger.error(
+                    'Ошибка отправки email на адрес %s для рекламации #%s: %s',
+                    or_email,
+                    self.id,
+                    exc,
+                    exc_info=True,
+                )
     
     def factory_approve(self):
         """ОР одобряет рекламацию - ответ получен"""
