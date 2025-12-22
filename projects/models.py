@@ -375,6 +375,41 @@ class Complaint(models.Model):
                 else:
                     complaint_url = f"/complaints/{self.id}"
                 
+                # Получаем все вложения рекламации
+                attachments = self.attachments.all()
+                attachments_list_text = []
+                attachments_list_html = []
+                
+                if attachments.exists():
+                    attachments_list_text.append('\n\nВложения:')
+                    attachments_list_html.append('<h3>Вложения:</h3><ul>')
+                    for attachment in attachments:
+                        file_url = attachment.get_absolute_url()
+                        file_name = attachment.file.name.split('/')[-1] if attachment.file.name else 'Без имени'
+                        file_size = attachment.file_size
+                        attachment_type = attachment.get_attachment_type_display()
+                        
+                        # Plain text версия
+                        attachments_list_text.append(
+                            f'  - {attachment_type}: {file_name} ({file_size})\n'
+                            f'    Ссылка: {file_url}'
+                        )
+                        if attachment.description:
+                            attachments_list_text.append(f'    Описание: {attachment.description}')
+                        
+                        # HTML версия
+                        desc_html = f'<br><small>{attachment.description}</small>' if attachment.description else ''
+                        attachments_list_html.append(
+                            f'<li><strong>{attachment_type}:</strong> {file_name} ({file_size})<br>'
+                            f'<a href="{file_url}">{file_url}</a>{desc_html}</li>'
+                        )
+                    attachments_list_html.append('</ul>')
+                    attachments_text = '\n'.join(attachments_list_text)
+                    attachments_html = '\n'.join(attachments_list_html)
+                else:
+                    attachments_text = '\n\nВложения отсутствуют.'
+                    attachments_html = '<p><em>Вложения отсутствуют.</em></p>'
+                
                 # Формируем тему и текст письма
                 subject = f'Новая рекламация #{self.id} - требует решения отдела рекламаций'
                 message = (
@@ -383,12 +418,29 @@ class Complaint(models.Model):
                     f'Клиент: {self.client_name}\n'
                     f'Срок ответа: 2 рабочих дня\n\n'
                     f'Ссылка на рекламацию: {complaint_url}'
+                    f'{attachments_text}'
                 )
+                
+                # HTML версия письма
+                html_message = f'''
+                <html>
+                <body>
+                    <h2>Новая рекламация #{self.id}</h2>
+                    <p>Поступила новая рекламация, требующая решения отдела рекламаций.</p>
+                    <p><strong>Заказ:</strong> {self.order_number}<br>
+                    <strong>Клиент:</strong> {self.client_name}<br>
+                    <strong>Срок ответа:</strong> 2 рабочих дня</p>
+                    <p><a href="{complaint_url}">Открыть рекламацию</a></p>
+                    {attachments_html}
+                </body>
+                </html>
+                '''
                 
                 email_sent = send_email_notification(
                     to_email=or_email,
                     subject=subject,
                     message=message,
+                    html_message=html_message,
                 )
                 if email_sent:
                     logger.info('Email отправлен на адрес %s для рекламации #%s', or_email, self.id)
@@ -1005,6 +1057,29 @@ class ComplaintAttachment(models.Model):
                     return f"{size:.1f} {unit}"
                 size /= 1024.0
         return "0 B"
+    
+    def get_absolute_url(self):
+        """Возвращает абсолютный URL файла"""
+        if not self.file:
+            return None
+        
+        # Используем BASE_URL, если он настроен
+        base_url = getattr(settings, 'BASE_URL', None)
+        if base_url:
+            file_url = self.file.url
+            # file.url уже содержит ведущий слэш и MEDIA_URL, просто добавляем BASE_URL
+            return f"{base_url.rstrip('/')}{file_url}"
+        
+        # Если BASE_URL не настроен, используем первый ALLOWED_HOST
+        allowed_hosts = getattr(settings, 'ALLOWED_HOSTS', [])
+        if allowed_hosts and allowed_hosts[0] and allowed_hosts[0] != '*':
+            scheme = 'https' if not settings.DEBUG else 'http'
+            base_url = f"{scheme}://{allowed_hosts[0]}"
+            file_url = self.file.url
+            return f"{base_url.rstrip('/')}{file_url}"
+        
+        # Если ничего не подошло, возвращаем относительный URL
+        return self.file.url
 
 
 class ComplaintComment(models.Model):
