@@ -375,63 +375,149 @@ class Complaint(models.Model):
                 else:
                     complaint_url = f"/complaints/{self.id}"
                 
-                # Получаем все вложения рекламации
-                attachments = self.attachments.all()
-                attachments_list_text = []
-                attachments_list_html = []
+                # Вспомогательная функция для форматирования даты
+                def format_date(dt):
+                    if dt:
+                        return dt.strftime('%d.%m.%Y %H:%M')
+                    return 'не указана'
                 
+                # Получаем все данные рекламации
+                attachments = self.attachments.all()
+                defective_products = self.defective_products.all()
+                comments = self.comments.all()
+                
+                # Формируем HTML для вложений
+                attachments_list_html = []
                 if attachments.exists():
-                    attachments_list_text.append('\n\nВложения:')
                     attachments_list_html.append('<h3>Вложения:</h3><ul>')
                     for attachment in attachments:
                         file_url = attachment.get_absolute_url()
                         file_name = attachment.file.name.split('/')[-1] if attachment.file.name else 'Без имени'
                         file_size = attachment.file_size
                         attachment_type = attachment.get_attachment_type_display()
-                        
-                        # Plain text версия
-                        attachments_list_text.append(
-                            f'  - {attachment_type}: {file_name} ({file_size})\n'
-                            f'    Ссылка: {file_url}'
-                        )
-                        if attachment.description:
-                            attachments_list_text.append(f'    Описание: {attachment.description}')
-                        
-                        # HTML версия
                         desc_html = f'<br><small>{attachment.description}</small>' if attachment.description else ''
                         attachments_list_html.append(
                             f'<li><strong>{attachment_type}:</strong> {file_name} ({file_size})<br>'
                             f'<a href="{file_url}">{file_url}</a>{desc_html}</li>'
                         )
                     attachments_list_html.append('</ul>')
-                    attachments_text = '\n'.join(attachments_list_text)
                     attachments_html = '\n'.join(attachments_list_html)
                 else:
-                    attachments_text = '\n\nВложения отсутствуют.'
                     attachments_html = '<p><em>Вложения отсутствуют.</em></p>'
                 
-                # Формируем тему и текст письма
+                # Формируем HTML для бракованных изделий
+                defective_products_html = []
+                if defective_products.exists():
+                    defective_products_html.append('<h3>Бракованные изделия:</h3><ul>')
+                    for product in defective_products:
+                        product_info = f'<li><strong>{product.product_name}</strong>'
+                        if product.size:
+                            product_info += f' - Размер: {product.size}'
+                        if product.opening_type:
+                            product_info += f', Тип открывания: {product.opening_type}'
+                        product_info += f'<br>{product.problem_description}</li>'
+                        defective_products_html.append(product_info)
+                    defective_products_html.append('</ul>')
+                    defective_products_html = '\n'.join(defective_products_html)
+                else:
+                    defective_products_html = '<p><em>Бракованные изделия отсутствуют.</em></p>'
+                
+                # Формируем HTML для комментариев
+                comments_html = []
+                if comments.exists():
+                    comments_html.append('<h3>Комментарии:</h3><ul>')
+                    for comment in comments:
+                        author_name = comment.author.get_full_name() or comment.author.username
+                        comment_date = format_date(comment.created_at)
+                        comments_html.append(
+                            f'<li><strong>{author_name}</strong> ({comment_date}):<br>{comment.text}</li>'
+                        )
+                    comments_html.append('</ul>')
+                    comments_html = '\n'.join(comments_html)
+                else:
+                    comments_html = '<p><em>Комментарии отсутствуют.</em></p>'
+                
+                # Формируем URL коммерческого предложения
+                commercial_offer_url_html = ''
+                if self.commercial_offer:
+                    base_url = getattr(settings, 'BASE_URL', None)
+                    if not base_url:
+                        allowed_hosts = getattr(settings, 'ALLOWED_HOSTS', [])
+                        if allowed_hosts and allowed_hosts[0] and allowed_hosts[0] != '*':
+                            scheme = 'https' if not settings.DEBUG else 'http'
+                            base_url = f"{scheme}://{allowed_hosts[0]}"
+                    if base_url:
+                        co_url = f"{base_url.rstrip('/')}{self.commercial_offer.url}"
+                        commercial_offer_url_html = f'<p><strong>Коммерческое предложение:</strong> <a href="{co_url}">{co_url}</a></p>'
+                
+                # Формируем тему и текст письма (plain text)
                 subject = f'Новая рекламация #{self.id} - требует решения отдела рекламаций'
                 message = (
                     f'Поступила новая рекламация #{self.id}, требующая решения отдела рекламаций.\n\n'
-                    f'Заказ: {self.order_number}\n'
-                    f'Клиент: {self.client_name}\n'
                     f'Срок ответа: 2 рабочих дня\n\n'
                     f'Ссылка на рекламацию: {complaint_url}'
-                    f'{attachments_text}'
                 )
                 
-                # HTML версия письма
+                # HTML версия письма со всеми полями
                 html_message = f'''
                 <html>
                 <body>
                     <h2>Новая рекламация #{self.id}</h2>
-                    <p>Поступила новая рекламация, требующая решения отдела рекламаций.</p>
-                    <p><strong>Заказ:</strong> {self.order_number}<br>
-                    <strong>Клиент:</strong> {self.client_name}<br>
-                    <strong>Срок ответа:</strong> 2 рабочих дня</p>
-                    <p><a href="{complaint_url}">Открыть рекламацию</a></p>
+                    <p><strong>Срок ответа:</strong> 2 рабочих дня</p>
+                    
+                    <h3>Основная информация</h3>
+                    <p><strong>Номер заказа:</strong> {self.order_number}<br>
+                    <strong>Статус:</strong> {self.get_status_display()}<br>
+                    <strong>Тип рекламации:</strong> {self.get_complaint_type_display() if self.complaint_type else "не установлен"}<br>
+                    <strong>Причина рекламации:</strong> {self.reason.name}<br>
+                    <strong>Дата создания:</strong> {format_date(self.created_at)}<br>
+                    <strong>Дата обновления:</strong> {format_date(self.updated_at)}</p>
+                    
+                    <h3>Информация о клиенте</h3>
+                    <p><strong>Наименование клиента:</strong> {self.client_name}<br>
+                    <strong>Адрес:</strong> {self.address}<br>
+                    <strong>Контактное лицо:</strong> {self.contact_person}<br>
+                    <strong>Телефон:</strong> {self.contact_phone}</p>
+                    
+                    <h3>Назначенные сотрудники</h3>
+                    <p><strong>Инициатор:</strong> {self.initiator.get_full_name() or self.initiator.username}<br>
+                    <strong>Получатель:</strong> {self.recipient.get_full_name() or self.recipient.username}<br>
+                    {'<strong>Менеджер заказа:</strong> ' + (self.manager.get_full_name() or self.manager.username) + '<br>' if self.manager else ''}
+                    {'<strong>Назначенный монтажник:</strong> ' + (self.installer_assigned.get_full_name() or self.installer_assigned.username) + '<br>' if self.installer_assigned else ''}
+                    <strong>Производственная площадка:</strong> {self.production_site.name}</p>
+                    
+                    <h3>Дополнительная информация</h3>
+                    {'<p><strong>Дополнительная информация:</strong><br>' + self.additional_info + '</p>' if self.additional_info else ''}
+                    {'<p><strong>Комментарий для исполнителя:</strong><br>' + self.assignee_comment + '</p>' if self.assignee_comment else ''}
+                    
+                    <h3>Документы</h3>
+                    {'<p><strong>Ссылка на пакет документов:</strong> <a href="' + self.document_package_link + '">' + self.document_package_link + '</a></p>' if self.document_package_link else ''}
+                    {commercial_offer_url_html}
+                    {'<p><strong>Описание коммерческого предложения:</strong><br>' + self.commercial_offer_text + '</p>' if self.commercial_offer_text else ''}
+                    
+                    <h3>Планирование</h3>
+                    <p><strong>Запланированная дата монтажа:</strong> {format_date(self.planned_installation_date)}<br>
+                    <strong>Запланированная дата отгрузки:</strong> {format_date(self.planned_shipping_date)}<br>
+                    <strong>Срок готовности производства:</strong> {format_date(self.production_deadline)}<br>
+                    {'<strong>Дата назначения монтажника:</strong> ' + format_date(self.installer_assigned_at) + '<br>' if self.installer_assigned_at else ''}</p>
+                    
+                    <h3>Информация о фабрике</h3>
+                    <p><strong>Дата ответа фабрики:</strong> {format_date(self.factory_response_date)}<br>
+                    {'<strong>Причина отказа фабрики:</strong><br>' + self.factory_reject_reason + '<br>' if self.factory_reject_reason else ''}
+                    {'<strong>Аргументы спора с фабрикой:</strong><br>' + self.dispute_arguments + '<br>' if self.dispute_arguments else ''}</p>
+                    
+                    <h3>Дополнительные даты</h3>
+                    <p><strong>Дата согласования с клиентом:</strong> {format_date(self.client_agreement_date)}<br>
+                    <strong>Дата завершения:</strong> {format_date(self.completion_date)}<br>
+                    <strong>Добавлено в реестр отгрузки:</strong> {format_date(self.added_to_shipping_registry_at)}</p>
+                    
+                    {defective_products_html}
+                    
                     {attachments_html}
+                    
+                    {comments_html}
+                    
+                    <p><a href="{complaint_url}">Открыть рекламацию в системе</a></p>
                 </body>
                 </html>
                 '''
