@@ -223,3 +223,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # OR Email (Operational Manager Email)
 OR_EMAIL = os.getenv('OR_EMAIL', '')
+
+# Base URL for generating absolute URLs for media files
+# If not set, will use first ALLOWED_HOST with http/https scheme
+BASE_URL = os.getenv('BASE_URL', '')

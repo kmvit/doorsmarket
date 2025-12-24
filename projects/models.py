@@ -375,20 +375,116 @@ class Complaint(models.Model):
                 else:
                     complaint_url = f"/complaints/{self.id}"
                 
-                # Формируем тему и текст письма
+                # Вспомогательная функция для форматирования даты
+                def format_date(dt):
+                    if dt:
+                        return dt.strftime('%d.%m.%Y %H:%M')
+                    return 'не указана'
+                
+                # Получаем все данные рекламации
+                attachments = self.attachments.all()
+                defective_products = self.defective_products.all()
+                comments = self.comments.all()
+                
+                # Формируем HTML для комментариев (переписка)
+                comments_html = []
+                if comments.exists():
+                    comments_html.append('<h3>Комментарии (переписка):</h3><ul>')
+                    for comment in comments:
+                        author_name = comment.author.get_full_name() or comment.author.username
+                        comment_date = format_date(comment.created_at)
+                        comments_html.append(
+                            f'<li><strong>{author_name}</strong> ({comment_date}):<br>{comment.text}</li>'
+                        )
+                    comments_html.append('</ul>')
+                    comments_html = '\n'.join(comments_html)
+                else:
+                    comments_html = ''
+                
+                # Формируем HTML для вложений
+                attachments_list_html = []
+                if attachments.exists():
+                    attachments_list_html.append('<h3>Вложения:</h3><ul>')
+                    for attachment in attachments:
+                        file_url = attachment.get_absolute_url()
+                        file_name = attachment.file.name.split('/')[-1] if attachment.file.name else 'Без имени'
+                        file_size = attachment.file_size
+                        attachment_type = attachment.get_attachment_type_display()
+                        desc_html = f'<br><small>{attachment.description}</small>' if attachment.description else ''
+                        attachments_list_html.append(
+                            f'<li><strong>{attachment_type}:</strong> {file_name} ({file_size})<br>'
+                            f'<a href="{file_url}">{file_url}</a>{desc_html}</li>'
+                        )
+                    attachments_list_html.append('</ul>')
+                    attachments_html = '\n'.join(attachments_list_html)
+                else:
+                    attachments_html = '<p><em>Вложения отсутствуют.</em></p>'
+                
+                # Формируем HTML для бракованных изделий
+                defective_products_html = []
+                if defective_products.exists():
+                    defective_products_html.append('<h3>Бракованные изделия:</h3><ul>')
+                    for product in defective_products:
+                        product_html = f'<li>'
+                        product_html += f'<strong>Наименование бракованного изделия:</strong> {product.product_name}<br>'
+                        if product.size:
+                            product_html += f'<strong>Размер изделия:</strong> {product.size}<br>'
+                        if product.opening_type:
+                            product_html += f'<strong>Открывание:</strong> {product.opening_type}<br>'
+                        product_html += f'<strong>Описание проблемы:</strong> {product.problem_description}'
+                        product_html += f'</li>'
+                        defective_products_html.append(product_html)
+                    defective_products_html.append('</ul>')
+                    defective_products_html = '\n'.join(defective_products_html)
+                else:
+                    defective_products_html = '<p><em>Бракованные изделия отсутствуют.</em></p>'
+                
+                # Формируем тему и текст письма (plain text)
                 subject = f'Новая рекламация #{self.id} - требует решения отдела рекламаций'
                 message = (
                     f'Поступила новая рекламация #{self.id}, требующая решения отдела рекламаций.\n\n'
-                    f'Заказ: {self.order_number}\n'
-                    f'Клиент: {self.client_name}\n'
                     f'Срок ответа: 2 рабочих дня\n\n'
                     f'Ссылка на рекламацию: {complaint_url}'
                 )
+                
+                # HTML версия письма с указанными полями
+                html_message = f'''
+                <html>
+                <body>
+                    <h2>Новая рекламация #{self.id}</h2>
+                    <p><strong>Срок ответа:</strong> 2 рабочих дня</p>
+                    
+                    <h3>Основная информация</h3>
+                    <p><strong>Дата создания заявки:</strong> {format_date(self.created_at)}<br>
+                    <strong>Инициатор заявки:</strong> {self.initiator.get_full_name() or self.initiator.username}<br>
+                    <strong>Получатель заявки:</strong> {self.recipient.get_full_name() or self.recipient.username}<br>
+                    {'<strong>Менеджер заказа:</strong> ' + (self.manager.get_full_name() or self.manager.username) + '<br>' if self.manager else ''}
+                    <strong>Производственная площадка:</strong> {self.production_site.name}<br>
+                    <strong>Причина рекламации:</strong> {self.reason.name}<br>
+                    <strong>Номер заказа:</strong> {self.order_number}</p>
+                    
+                    <h3>Информация о клиенте</h3>
+                    <p><strong>Наименование клиента:</strong> {self.client_name}<br>
+                    <strong>Адрес:</strong> {self.address}<br>
+                    <strong>Контактное лицо от клиента:</strong> {self.contact_person}<br>
+                    <strong>Телефон контактного лица:</strong> {self.contact_phone}</p>
+                    
+                    {defective_products_html}
+                    
+                    {attachments_html}
+                    
+                    {comments_html}
+                    
+                    <p><a href="{complaint_url}">Открыть рекламацию в системе</a></p>
+                </body>
+                </html>
+                '''
                 
                 email_sent = send_email_notification(
                     to_email=or_email,
                     subject=subject,
                     message=message,
+                    html_message=html_message,
                 )
                 if email_sent:
                     logger.info('Email отправлен на адрес %s для рекламации #%s', or_email, self.id)
@@ -1005,6 +1101,29 @@ class ComplaintAttachment(models.Model):
                     return f"{size:.1f} {unit}"
                 size /= 1024.0
         return "0 B"
+    
+    def get_absolute_url(self):
+        """Возвращает абсолютный URL файла"""
+        if not self.file:
+            return None
+        
+        # Используем BASE_URL, если он настроен
+        base_url = getattr(settings, 'BASE_URL', None)
+        if base_url:
+            file_url = self.file.url
+            # file.url уже содержит ведущий слэш и MEDIA_URL, просто добавляем BASE_URL
+            return f"{base_url.rstrip('/')}{file_url}"
+        
+        # Если BASE_URL не настроен, используем первый ALLOWED_HOST
+        allowed_hosts = getattr(settings, 'ALLOWED_HOSTS', [])
+        if allowed_hosts and allowed_hosts[0] and allowed_hosts[0] != '*':
+            scheme = 'https' if not settings.DEBUG else 'http'
+            base_url = f"{scheme}://{allowed_hosts[0]}"
+            file_url = self.file.url
+            return f"{base_url.rstrip('/')}{file_url}"
+        
+        # Если ничего не подошло, возвращаем относительный URL
+        return self.file.url
 
 
 class ComplaintComment(models.Model):
