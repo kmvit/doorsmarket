@@ -1,10 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
@@ -16,6 +15,10 @@ export default defineConfig({
       injectManifest: {
         swSrc: 'src/sw.ts',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Исключаем файлы, которые не должны кэшироваться
+        globIgnores: ['**/node_modules/**/*'],
+        // Добавляем ревизию для лучшего кэш-контроля
+        dontCacheBustURLsMatching: /\.\w{8}\./,
       },
       manifest: {
         name: 'Marketing Doors',
@@ -63,7 +66,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': new URL('./src', import.meta.url).pathname
     }
   },
   server: {
@@ -87,5 +90,5 @@ export default defineConfig({
       }
     }
   }
-})
+}))
 

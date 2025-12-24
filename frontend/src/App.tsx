@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import { useEffect, useState } from 'react'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import ComplaintList from './pages/Complaints/ComplaintList'
@@ -18,7 +19,30 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
 
 function App() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isLoading } = useAuthStore()
+  const [isInitializing, setIsInitializing] = useState(true)
+
+  useEffect(() => {
+    // Даем время на инициализацию
+    const timer = setTimeout(() => {
+      setIsInitializing(false)
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Показываем загрузку во время инициализации
+  if (isInitializing || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Marketing Doors</h2>
+          <p className="text-gray-500">Загрузка приложения...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Router>
