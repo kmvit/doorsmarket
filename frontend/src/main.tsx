@@ -17,6 +17,27 @@ if ('serviceWorker' in navigator) {
 
       const registration = await navigator.serviceWorker.register(swUrl, swOptions)
       console.log('[PWA] Service Worker зарегистрирован:', registration.scope)
+
+      // Обработка обновлений Service Worker
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] Доступно обновление приложения')
+              // Автоматически активируем новый Service Worker
+              newWorker.postMessage({ type: 'SKIP_WAITING' })
+            }
+          })
+        }
+      })
+
+      // Обработка активации нового Service Worker
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('[PWA] Service Worker обновлен, перезагружаем страницу')
+        window.location.reload()
+      })
+
     } catch (error) {
       console.error('[PWA] Не удалось зарегистрировать Service Worker:', error)
     }

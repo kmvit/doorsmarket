@@ -8,13 +8,24 @@ import { ExpirationPlugin } from 'workbox-expiration'
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: any[] }
 
+// Принудительно активируем новый Service Worker
 self.skipWaiting()
 clientsClaim()
 
-precacheAndRoute(self.__WB_MANIFEST)
+// Очищаем устаревшие кэши ПЕРЕД прекэшированием
 cleanupOutdatedCaches()
 
-const navigationRoute = new NavigationRoute(createHandlerBoundToURL('/index.html'))
+// Прекэшируем ресурсы
+precacheAndRoute(self.__WB_MANIFEST)
+
+// Настраиваем навигационный роутинг
+const navigationRoute = new NavigationRoute(
+  createHandlerBoundToURL('/index.html'),
+  {
+    // Исключаем API запросы из навигационного роутинга
+    denylist: [/^\/api\//, /^\/admin\//, /^\/static\//, /^\/media\//]
+  }
+)
 registerRoute(navigationRoute)
 
 registerRoute(
@@ -180,5 +191,18 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 
 self.addEventListener('notificationclose', (event: NotificationEvent) => {
   console.log('[Service Worker] Уведомление закрыто:', event)
+})
+
+// Обработчик сообщений для принудительного обновления
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+  
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0].postMessage({
+      version: self.__WB_MANIFEST?.length || 0
+    })
+  }
 })
 
