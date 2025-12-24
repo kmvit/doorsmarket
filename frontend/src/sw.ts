@@ -198,11 +198,5 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting()
   }
-  
-  if (event.data && event.data.type === 'GET_VERSION') {
-    event.ports[0].postMessage({
-      version: self.__WB_MANIFEST?.length || 0
-    })
-  }
 })
 
