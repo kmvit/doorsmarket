@@ -1324,5 +1324,3 @@ class DashboardStatsView(APIView):
             )
         
         return Response({'stats': stats})
-
-
