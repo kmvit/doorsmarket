@@ -587,6 +587,8 @@ def complaint_create(request):
                         messages.success(request, f'Рекламация #{complaint.id} создана и отправлена монтажнику!')
                     elif complaint_type == 'factory':
                         complaint.set_type_factory()
+                        # Отправляем email уведомление после создания всех связанных объектов
+                        complaint.send_factory_email_notification()
                         messages.success(request, f'Рекламация #{complaint.id} создана и отправлена в ОР!')
                 else:
                     messages.success(request, f'Рекламация #{complaint.id} успешно создана!')
@@ -775,6 +777,8 @@ def complaint_process(request, pk):
             
         elif action == 'set_type_factory':
             complaint.set_type_factory()
+            # Отправляем email уведомление после установки типа
+            complaint.send_factory_email_notification()
             messages.success(request, 'Тип рекламации установлен: Фабрика')
             
         elif action == 'approve':

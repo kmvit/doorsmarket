@@ -362,13 +362,18 @@ class Complaint(models.Model):
                 message=f'Рекламация #{self.id} (заказ {self.order_number}) требует решения отдела рекламаций. Срок ответа: 2 рабочих дня. Клиент: {self.client_name}'
             )
         
-        # Отправляем email уведомление
-        self.send_factory_email_notification()
+        # Email уведомление будет отправлено отдельно после создания всех связанных объектов
     
     def send_factory_email_notification(self):
         """Отправка email уведомления в отдел рекламаций при передаче рекламации на фабрику"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f'Начинаем отправку email для рекламации #{self.id}')
+        
         or_email = getattr(settings, 'OR_EMAIL', '')
         if not or_email:
+            logger.warning(f'OR_EMAIL не настроен, email для рекламации #{self.id} не отправлен')
             return
             
         try:
@@ -391,6 +396,8 @@ class Complaint(models.Model):
             attachments = self.attachments.all()
             defective_products = self.defective_products.all()
             comments = self.comments.all()
+            
+            logger.info(f'Рекламация #{self.id}: найдено {defective_products.count()} бракованных изделий, {attachments.count()} вложений')
             
             # Формируем HTML для дополнительной информации
             additional_info_html = ''
