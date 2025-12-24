@@ -198,18 +198,12 @@ const ComplaintCreate = () => {
         apiData.installer_assigned_id = Number(data.installer_id)
       }
 
-      // Объединяем все файлы: обычные вложения + КП
-      const allFiles: File[] = [...attachments]
-      
-      // КП загружаем отдельно после создания рекламации
-      const complaint = await complaintsAPI.create(apiData, allFiles.length > 0 ? allFiles : undefined)
-
-      // Загружаем КП отдельно
-      if (commercialOffers.length > 0) {
-        for (const file of commercialOffers) {
-          await complaintsAPI.uploadAttachment(complaint.id, file, 'commercial_offer')
-        }
-      }
+      // Создаем рекламацию с обычными вложениями и КП отдельно
+      const complaint = await complaintsAPI.create(
+        apiData, 
+        attachments.length > 0 ? attachments : undefined,
+        commercialOffers.length > 0 ? commercialOffers : undefined
+      )
 
       // Создаем бракованные изделия
       if (defectiveProducts.some(p => p.product_name || p.size || p.opening_type || p.problem_description)) {

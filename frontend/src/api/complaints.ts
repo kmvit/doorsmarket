@@ -146,7 +146,7 @@ export const complaintsAPI = {
   },
 
   // Создать рекламацию
-  create: async (data: ComplaintCreateData, files?: File[]): Promise<Complaint> => {
+  create: async (data: ComplaintCreateData, files?: File[], commercialOffers?: File[]): Promise<Complaint> => {
     const formData = new FormData()
     
     // Добавляем текстовые поля
@@ -158,10 +158,17 @@ export const complaintsAPI = {
       }
     })
     
-    // Добавляем файлы как attachments (множественное число)
+    // Добавляем обычные файлы как attachments
     if (files && files.length > 0) {
       files.forEach((file) => {
         formData.append('attachments', file)
+      })
+    }
+    
+    // Добавляем коммерческие предложения
+    if (commercialOffers && commercialOffers.length > 0) {
+      commercialOffers.forEach((file) => {
+        formData.append('commercial_offers', file)
       })
     }
     

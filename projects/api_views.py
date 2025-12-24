@@ -265,6 +265,34 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         complaint = serializer.save()
         
+        # Обрабатываем вложения (файлы)
+        files = request.FILES.getlist('attachments')
+        for file in files:
+            # Определяем тип файла по расширению
+            file_ext = file.name.lower().split('.')[-1]
+            if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                attachment_type = 'photo'
+            elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
+                attachment_type = 'video'
+            else:
+                attachment_type = 'document'
+            
+            ComplaintAttachment.objects.create(
+                complaint=complaint,
+                file=file,
+                attachment_type=attachment_type
+            )
+        
+        # Обрабатываем коммерческие предложения
+        commercial_offers = request.FILES.getlist('commercial_offers')
+        for co_file in commercial_offers:
+            ComplaintAttachment.objects.create(
+                complaint=complaint,
+                file=co_file,
+                attachment_type='commercial_offer',
+                description='Коммерческое предложение'
+            )
+        
         # Если СМ создал рекламацию с указанным типом, применяем соответствующую логику
         complaint_type = request.data.get('complaint_type')
         
