@@ -228,6 +228,16 @@ const ComplaintCreate = () => {
         }
       }
 
+      // Если рекламация типа "Фабрика", отправляем email уведомление после создания всех данных
+      if (data.complaint_type === 'factory') {
+        try {
+          await complaintsAPI.sendFactoryEmail(complaint.id)
+        } catch (emailError) {
+          console.warn('Ошибка отправки email уведомления:', emailError)
+          // Не прерываем процесс создания рекламации из-за ошибки email
+        }
+      }
+
       navigate(`/complaints/${complaint.id}`)
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || 

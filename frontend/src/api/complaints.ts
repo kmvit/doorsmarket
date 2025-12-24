@@ -353,6 +353,11 @@ export const complaintsAPI = {
     return response.data
   },
 
+  // Отправить email уведомление в отдел рекламаций
+  sendFactoryEmail: async (id: number): Promise<void> => {
+    await apiClient.post(`/complaints/${id}/send_factory_email/`)
+  },
+
   // Бракованные изделия
   getDefectiveProducts: async (complaintId: number): Promise<DefectiveProduct[]> => {
     const response = await apiClient.get(`/defective-products/?complaint=${complaintId}`)

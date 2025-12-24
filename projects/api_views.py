@@ -20,6 +20,7 @@ from .models import (
     ProductionSite,
     ComplaintReason,
     ComplaintStatus,
+    ComplaintType,
 )
 from .serializers import (
     ComplaintListSerializer,
@@ -953,6 +954,35 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'])
+    def send_factory_email(self, request, pk=None):
+        """Отправить email уведомление в отдел рекламаций"""
+        complaint = self.get_object()
+        user = request.user
+        
+        # Проверяем права доступа
+        if user.role not in ['service_manager', 'admin', 'leader']:
+            return Response(
+                {'error': 'Недостаточно прав для выполнения этого действия'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Проверяем, что рекламация имеет тип "Фабрика"
+        if complaint.complaint_type != ComplaintType.FACTORY:
+            return Response(
+                {'error': 'Email уведомление отправляется только для рекламаций типа "Фабрика"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            complaint.send_factory_email_notification()
+            return Response({'message': 'Email уведомление отправлено успешно'})
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка отправки email: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['get'])
     def history(self, request, pk=None):
         """История изменений рекламации"""
