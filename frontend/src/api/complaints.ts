@@ -441,5 +441,18 @@ export const complaintsAPI = {
   deleteComment: async (id: number): Promise<void> => {
     await apiClient.delete(`/comments/${id}/`)
   },
+
+  // Парсинг PDF файла
+  parsePDF: async (file: File): Promise<import('../types/complaints').ParsedComplaintData> => {
+    const formData = new FormData()
+    formData.append('pdf_file', file)
+
+    const response = await apiClient.post('/complaints/parse-pdf/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return response.data
+  },
 }
 

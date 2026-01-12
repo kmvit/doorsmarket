@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
-import { ComplaintCreateData } from '../../types/complaints'
+import { ComplaintCreateData, ParsedComplaintData, ParsedProduct } from '../../types/complaints'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
 import { User } from '../../types/auth'
 import { useAuthStore } from '../../store/authStore'
@@ -20,7 +20,7 @@ interface DefectiveProductForm {
 const ComplaintCreate = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { register, handleSubmit, formState: { errors }, watch } = useForm<ComplaintCreateData & { complaint_type?: string; installer_id?: number }>()
+  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<ComplaintCreateData & { complaint_type?: string; installer_id?: number }>()
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [managers, setManagers] = useState<User[]>([])
@@ -34,6 +34,9 @@ const ComplaintCreate = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [error, setError] = useState('')
+  const [isParsingPDF, setIsParsingPDF] = useState(false)
+  const [showProductSelection, setShowProductSelection] = useState(false)
+  const [parsedProducts, setParsedProducts] = useState<ParsedProduct[]>([])
 
   const complaintType = watch('complaint_type')
 
@@ -94,12 +97,94 @@ const ComplaintCreate = () => {
     }
   }
 
-  const handleCommercialOffersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCommercialOffersChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files)
-      setCommercialOffers(prev => [...prev, ...newFiles])
+      
+      // Проверяем, есть ли среди новых файлов PDF
+      const pdfFiles = newFiles.filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))
+      
+      if (pdfFiles.length > 0) {
+        // Парсим первый PDF файл
+        const pdfFile = pdfFiles[0]
+        setIsParsingPDF(true)
+        setError('')
+        
+        try {
+          const parsedData: ParsedComplaintData = await complaintsAPI.parsePDF(pdfFile)
+          
+          // Заполняем поля формы
+          if (parsedData.order_number) {
+            setValue('order_number', parsedData.order_number)
+          }
+          if (parsedData.client_name) {
+            setValue('client_name', parsedData.client_name)
+          }
+          if (parsedData.contact_person) {
+            setValue('contact_person', parsedData.contact_person)
+          }
+          if (parsedData.contact_phone) {
+            setValue('contact_phone', parsedData.contact_phone)
+          }
+          if (parsedData.address) {
+            setValue('address', parsedData.address)
+          }
+          
+          // Добавляем все файлы (включая PDF) в коммерческие предложения
+          setCommercialOffers(prev => [...prev, ...newFiles])
+          
+          // Если есть изделия, показываем диалог выбора
+          if (parsedData.defective_products && parsedData.defective_products.length > 0) {
+            setParsedProducts(parsedData.defective_products)
+            setShowProductSelection(true)
+          } else {
+            // Если изделий нет, просто показываем уведомление
+            alert('Данные из PDF успешно заполнены. Изделия не найдены.')
+          }
+        } catch (err: any) {
+          const errorMessage = err.response?.data?.error || err.message || 'Ошибка при парсинге PDF файла'
+          setError(errorMessage)
+          console.error('Ошибка парсинга PDF:', err)
+          // Все равно добавляем файл, если парсинг не удался
+          setCommercialOffers(prev => [...prev, ...newFiles])
+        } finally {
+          setIsParsingPDF(false)
+        }
+      } else {
+        // Если нет PDF файлов, просто добавляем их
+        setCommercialOffers(prev => [...prev, ...newFiles])
+      }
+      
       e.target.value = '' // Сбрасываем input для возможности добавить еще файлы
     }
+  }
+  
+  const handleAddSelectedProducts = (selectedIndices: number[]) => {
+    // Добавляем выбранные изделия в форму
+    const selectedProducts = selectedIndices.map(index => parsedProducts[index])
+    
+    // Преобразуем в формат DefectiveProductForm
+    const newProducts: DefectiveProductForm[] = selectedProducts.map(product => ({
+      product_name: product.product_name || '',
+      size: product.size || '',
+      opening_type: product.opening_type || '',
+      problem_description: product.problem_description || '',
+    }))
+    
+    // Добавляем к существующим изделиям (если первое пустое, заменяем, иначе добавляем)
+    if (defectiveProducts.length === 1 && !defectiveProducts[0].product_name) {
+      setDefectiveProducts(newProducts)
+    } else {
+      setDefectiveProducts(prev => [...prev, ...newProducts])
+    }
+    
+    setShowProductSelection(false)
+    setParsedProducts([])
+  }
+  
+  const handleCancelProductSelection = () => {
+    setShowProductSelection(false)
+    setParsedProducts([])
   }
 
   const removeAttachment = (index: number) => {
@@ -662,9 +747,21 @@ const ComplaintCreate = () => {
                   multiple
                   accept=".pdf,.doc,.docx,.xls,.xlsx"
                   onChange={handleCommercialOffersChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  disabled={isParsingPDF}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <p className="text-xs text-gray-500 mt-2">Можно выбрать несколько файлов КП.</p>
+                {isParsingPDF && (
+                  <div className="mt-2 flex items-center text-blue-600">
+                    <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm">Парсинг PDF файла...</span>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Можно выбрать несколько файлов КП. При загрузке PDF файла данные будут автоматически извлечены и заполнены.
+                </p>
                 <FileUploadList
                   files={commercialOffers}
                   onRemove={removeCommercialOffer}
@@ -688,6 +785,151 @@ const ComplaintCreate = () => {
             </Button>
           </div>
         </form>
+
+        {/* Диалог выбора изделий из PDF */}
+        {showProductSelection && parsedProducts.length > 0 && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-200">
+                <h2 className="text-2xl font-bold text-gray-900">Выберите изделия для добавления</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Найдено изделий в PDF: {parsedProducts.length}. Выберите те, которые нужно добавить в рекламацию.
+                </p>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6">
+                <ProductSelectionDialog
+                  products={parsedProducts}
+                  onAddSelected={handleAddSelectedProducts}
+                  onCancel={handleCancelProductSelection}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Компонент диалога выбора изделий
+interface ProductSelectionDialogProps {
+  products: ParsedProduct[]
+  onAddSelected: (selectedIndices: number[]) => void
+  onCancel: () => void
+}
+
+const ProductSelectionDialog = ({ products, onAddSelected, onCancel }: ProductSelectionDialogProps) => {
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
+  
+  const toggleProduct = (index: number) => {
+    const newSelected = new Set(selectedIndices)
+    if (newSelected.has(index)) {
+      newSelected.delete(index)
+    } else {
+      newSelected.add(index)
+    }
+    setSelectedIndices(newSelected)
+  }
+  
+  const selectAll = () => {
+    setSelectedIndices(new Set(products.map((_, i) => i)))
+  }
+  
+  const deselectAll = () => {
+    setSelectedIndices(new Set())
+  }
+  
+  const handleAdd = () => {
+    onAddSelected(Array.from(selectedIndices))
+  }
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={selectAll}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Выбрать все
+          </button>
+          <span className="text-gray-400">|</span>
+          <button
+            type="button"
+            onClick={deselectAll}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Снять все
+          </button>
+        </div>
+        <span className="text-sm text-gray-600">
+          Выбрано: {selectedIndices.size} из {products.length}
+        </span>
+      </div>
+      
+      <div className="space-y-3">
+        {products.map((product, index) => (
+          <div
+            key={index}
+            className={`border rounded-xl p-4 cursor-pointer transition-colors ${
+              selectedIndices.has(index)
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onClick={() => toggleProduct(index)}
+          >
+            <div className="flex items-start">
+              <input
+                type="checkbox"
+                checked={selectedIndices.has(index)}
+                onChange={() => toggleProduct(index)}
+                className="mt-1 mr-3 h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900 mb-2">
+                  {product.product_name || 'Без названия'}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
+                  {product.size && (
+                    <div>
+                      <span className="font-medium">Размер:</span> {product.size}
+                    </div>
+                  )}
+                  {product.opening_type && (
+                    <div>
+                      <span className="font-medium">Открывание:</span> {product.opening_type}
+                    </div>
+                  )}
+                  {product.problem_description && (
+                    <div className="md:col-span-3">
+                      <span className="font-medium">Описание проблемы:</span> {product.problem_description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+        >
+          Отмена
+        </Button>
+        <Button
+          type="button"
+          onClick={handleAdd}
+          disabled={selectedIndices.size === 0}
+        >
+          Добавить выбранные ({selectedIndices.size})
+        </Button>
       </div>
     </div>
   )

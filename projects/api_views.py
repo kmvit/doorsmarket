@@ -311,6 +311,54 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
+    @action(detail=False, methods=['post'], url_path='parse-pdf')
+    def parse_pdf(self, request):
+        """
+        Парсинг PDF файла для извлечения данных рекламации
+        
+        Принимает PDF файл через FormData (ключ 'pdf_file')
+        Возвращает JSON с извлеченными данными
+        """
+        from .pdf_parser import parse_complaint_pdf
+        
+        # Проверяем наличие файла
+        if 'pdf_file' not in request.FILES:
+            return Response(
+                {'error': 'PDF файл не предоставлен. Используйте ключ "pdf_file" в FormData.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        pdf_file = request.FILES['pdf_file']
+        
+        # Проверяем расширение файла
+        if not pdf_file.name.lower().endswith('.pdf'):
+            return Response(
+                {'error': 'Файл должен быть в формате PDF'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Парсим PDF
+            parsed_data = parse_complaint_pdf(pdf_file)
+            
+            return Response(parsed_data, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            # Ошибка парсинга
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            # Неожиданная ошибка
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Ошибка при парсинге PDF: {str(e)}', exc_info=True)
+            return Response(
+                {'error': f'Ошибка при обработке PDF файла: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def check_object_permissions(self, request, obj):
         """Проверка прав доступа к конкретной рекламации"""
         super().check_object_permissions(request, obj)

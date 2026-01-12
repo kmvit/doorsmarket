@@ -229,3 +229,20 @@ export interface ShippingRegistryStats {
   complaints: number
 }
 
+// Данные, извлеченные из PDF
+export interface ParsedProduct {
+  product_name: string
+  quantity?: string
+  size: string
+  opening_type: string
+  problem_description: string
+}
+
+export interface ParsedComplaintData {
+  order_number: string
+  client_name: string
+  contact_person: string
+  contact_phone: string
+  address: string
+  defective_products: ParsedProduct[]
+}
