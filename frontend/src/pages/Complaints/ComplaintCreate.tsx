@@ -130,6 +130,30 @@ const ComplaintCreate = () => {
             setValue('address', parsedData.address)
           }
           
+          // Ищем менеджера по имени из PDF
+          if (parsedData.manager_name && managers.length > 0) {
+            // Нормализуем имя из PDF (убираем лишние пробелы)
+            const managerNameFromPDF = parsedData.manager_name.trim().toLowerCase()
+            
+            // Ищем менеджера, у которого имя совпадает (в любом порядке)
+            const foundManager = managers.find(manager => {
+              const fullName = `${manager.first_name || ''} ${manager.last_name || ''}`.trim().toLowerCase()
+              const reverseName = `${manager.last_name || ''} ${manager.first_name || ''}`.trim().toLowerCase()
+              
+              return fullName.includes(managerNameFromPDF) || 
+                     managerNameFromPDF.includes(fullName) ||
+                     reverseName.includes(managerNameFromPDF) || 
+                     managerNameFromPDF.includes(reverseName)
+            })
+            
+            if (foundManager) {
+              setValue('manager_id', foundManager.id)
+              console.log(`Найден менеджер: ${foundManager.first_name} ${foundManager.last_name} (ID: ${foundManager.id})`)
+            } else {
+              console.warn(`Менеджер "${parsedData.manager_name}" не найден в списке`)
+            }
+          }
+          
           // Добавляем все файлы (включая PDF) в коммерческие предложения
           setCommercialOffers(prev => [...prev, ...newFiles])
           
