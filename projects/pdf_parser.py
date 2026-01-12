@@ -33,6 +33,7 @@ def parse_complaint_pdf(pdf_file) -> Dict[str, Any]:
         'contact_person': '',
         'contact_phone': '',
         'address': '',
+        'manager_name': '',
         'defective_products': [],
     }
     
@@ -70,6 +71,9 @@ def parse_complaint_pdf(pdf_file) -> Dict[str, Any]:
             
             # Извлекаем адрес
             result['address'] = _extract_address(full_text)
+            
+            # Извлекаем имя менеджера
+            result['manager_name'] = _extract_manager_name(full_text)
             
             # Извлекаем бракованные изделия
             result['defective_products'] = _extract_defective_products(pdf, full_text)
@@ -148,6 +152,29 @@ def _extract_contact_person(text: str) -> str:
             contact = match.group(1).strip()
             if len(contact.split()) >= 2:  # Минимум имя и фамилия
                 return contact
+    
+    return ''
+
+
+def _extract_manager_name(text: str) -> str:
+    """Извлекает имя менеджера"""
+    # Паттерны для поиска менеджера
+    patterns = [
+        # Паттерн для формата "Менеджер(Ф.И.О.) Кузнецова Людмила"
+        r'менеджер\s*\([^\)]*\)\s*([А-ЯЁ][А-Яа-яё\s]+?)(?:покупатель|адрес|телефон|email|подразделение|\n\n|$)',
+        r'менеджер\s*:?\s*([А-ЯЁ][А-Яа-яё\s]+?)(?:покупатель|адрес|телефон|email|подразделение|\n\n|$)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            manager_name = match.group(1).strip()
+            # Очищаем от лишних символов и нормализуем пробелы
+            manager_name = re.sub(r'\s+', ' ', manager_name)
+            # Убираем возможные артефакты после имени
+            manager_name = re.sub(r'\s*(адрес|телефон|email|покупатель).*$', '', manager_name, flags=re.IGNORECASE)
+            if len(manager_name) > 3:  # Минимальная длина имени
+                return manager_name
     
     return ''
 

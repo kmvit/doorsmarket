@@ -244,5 +244,6 @@ export interface ParsedComplaintData {
   contact_person: string
   contact_phone: string
   address: string
+  manager_name?: string
   defective_products: ParsedProduct[]
 }
