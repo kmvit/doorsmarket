@@ -19,6 +19,23 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
 
   if (!fileUrl) return null
 
+  // Нормализуем URL: если страница загружена по HTTPS, а URL файла по HTTP, заменяем на HTTPS
+  const normalizeUrl = (url: string): string => {
+    // Если URL относительный, возвращаем как есть
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return url
+    }
+    
+    // Если страница загружена по HTTPS, а URL файла по HTTP, заменяем на HTTPS
+    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+      return url.replace('http://', 'https://')
+    }
+    
+    return url
+  }
+
+  const normalizedUrl = normalizeUrl(fileUrl)
+
   // Определяем тип файла для правильного отображения
   const getFileType = (url: string): 'image' | 'video' | 'pdf' | 'other' => {
     const lowerUrl = url.toLowerCase()
@@ -28,7 +45,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
     return 'other'
   }
 
-  const fileType = getFileType(fileUrl)
+  const fileType = getFileType(normalizedUrl)
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -75,7 +92,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
         <div className="relative max-w-full max-h-full flex items-center justify-center">
           {fileType === 'image' && (
             <img
-              src={fileUrl}
+              src={normalizedUrl}
               alt={fileName || 'Изображение'}
               className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
             />
@@ -83,7 +100,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
 
           {fileType === 'video' && (
             <video
-              src={fileUrl}
+              src={normalizedUrl}
               controls
               className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
             >
@@ -93,7 +110,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
 
           {fileType === 'pdf' && (
             <iframe
-              src={fileUrl}
+              src={normalizedUrl}
               className="w-[90vw] h-[90vh] rounded-lg shadow-2xl bg-white"
               title={fileName || 'PDF документ'}
             />
@@ -122,7 +139,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
                   Этот тип файла не может быть отображен в просмотрщике
                 </p>
                 <a
-                  href={fileUrl}
+                  href={normalizedUrl}
                   download={fileName}
                   className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
                 >
