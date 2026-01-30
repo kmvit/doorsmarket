@@ -224,9 +224,12 @@ apiClient.interceptors.response.use(
         localStorage.setItem('access_token', access)
         
         // Если пришел новый refresh token (при ROTATE_REFRESH_TOKENS: True), сохраняем его
+        // При отключенной ротации refresh token остается тем же самым и не возвращается
         if (newRefreshToken) {
           localStorage.setItem('refresh_token', newRefreshToken)
           console.log('New refresh token saved')
+        } else {
+          console.log('Refresh token не изменился (ротация отключена)')
         }
         
         console.log('Token refreshed successfully, retrying request:', originalRequest.url)

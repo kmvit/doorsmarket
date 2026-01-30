@@ -638,7 +638,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        complaint.factory_approve()
+        approve_comment = request.data.get('approve_comment', '').strip()
+        complaint.factory_approve(approve_comment if approve_comment else None)
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
     

@@ -110,6 +110,7 @@ export interface Complaint {
   production_deadline: string | null
   factory_response_date: string | null
   factory_reject_reason: string
+  factory_approve_comment: string
   dispute_arguments: string
   client_agreement_date: string | null
   completion_date: string | null

@@ -206,6 +206,26 @@
                     </div>
                     {% endif %}
                     
+                    {% if complaint.factory_approve_comment %}
+                    <div class="bg-green-50 border-2 border-green-300 rounded-3xl shadow-2xl p-6">
+                        <h2 class="text-xl font-bold text-green-900 mb-4 flex items-center">
+                            <svg class="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Комментарий при одобрении
+                        </h2>
+                        <div>
+                            <p class="text-sm text-gray-600 mb-1">Комментарий от ОР:</p>
+                            <p class="text-base text-gray-900">{{ complaint.factory_approve_comment }}</p>
+                        </div>
+                        {% if complaint.factory_response_date %}
+                        <div class="mt-3 text-xs text-gray-600">
+                            Дата ответа: {{ complaint.factory_response_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
                     {% if complaint.dispute_arguments %}
                     <div class="bg-orange-50 border-2 border-orange-300 rounded-3xl shadow-2xl p-6">
                         <h2 class="text-xl font-bold text-orange-900 mb-4 flex items-center">
@@ -474,19 +494,37 @@
                                 </p>
                                 
                                 <!-- Кнопка "Запуск в производство" -->
-                                <form method="post" action="{% url 'projects:or_factory_complaints' %}" class="mb-2">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="factory_approve">
-                                    <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
-                                    <button type="submit" 
-                                            onclick="return confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу согласовать решение с клиентом.');"
-                                            class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
-                                        <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                        </svg>
-                                        ✓ Запуск в производство
-                                    </button>
-                                </form>
+                                <button onclick="showApproveForm()" class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all mb-2">
+                                    <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    ✓ Запуск в производство
+                                </button>
+                                
+                                <!-- Форма одобрения (скрыта по умолчанию) -->
+                                <div id="approve-form" class="hidden mb-2 p-3 bg-white border-2 border-green-200 rounded-xl">
+                                    <form method="post" action="{% url 'projects:or_factory_complaints' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="factory_approve">
+                                        <input type="hidden" name="complaint_id" value="{{ complaint.id }}">
+                                        <div class="mb-3">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Комментарий для сервис-менеджера</label>
+                                            <textarea name="approve_comment" rows="3" 
+                                                      placeholder="Укажите комментарий для сервис-менеджера (необязательно)..." 
+                                                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"></textarea>
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="submit" 
+                                                    onclick="return confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу согласовать решение с клиентом.');"
+                                                    class="flex-1 px-4 py-2 bg-green-600 text-white text-center font-semibold rounded-xl hover:bg-green-700 transition-all">
+                                                Отправить одобрение
+                                            </button>
+                                            <button type="button" onclick="hideApproveForm()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 text-center font-semibold rounded-xl hover:bg-gray-300 transition-all">
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
                                 
                                 <!-- Кнопка "Отказ" -->
                                 <button onclick="showRejectForm()" class="block w-full px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
@@ -883,6 +921,14 @@ function showRejectForm() {
 }
 function hideRejectForm() {
     document.getElementById('reject-form').classList.add('hidden');
+}
+
+// Функции для формы одобрения ОР
+function showApproveForm() {
+    document.getElementById('approve-form').classList.remove('hidden');
+}
+function hideApproveForm() {
+    document.getElementById('approve-form').classList.add('hidden');
 }
 
 // Функции для формы согласования СМ

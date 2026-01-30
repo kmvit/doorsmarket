@@ -297,8 +297,10 @@ export const complaintsAPI = {
     return response.data
   },
 
-  factoryApprove: async (id: number): Promise<Complaint> => {
-    const response = await apiClient.post(`/complaints/${id}/factory_approve/`)
+  factoryApprove: async (id: number, approveComment?: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/factory_approve/`, {
+      approve_comment: approveComment || '',
+    })
     return response.data
   },
 

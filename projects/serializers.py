@@ -256,6 +256,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             # Фабрика
             'factory_response_date',
             'factory_reject_reason',
+            'factory_approve_comment',
             'dispute_arguments',
             'client_agreement_date',
             'completion_date',

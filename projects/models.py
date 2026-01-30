@@ -209,6 +209,10 @@ class Complaint(models.Model):
         blank=True,
         verbose_name='Причина отказа фабрики'
     )
+    factory_approve_comment = models.TextField(
+        blank=True,
+        verbose_name='Комментарий при одобрении фабрикой'
+    )
     dispute_arguments = models.TextField(
         blank=True,
         verbose_name='Аргументы спора с фабрикой'
@@ -530,21 +534,29 @@ class Complaint(models.Model):
                 exc_info=True,
             )
     
-    def factory_approve(self):
+    def factory_approve(self, approve_comment=None):
         """ОР одобряет рекламацию - ответ получен"""
         self.status = ComplaintStatus.FACTORY_APPROVED
         self.factory_response_date = timezone.now()
+        if approve_comment:
+            self.factory_approve_comment = approve_comment
         self.save()
         
         # Уведомление СМ о решении фабрики
         sm_recipient = self._get_service_manager()
         if sm_recipient:
             print(f"[DEBUG] Создание уведомления СМ для рекламации #{self.id}, получатель: {sm_recipient.username}")
+            
+            # Формируем сообщение с комментарием, если он есть
+            base_message = f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой. Озвучьте клиенту решение и при необходимости оспорьте его.'
+            if approve_comment:
+                base_message += f'\n\nКомментарий от ОР: {approve_comment}'
+            
             self._create_notification(
                 recipient=sm_recipient,
                 notification_type='pc',
                 title='Получен ответ от фабрики',
-                message=f'Рекламация #{self.id} (заказ {self.order_number}) одобрена фабрикой. Озвучьте клиенту решение и при необходимости оспорьте его.'
+                message=base_message
             )
             self._create_notification(
                 recipient=sm_recipient,

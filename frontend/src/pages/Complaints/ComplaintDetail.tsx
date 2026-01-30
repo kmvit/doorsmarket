@@ -30,6 +30,7 @@ const ComplaintDetail = () => {
     clientAgreement?: boolean
     dispute?: boolean
     reject?: boolean
+    approve?: boolean
     reschedule?: boolean
   }>({})
   const [formData, setFormData] = useState<{
@@ -40,6 +41,7 @@ const ComplaintDetail = () => {
     shippingDate?: string
     disputeArguments?: string
     rejectReason?: string
+    approveComment?: string
   }>({})
   const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
 
@@ -262,7 +264,9 @@ const ComplaintDetail = () => {
           break
         case 'factory_approve':
           if (!confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу согласовать решение с клиентом.')) return
-          await complaintsAPI.factoryApprove(Number(id))
+          await complaintsAPI.factoryApprove(Number(id), formData.approveComment || '')
+          setShowForms({ ...showForms, approve: false })
+          setFormData({ ...formData, approveComment: '' })
           break
         case 'factory_reject':
           if (!formData.rejectReason) {
@@ -508,6 +512,25 @@ const ComplaintDetail = () => {
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Причина отказа:</p>
                       <p className="text-base text-gray-900">{currentComplaint.factory_reject_reason}</p>
+                    </div>
+                    {currentComplaint.factory_response_date && (
+                      <div className="mt-3 text-xs text-gray-600">
+                        Дата ответа: {formatDate(currentComplaint.factory_response_date)}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {currentComplaint.factory_approve_comment && (
+                  <div className="bg-green-50 border-2 border-green-300 rounded-3xl shadow-2xl p-6">
+                    <h2 className="text-xl font-bold text-green-900 mb-4 flex items-center">
+                      <svg className="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Комментарий при одобрении
+                    </h2>
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Комментарий от ОР:</p>
+                      <p className="text-base text-gray-900">{currentComplaint.factory_approve_comment}</p>
                     </div>
                     {currentComplaint.factory_response_date && (
                       <div className="mt-3 text-xs text-gray-600">
@@ -1080,16 +1103,47 @@ const ComplaintDetail = () => {
                           Рассмотрите рекламацию и примите решение в течение 2 рабочих дней
                         </p>
                         
-                        <Button
-                          onClick={() => handleAction('factory_approve')}
-                          disabled={isProcessing}
-                          className="w-full mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white"
-                        >
-                          <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                          ✓ Запуск в производство
-                        </Button>
+                        {!showForms.approve ? (
+                          <Button
+                            onClick={() => setShowForms({ ...showForms, approve: true })}
+                            disabled={isProcessing}
+                            className="w-full mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+                          >
+                            <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            ✓ Запуск в производство
+                          </Button>
+                        ) : (
+                          <div className="mb-2 p-3 bg-white border-2 border-green-200 rounded-xl">
+                            <div className="mb-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Комментарий для сервис-менеджера</label>
+                              <textarea
+                                rows={3}
+                                value={formData.approveComment || ''}
+                                onChange={(e) => setFormData({ ...formData, approveComment: e.target.value })}
+                                placeholder="Укажите комментарий для сервис-менеджера (необязательно)..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                              />
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                onClick={() => handleAction('factory_approve')}
+                                disabled={isProcessing}
+                                className="flex-1 bg-green-600 text-white hover:bg-green-700"
+                              >
+                                Отправить одобрение
+                              </Button>
+                              <Button
+                                onClick={() => setShowForms({ ...showForms, approve: false })}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                Отмена
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                         
                         {!showForms.reject ? (
                           <Button

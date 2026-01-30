@@ -1152,7 +1152,8 @@ def or_factory_complaints(request):
             if action == 'factory_approve':
                 # ОР одобряет рекламацию - запуск в производство
                 sm_name = complaint.recipient.get_full_name() or complaint.recipient.username
-                complaint.factory_approve()
+                approve_comment = request.POST.get('approve_comment', '').strip()
+                complaint.factory_approve(approve_comment if approve_comment else None)
                 messages.success(
                     request,
                     f'Ответ фабрики сохранён. Статус рекламации обновлён на «Ответ получен», уведомление отправлено СМ ({sm_name}) для согласования с клиентом.'
