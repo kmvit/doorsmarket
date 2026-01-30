@@ -1,5 +1,8 @@
 // File здесь - это нативный File из браузера, не тип из complaints
 
+import { useState } from 'react'
+import FileViewer from '../common/FileViewer'
+
 interface FileUploadListProps {
   files: File[]
   onRemove: (index: number) => void
@@ -8,6 +11,8 @@ interface FileUploadListProps {
 }
 
 const FileUploadList = ({ files, onRemove, onPreview, type = 'attachments' }: FileUploadListProps) => {
+  const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
+  
   if (files.length === 0) return null
 
   const formatFileSize = (bytes: number): string => {
@@ -51,21 +56,18 @@ const FileUploadList = ({ files, onRemove, onPreview, type = 'attachments' }: Fi
   }
 
   const handlePreview = (index: number) => {
-    if (!onPreview) return
     const file = files[index]
     if (!file) return
     
     const fileURL = URL.createObjectURL(file)
-    const newTab = window.open(fileURL, '_blank')
+    setViewingFile({
+      url: fileURL,
+      name: file.name
+    })
     
-    if (!newTab) {
-      alert('Не удалось открыть файл. Разрешите всплывающие окна в браузере.')
-      URL.revokeObjectURL(fileURL)
-      return
-    }
-    
-    newTab.onload = () => {
-      URL.revokeObjectURL(fileURL)
+    // Если есть onPreview callback, вызываем его
+    if (onPreview) {
+      onPreview(index)
     }
   }
 
@@ -95,19 +97,17 @@ const FileUploadList = ({ files, onRemove, onPreview, type = 'attachments' }: Fi
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              {onPreview && (
-                <button
-                  type="button"
-                  onClick={() => handlePreview(index)}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors"
-                  title="Открыть файл"
-                >
-                  <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-10 4h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Открыть
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handlePreview(index)}
+                className="flex items-center px-3 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors"
+                title="Открыть файл"
+              >
+                <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-10 4h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Открыть
+              </button>
               <button
                 type="button"
                 onClick={() => onRemove(index)}
@@ -122,6 +122,18 @@ const FileUploadList = ({ files, onRemove, onPreview, type = 'attachments' }: Fi
           </div>
         )
       })}
+
+      {/* Модальное окно для просмотра файлов */}
+      <FileViewer
+        fileUrl={viewingFile?.url || null}
+        fileName={viewingFile?.name}
+        onClose={() => {
+          if (viewingFile?.url && viewingFile.url.startsWith('blob:')) {
+            URL.revokeObjectURL(viewingFile.url)
+          }
+          setViewingFile(null)
+        }}
+      />
     </div>
   )
 }

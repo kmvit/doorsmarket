@@ -219,23 +219,6 @@ const ComplaintCreate = () => {
     setCommercialOffers(prev => prev.filter((_, i) => i !== index))
   }
 
-  const previewAttachment = (index: number) => {
-    const file = attachments[index]
-    if (!file) return
-    
-    const fileURL = URL.createObjectURL(file)
-    const newTab = window.open(fileURL, '_blank')
-    
-    if (!newTab) {
-      alert('Не удалось открыть файл. Разрешите всплывающие окна в браузере.')
-      URL.revokeObjectURL(fileURL)
-      return
-    }
-    
-    newTab.onload = () => {
-      URL.revokeObjectURL(fileURL)
-    }
-  }
 
   const addProduct = () => {
     setDefectiveProducts(prev => [...prev, { product_name: '', size: '', opening_type: '', problem_description: '' }])
@@ -745,7 +728,6 @@ const ComplaintCreate = () => {
                 <FileUploadList
                   files={attachments}
                   onRemove={removeAttachment}
-                  onPreview={previewAttachment}
                   type="attachments"
                 />
               </div>

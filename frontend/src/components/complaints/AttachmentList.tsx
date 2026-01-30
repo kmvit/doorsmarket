@@ -1,6 +1,7 @@
 import { ComplaintAttachment } from '../../types/complaints'
 import { complaintsAPI } from '../../api/complaints'
 import { useState } from 'react'
+import FileViewer from '../common/FileViewer'
 
 interface AttachmentListProps {
   attachments: ComplaintAttachment[]
@@ -11,6 +12,7 @@ interface AttachmentListProps {
 
 const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }: AttachmentListProps) => {
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
 
   const handleDelete = async (attachmentId: number) => {
     if (!confirm('Вы уверены, что хотите удалить это вложение?')) return
@@ -70,11 +72,12 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
                 key={attachment.id}
                 className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors relative group"
               >
-                <a
-                  href={attachment.file_url || attachment.file}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center"
+                <button
+                  onClick={() => setViewingFile({
+                    url: attachment.file_url || attachment.file || '',
+                    name: attachment.file?.split('/').pop() || 'Файл'
+                  })}
+                  className="block text-center w-full"
                 >
                   {getFileIcon(attachment.attachment_type)}
                   <p className="mt-2 text-sm font-medium text-gray-900 truncate">
@@ -83,7 +86,7 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
                   <p className="text-xs text-gray-500 mt-1">
                     {attachment.file_size || ''}
                   </p>
-                </a>
+                </button>
                 {canEdit && (
                   <button
                     onClick={(e) => {
@@ -118,11 +121,12 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
           <div className="space-y-2">
             {commercialOffers.map((attachment, index) => (
               <div key={attachment.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
-                <a
-                  href={attachment.file_url || attachment.file}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center text-sm text-primary-600 hover:text-primary-700 flex-1"
+                <button
+                  onClick={() => setViewingFile({
+                    url: attachment.file_url || attachment.file || '',
+                    name: `КП #${index + 1}`
+                  })}
+                  className="flex items-center text-sm text-primary-600 hover:text-primary-700 flex-1 text-left"
                 >
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -131,7 +135,7 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
                   {attachment.file_size && (
                     <span className="ml-auto text-xs text-gray-500">{attachment.file_size}</span>
                   )}
-                </a>
+                </button>
                 {canEdit && (
                   <button
                     onClick={() => handleDelete(attachment.id)}
@@ -149,6 +153,13 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
           </div>
         </div>
       )}
+
+      {/* Модальное окно для просмотра файлов */}
+      <FileViewer
+        fileUrl={viewingFile?.url || null}
+        fileName={viewingFile?.name}
+        onClose={() => setViewingFile(null)}
+      />
     </div>
   )
 }

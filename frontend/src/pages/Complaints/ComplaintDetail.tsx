@@ -8,6 +8,7 @@ import { User } from '../../types/auth'
 import Button from '../../components/common/Button'
 import { ROLE_DISPLAY } from '../../utils/constants'
 import AttachmentUpload from '../../components/complaints/AttachmentUpload'
+import FileViewer from '../../components/common/FileViewer'
 
 const ComplaintDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -40,6 +41,7 @@ const ComplaintDetail = () => {
     disputeArguments?: string
     rejectReason?: string
   }>({})
+  const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
 
   useEffect(() => {
     if (id) {
@@ -538,12 +540,13 @@ const ComplaintDetail = () => {
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Вложения</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {regularAttachments.map((attachment) => (
-                    <a
+                    <button
                       key={attachment.id}
-                      href={attachment.file_url || attachment.file}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors"
+                      onClick={() => setViewingFile({
+                        url: attachment.file_url || attachment.file || '',
+                        name: attachment.file?.split('/').pop() || 'Файл'
+                      })}
+                      className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors cursor-pointer text-left w-full"
                     >
                       <div className="text-center">
                         {attachment.attachment_type === 'photo' ? (
@@ -567,7 +570,7 @@ const ComplaintDetail = () => {
                         </p>
                         <p className="text-xs text-gray-500">{attachment.file_size}</p>
                       </div>
-                    </a>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1369,26 +1372,28 @@ const ComplaintDetail = () => {
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Документы</h2>
                 <div className="space-y-2">
                   {currentComplaint.document_package_link && (
-                    <a
-                      href={currentComplaint.document_package_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                    <button
+                      onClick={() => setViewingFile({
+                        url: currentComplaint.document_package_link || '',
+                        name: 'Пакет документов'
+                      })}
+                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors w-full text-left"
                     >
                       <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
                       </svg>
                       Пакет документов
-                    </a>
+                    </button>
                   )}
                   
                   {commercialOffers.map((attachment, index) => (
-                    <a
+                    <button
                       key={attachment.id}
-                      href={attachment.file_url || attachment.file}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                      onClick={() => setViewingFile({
+                        url: attachment.file_url || attachment.file || '',
+                        name: `КП #${index + 1}`
+                      })}
+                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors w-full text-left"
                     >
                       <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1397,21 +1402,22 @@ const ComplaintDetail = () => {
                       {attachment.file_size && (
                         <span className="ml-auto text-xs text-gray-500">{attachment.file_size}</span>
                       )}
-                    </a>
+                    </button>
                   ))}
                   
                   {currentComplaint.commercial_offer_url && (
-                    <a
-                      href={currentComplaint.commercial_offer_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                    <button
+                      onClick={() => setViewingFile({
+                        url: currentComplaint.commercial_offer_url || '',
+                        name: 'КП (старое)'
+                      })}
+                      className="flex items-center text-sm text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-blue-50 transition-colors w-full text-left"
                     >
                       <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       КП (старое)
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1419,6 +1425,13 @@ const ComplaintDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Модальное окно для просмотра файлов */}
+      <FileViewer
+        fileUrl={viewingFile?.url || null}
+        fileName={viewingFile?.name}
+        onClose={() => setViewingFile(null)}
+      />
     </div>
   )
 }
