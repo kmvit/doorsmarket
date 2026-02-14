@@ -21,5 +21,12 @@ export const referencesAPI = {
     // API возвращает массив или объект с results
     return Array.isArray(response.data) ? response.data : (response.data.results || [])
   },
+
+  // Все пользователи (с опциональной фильтрацией по роли)
+  getAllUsers: async (role?: string): Promise<User[]> => {
+    const url = role ? `/users/?role=${role}` : '/users/'
+    const response = await apiClient.get(url)
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
 }
 

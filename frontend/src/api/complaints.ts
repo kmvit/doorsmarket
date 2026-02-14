@@ -7,6 +7,7 @@ import {
   DefectiveProduct,
   ComplaintAttachment,
   ComplaintComment,
+  ComplaintHistoryResponse,
 } from '../types/complaints'
 import { complaintUtils, cacheUtils } from '../services/offline'
 import { requestQueue } from '../services/sync'
@@ -419,6 +420,12 @@ export const complaintsAPI = {
 
   deleteAttachment: async (_complaintId: number, attachmentId: number): Promise<void> => {
     await apiClient.delete(`/attachments/${attachmentId}/`)
+  },
+
+  // История событий рекламации
+  getHistory: async (complaintId: number): Promise<ComplaintHistoryResponse> => {
+    const response = await apiClient.get(`/complaints/${complaintId}/history/`)
+    return response.data
   },
 
   // Комментарии

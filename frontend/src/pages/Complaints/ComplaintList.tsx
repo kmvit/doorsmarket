@@ -283,9 +283,13 @@ const ComplaintList = () => {
                   <option value="">Все статусы</option>
                   <option value="new">Новая</option>
                   <option value="in_progress">В работе</option>
-                  <option value="completed">Выполнена</option>
                   <option value="in_production">В производстве</option>
                   <option value="on_warehouse">На складе</option>
+                  <option value="shipping_planned">Отгрузка запланирована</option>
+                  <option value="installation_planned">Монтаж запланирован</option>
+                  <option value="both_planned">Отгрузка и монтаж запланированы</option>
+                  <option value="under_sm_review">На проверке у СМ</option>
+                  <option value="completed">Выполнена</option>
                   <option value="resolved">Решена</option>
                   <option value="closed">Закрыта</option>
                 </select>

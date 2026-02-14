@@ -76,7 +76,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         )
         
         # Фильтрация по ролям
-        if user.role == 'installer':
+        # Администратор видит все рекламации. Django superuser (is_staff) тоже получает полный доступ
+        if user.role == 'admin' or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+            pass  # Без фильтрации — видит все
+        elif user.role == 'installer':
             # Монтажник видит только назначенные ему или созданные им
             queryset = queryset.filter(
                 Q(initiator=user) | Q(installer_assigned=user)
@@ -102,7 +105,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             # Менеджер видит рекламации из своего города
             if user.city:
                 queryset = queryset.filter(initiator__city=user.city)
-        # admin - видит все (без фильтрации)
         
         # Дополнительные фильтры из query params
         my_complaints = self.request.query_params.get('my_complaints')
@@ -158,6 +160,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'new': Q(status='new'),
                     'review': Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']),
                     'overdue': Q(status='sm_response_overdue'),
+                    'plan_installation': Q(status='shipping_planned'),
                 },
                 'complaint_department': {
                     'in_work': Q(complaint_type='factory', status__in=active_statuses),
@@ -194,8 +197,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if self.action == 'list' and exclude_closed not in ['0', 'false', 'False']:
             queryset = queryset.exclude(status__in=['closed', 'completed', 'resolved'])
         
-        # Фильтр по городу только для админа и ОР (через query param)
-        if city_id and user.role in ['admin', 'complaint_department']:
+        # Фильтр по городу только для админа, staff и ОР (через query param)
+        if city_id and (user.role in ['admin', 'complaint_department'] or getattr(user, 'is_staff', False)):
             queryset = queryset.filter(
                 Q(initiator__city_id=city_id) |
                 Q(recipient__city_id=city_id) |
@@ -293,18 +296,24 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 description='Коммерческое предложение'
             )
         
-        # Если СМ создал рекламацию с указанным типом, применяем соответствующую логику
+        # Применяем тип рекламации при создании
         complaint_type = request.data.get('complaint_type')
         
-        if request.user.role == 'service_manager' and complaint_type:
+        # Типы "менеджер" и "монтажник" — только для СМ (требуют назначения получателя)
+        if request.user.role == 'service_manager' and complaint_type in ('manager', 'installer'):
             if complaint_type == 'manager':
                 complaint.set_type_manager()
             elif complaint_type == 'installer':
-                # installer_assigned уже установлен в сериализаторе
                 installer = complaint.installer_assigned
                 complaint.set_type_installer(installer=installer)
-            elif complaint_type == 'factory':
-                complaint.set_type_factory()
+        # Тип "фабрика" — email в ОР всегда, независимо от инициатора (СМ, менеджер, монтажник, admin)
+        elif complaint_type == 'factory':
+            complaint.set_type_factory()
+            try:
+                complaint.send_factory_email_notification()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception('Ошибка отправки email в ОР при создании: %s', e)
         
         # Используем ComplaintDetailSerializer для ответа
         response_serializer = ComplaintDetailSerializer(complaint, context=self.get_serializer_context())
@@ -365,8 +374,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         user = request.user
         
-        # Админы и лидеры имеют полный доступ
-        if user.role in ['admin', 'leader']:
+        # Админы, лидеры и Django staff/superuser имеют полный доступ
+        if user.role in ['admin', 'leader'] or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
             return
         
         # Проверка доступа по ролям
@@ -421,6 +430,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             complaint.set_type_manager()
         elif complaint_type == 'factory':
             complaint.set_type_factory()
+            # Отправляем email в ОР независимо от того, кто инициатор (СМ, менеджер или монтажник)
+            try:
+                complaint.send_factory_email_notification()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception('Ошибка отправки email в ОР при установке типа Фабрика: %s', e)
+                # Не прерываем процесс из-за ошибки email
         else:
             return Response(
                 {'error': 'Неверный тип рекламации'},
@@ -1062,10 +1078,130 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def history(self, request, pk=None):
-        """История изменений рекламации"""
+        """История изменений и событий рекламации"""
         complaint = self.get_object()
-        # TODO: Реализовать модель ComplaintHistory если нужно
-        return Response({'message': 'История изменений будет реализована позже'})
+
+        def _user_dict(user):
+            if not user:
+                return None
+            return {
+                'id': user.id,
+                'username': user.username,
+                'first_name': getattr(user, 'first_name', '') or '',
+                'last_name': getattr(user, 'last_name', '') or '',
+                'role': getattr(user, 'role', '') or '',
+            }
+
+        history_events = []
+
+        # 1. Создание рекламации (всегда есть)
+        history_events.append({
+            'type': 'created',
+            'date': complaint.created_at.isoformat() if complaint.created_at else None,
+            'user': _user_dict(complaint.initiator),
+            'title': 'Рекламация создана',
+            'description': f"Инициатор: {complaint.initiator.get_full_name() or complaint.initiator.username}",
+            'icon': 'create',
+            'color': 'blue',
+        })
+
+        # 2. Комментарии
+        comments = complaint.comments.all().select_related('author')
+        for comment in comments:
+            history_events.append({
+                'type': 'comment',
+                'date': comment.created_at.isoformat() if comment.created_at else None,
+                'user': _user_dict(comment.author),
+                'title': 'Комментарий добавлен',
+                'description': comment.text,
+                'icon': 'comment',
+                'color': 'gray',
+            })
+
+        # 3. Отправленные уведомления
+        notifications = complaint.notifications.filter(is_sent=True).select_related('recipient')
+        for notification in notifications:
+            date = notification.sent_at or notification.created_at
+            history_events.append({
+                'type': 'notification',
+                'date': date.isoformat() if date else None,
+                'user': _user_dict(notification.recipient),
+                'title': f'Уведомление: {notification.title}',
+                'description': f'{notification.get_notification_type_display()} → {notification.recipient.get_full_name() or notification.recipient.username}',
+                'icon': 'notification',
+                'color': 'yellow',
+            })
+
+        # 4. Обновление рекламации
+        if complaint.updated_at and complaint.created_at and complaint.updated_at != complaint.created_at:
+            history_events.append({
+                'type': 'updated',
+                'date': complaint.updated_at.isoformat(),
+                'user': None,
+                'title': 'Рекламация обновлена',
+                'description': f'Текущий статус: {complaint.get_status_display()}',
+                'icon': 'update',
+                'color': 'purple',
+            })
+
+        # 5. Назначение монтажника
+        if complaint.installer_assigned:
+            installer_comment = comments.filter(text__icontains='монтажник').first()
+            date = installer_comment.created_at if installer_comment else (complaint.installer_assigned_at or complaint.updated_at)
+            if date:
+                history_events.append({
+                    'type': 'installer_assigned',
+                    'date': date.isoformat(),
+                    'user': _user_dict(installer_comment.author) if installer_comment else _user_dict(complaint.installer_assigned),
+                    'title': 'Назначен монтажник',
+                    'description': f"Монтажник: {complaint.installer_assigned.get_full_name() or complaint.installer_assigned.username}",
+                    'icon': 'user',
+                    'color': 'green',
+                })
+
+        # 6. Планирование монтажа
+        if complaint.planned_installation_date:
+            history_events.append({
+                'type': 'installation_planned',
+                'date': complaint.planned_installation_date.isoformat(),
+                'user': _user_dict(complaint.installer_assigned),
+                'title': 'Монтаж запланирован',
+                'description': f"Дата: {complaint.planned_installation_date.strftime('%d.%m.%Y')}",
+                'icon': 'calendar',
+                'color': 'indigo',
+            })
+
+        # 7. Планирование отгрузки
+        if complaint.planned_shipping_date:
+            history_events.append({
+                'type': 'shipping_planned',
+                'date': complaint.planned_shipping_date.isoformat(),
+                'user': _user_dict(complaint.manager),
+                'title': 'Отгрузка запланирована',
+                'description': f"Дата: {complaint.planned_shipping_date.strftime('%d.%m.%Y')}",
+                'icon': 'truck',
+                'color': 'orange',
+            })
+
+        # 8. Завершение
+        if complaint.completion_date:
+            history_events.append({
+                'type': 'completed',
+                'date': complaint.completion_date.isoformat(),
+                'user': None,
+                'title': 'Рекламация завершена',
+                'description': f"Дата завершения: {complaint.completion_date.strftime('%d.%m.%Y %H:%M')}",
+                'icon': 'check',
+                'color': 'green',
+            })
+
+        # Сортируем по дате (от новых к старым)
+        history_events.sort(key=lambda x: x['date'] or '', reverse=True)
+
+        return Response({
+            'events': history_events,
+            'total': len(history_events),
+        })
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1392,6 +1528,11 @@ class DashboardStatsView(APIView):
                 'Просроченные ответы',
                 base_filter_active & Q(status='sm_response_overdue')
             )
+            add_stat(
+                'plan_installation',
+                'Запланировать монтаж',
+                base_filter_active & Q(status='shipping_planned')
+            )
         elif user.role == 'complaint_department':
             add_stat(
                 'in_work',
@@ -1409,6 +1550,11 @@ class DashboardStatsView(APIView):
                 Q(complaint_type='factory', status='factory_response_overdue')
             )
         elif user.role in ['admin', 'leader']:
+            add_stat(
+                'in_work',
+                'Все в работе',
+                Q(status__in=active_statuses)
+            )
             add_stat(
                 'new',
                 'Новые рекламации',

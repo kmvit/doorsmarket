@@ -248,6 +248,24 @@ const ComplaintCreate = () => {
       return
     }
 
+    // Для монтажников обязательно описание проблемы (дополнительная информация)
+    if (user?.role === 'installer' && !(data.additional_info || '').trim()) {
+      setError('⚠️ Поле «Описание проблемы» (Дополнительная информация) обязательно для заполнения!')
+      return
+    }
+
+    // Проверка: у бракованных изделий с заполненными полями обязательно должно быть описание проблемы
+    const productsToCreate = defectiveProducts.filter(
+      p => p.product_name || p.size || p.opening_type || p.problem_description
+    )
+    const productWithoutDescription = productsToCreate.find(
+      p => !(p.problem_description || '').trim()
+    )
+    if (productWithoutDescription) {
+      setError('⚠️ Для каждого бракованного изделия обязательно заполните поле «Описание проблемы»!')
+      return
+    }
+
     setIsLoading(true)
     setError('')
 
@@ -326,9 +344,14 @@ const ComplaintCreate = () => {
 
       navigate(`/complaints/${complaint.id}`)
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || 
-                          err.response?.data?.error || 
-                          (typeof err.response?.data === 'object' ? JSON.stringify(err.response.data) : 'Ошибка создания рекламации')
+      const data = err.response?.data
+      let errorMessage = 'Ошибка создания рекламации'
+      if (typeof data === 'object') {
+        errorMessage = data.detail || data.error
+          || (typeof data.additional_info === 'string' ? data.additional_info : data.additional_info?.[0])
+          || Object.values(data).flat().find((v): v is string => typeof v === 'string')
+          || JSON.stringify(data)
+      }
       setError(errorMessage)
     } finally {
       setIsLoading(false)
@@ -367,11 +390,11 @@ const ComplaintCreate = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {user?.role === 'service_manager' && (
+              {(user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader') && (
                 <>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Тип рекламации <span className="text-red-500">*</span>
+                      Тип рекламации {user?.role === 'service_manager' && <span className="text-red-500">*</span>}
                     </label>
                     <select
                       {...register('complaint_type', { required: user?.role === 'service_manager' })}
@@ -601,15 +624,26 @@ const ComplaintCreate = () => {
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Дополнительная информация
+                  Описание проблемы / Дополнительная информация
+                  {user?.role === 'installer' && <span className="text-red-500"> *</span>}
                 </label>
                 <textarea
-                  {...register('additional_info')}
+                  {...register('additional_info', { 
+                    required: user?.role === 'installer',
+                    validate: (v) => user?.role !== 'installer' || (v || '').trim() !== '' || 'Заполните описание проблемы'
+                  })}
                   rows={3}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="Любые важные детали, которые стоит знать команде"
+                  placeholder="Опишите суть проблемы: что произошло, какие дефекты обнаружены"
                 />
-                <p className="text-xs text-gray-500 mt-1">Необязательное поле для уточнений или контекста.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {user?.role === 'installer' 
+                    ? 'Обязательное поле. Опишите суть рекламации.' 
+                    : 'Необязательное поле для уточнений или контекста.'}
+                </p>
+                {errors.additional_info && (
+                  <p className="mt-1 text-sm text-red-600">{errors.additional_info.message}</p>
+                )}
               </div>
             </div>
           </div>
@@ -689,13 +723,15 @@ const ComplaintCreate = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Описание проблемы</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Описание проблемы <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         value={product.problem_description}
                         onChange={(e) => updateProduct(index, 'problem_description', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Описание дефекта"
+                        placeholder="Описание дефекта (обязательно при добавлении изделия)"
                       />
                     </div>
                   </div>

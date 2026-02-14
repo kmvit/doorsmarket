@@ -339,6 +339,17 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
             'commercial_offer',
             'commercial_offer_text',
         ]
+
+    def validate(self, attrs):
+        """Валидация: для монтажников обязательно описание проблемы (additional_info)"""
+        request = self.context.get('request')
+        if request and request.user and request.user.role == 'installer':
+            additional_info = attrs.get('additional_info') or ''
+            if not str(additional_info).strip():
+                raise serializers.ValidationError({
+                    'additional_info': 'Заполните описание проблемы (дополнительную информацию). Поле обязательно для монтажников.'
+                })
+        return attrs
     
     def create(self, validated_data):
         """Создание рекламации с автоматической установкой инициатора и получателя"""
@@ -383,6 +394,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                 elif request.user.role in ['manager', 'installer']:
                     # Найти первого доступного сервис-менеджера (можно по городу)
                     user_city = getattr(request.user, 'city', None)
+                    service_manager = None
                     if user_city:
                         service_manager = User.objects.filter(role='service_manager', city=user_city).first()
                     if not service_manager:
@@ -392,6 +404,15 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                     else:
                         raise serializers.ValidationError({
                             'recipient': 'Не найден сервис-менеджер для назначения получателя'
+                        })
+                # admin/leader создают с типом "Фабрика" — получатель ОР
+                elif complaint_type == 'factory' and request.user.role in ['admin', 'leader']:
+                    complaint_dept = User.objects.filter(role='complaint_department').first()
+                    if complaint_dept:
+                        validated_data['recipient'] = complaint_dept
+                    else:
+                        raise serializers.ValidationError({
+                            'recipient': 'Не найден отдел рекламаций'
                         })
                 else:
                     # Для других ролей (admin, leader, complaint_department) 

@@ -14,6 +14,7 @@ import ShippingRegistryPage from './pages/ShippingRegistry'
 import ShippingRegistryDetail from './pages/ShippingRegistryDetail'
 import ManagerProduction from './pages/ManagerProduction'
 import Notifications from './pages/Notifications'
+import Users from './pages/Users'
 import Offline from './pages/Offline'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
@@ -164,6 +165,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Notifications />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Users />
                     </Layout>
                   </ProtectedRoute>
                 }

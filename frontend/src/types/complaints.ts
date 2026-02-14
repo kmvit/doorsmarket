@@ -47,6 +47,29 @@ export interface ComplaintComment {
   created_at: string
 }
 
+export interface ComplaintHistoryUser {
+  id: number
+  username: string
+  first_name: string
+  last_name: string
+  role: string
+}
+
+export interface ComplaintHistoryEvent {
+  type: string
+  date: string | null
+  user: ComplaintHistoryUser | null
+  title: string
+  description: string
+  icon: string
+  color: string
+}
+
+export interface ComplaintHistoryResponse {
+  events: ComplaintHistoryEvent[]
+  total: number
+}
+
 export type ComplaintStatus =
   | 'new'
   | 'in_progress'

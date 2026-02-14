@@ -2,32 +2,88 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { complaintsAPI } from '../../api/complaints'
-import { ComplaintComment } from '../../types/complaints'
+import { ComplaintHistoryEvent } from '../../types/complaints'
 import Button from '../../components/common/Button'
+
+const COLOR_CLASSES: Record<string, string> = {
+  blue: 'bg-gradient-to-br from-blue-500 to-blue-600',
+  gray: 'bg-gradient-to-br from-gray-500 to-gray-600',
+  yellow: 'bg-gradient-to-br from-yellow-500 to-yellow-600',
+  purple: 'bg-gradient-to-br from-purple-500 to-purple-600',
+  green: 'bg-gradient-to-br from-green-500 to-green-600',
+  indigo: 'bg-gradient-to-br from-indigo-500 to-indigo-600',
+  orange: 'bg-gradient-to-br from-orange-500 to-orange-600',
+}
+
+const EventIcon = ({ icon }: { icon: string }) => {
+  const icons: Record<string, JSX.Element> = {
+    create: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+    ),
+    comment: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+      </svg>
+    ),
+    notification: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      </svg>
+    ),
+    update: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    ),
+    user: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+    calendar: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    truck: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h9M7 16a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+      </svg>
+    ),
+    check: (
+      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+      </svg>
+    ),
+  }
+  return icons[icon] || icons.comment
+}
 
 const ComplaintHistory = () => {
   const { id } = useParams<{ id: string }>()
   const { currentComplaint, fetchComplaint, isLoading, error } = useComplaintsStore()
-  const [comments, setComments] = useState<ComplaintComment[]>([])
-  const [isLoadingComments, setIsLoadingComments] = useState(false)
+  const [events, setEvents] = useState<ComplaintHistoryEvent[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
   useEffect(() => {
     if (id) {
       fetchComplaint(Number(id))
-      loadComments()
+      loadHistory()
     }
   }, [id, fetchComplaint])
 
-  const loadComments = async () => {
+  const loadHistory = async () => {
     if (!id) return
-    setIsLoadingComments(true)
+    setIsLoadingHistory(true)
     try {
-      const commentsData = await complaintsAPI.getComments(Number(id))
-      setComments(commentsData || [])
+      const { events: historyEvents } = await complaintsAPI.getHistory(Number(id))
+      setEvents(historyEvents || [])
     } catch (error) {
-      console.error('Ошибка загрузки комментариев:', error)
+      console.error('Ошибка загрузки истории:', error)
     } finally {
-      setIsLoadingComments(false)
+      setIsLoadingHistory(false)
     }
   }
 
@@ -63,10 +119,6 @@ const ComplaintHistory = () => {
       </div>
     )
   }
-
-  const sortedComments = [...comments].sort((a, b) => 
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -122,30 +174,28 @@ const ComplaintHistory = () => {
             </div>
             <div>
               <p className="text-sm text-gray-600">Всего событий</p>
-              <p className="text-2xl font-bold text-purple-600">{sortedComments.length}</p>
+              <p className="text-2xl font-bold text-purple-600">{events.length}</p>
             </div>
           </div>
         </div>
 
         {/* Временная шкала событий */}
-        {isLoadingComments ? (
+        {isLoadingHistory ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
           </div>
-        ) : sortedComments.length > 0 ? (
+        ) : events.length > 0 ? (
           <div className="relative">
             {/* Вертикальная линия */}
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-500 via-blue-500 to-gray-300"></div>
 
             <div className="space-y-6">
-              {sortedComments.map((comment) => (
-                <div key={comment.id} className="relative pl-20 animate-fadeIn">
+              {events.map((event, index) => (
+                <div key={`${event.type}-${event.date}-${index}`} className="relative pl-20 animate-fadeIn">
                   {/* Иконка события */}
                   <div className="absolute left-0 flex items-center justify-center">
-                    <div className="h-16 w-16 rounded-full border-4 border-white shadow-lg flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-500">
-                      <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                      </svg>
+                    <div className={`h-16 w-16 rounded-full border-4 border-white shadow-lg flex items-center justify-center ${COLOR_CLASSES[event.color] || COLOR_CLASSES.blue}`}>
+                      <EventIcon icon={event.icon} />
                     </div>
                   </div>
 
@@ -153,33 +203,33 @@ const ComplaintHistory = () => {
                   <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-shadow duration-200">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900">Комментарий</h3>
+                        <h3 className="text-lg font-bold text-gray-900">{event.title}</h3>
                         <p className="text-sm text-gray-500 mt-1">
                           <svg className="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          {formatDate(comment.created_at)}
+                          {event.date ? formatDate(event.date) : '—'}
                         </p>
                       </div>
-                      {comment.author && (
+                      {event.user && (
                         <div className="flex items-center space-x-2 ml-4">
                           <div className="text-right">
                             <p className="text-sm font-semibold text-gray-900">
-                              {comment.author.first_name && comment.author.last_name
-                                ? `${comment.author.first_name} ${comment.author.last_name}`
-                                : comment.author.username}
+                              {event.user.first_name && event.user.last_name
+                                ? `${event.user.first_name} ${event.user.last_name}`
+                                : event.user.username}
                             </p>
-                            <p className="text-xs text-gray-500">{comment.author.role}</p>
+                            <p className="text-xs text-gray-500">{event.user.role}</p>
                           </div>
                           <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                            {comment.author.username.slice(0, 2).toUpperCase()}
+                            {event.user.username.slice(0, 2).toUpperCase()}
                           </div>
                         </div>
                       )}
                     </div>
 
                     <div className="text-gray-700 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <p className="whitespace-pre-wrap">{comment.text}</p>
+                      <p className="whitespace-pre-wrap">{event.description}</p>
                     </div>
                   </div>
                 </div>
