@@ -244,110 +244,114 @@ def _extract_address(text: str) -> str:
     return ''
 
 
+def _first_row_is_header(first_cell: str) -> bool:
+    """Проверяет, что первая строка — заголовок, а не продолжение данных со прошлой страницы."""
+    if not first_cell or len(first_cell) < 3:
+        return False
+    cell = first_cell.lower().strip()
+    # Признаки строки данных (БЛОК 3..., Стеновые панели, SKY полотно и т.д.)
+    if any(x in cell[:120] for x in (
+        'блок ', 'блок.', 'стеновые панели', 'piana', 'sky полотно',
+        'шпонка', 'добор шириной', 'мдф без покрытия', 'мдф без отделки',
+        'кромка рал', 'алюминиевая кромка', 'сни '
+    )):
+        return False
+    # Заголовок: короткая ячейка с названием колонки
+    if any(x in cell for x in ('модель полотн', 'дверной короб', 'наличник', 'вид/артикул', 'механизм', 'петл')) and len(cell) < 100:
+        return True
+    return len(cell) < 60
+
+
 def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
     """Извлекает список бракованных изделий"""
     products = []
     
     try:
-        # Пытаемся извлечь таблицы из PDF
         for page in pdf.pages:
             tables = page.extract_tables()
             if tables:
                 for table in tables:
-                    # Ищем таблицу с изделиями
-                    # В вашем формате: Модель полотна | Кол-во | Размер | Рек.Проем | Открывание | Цена | Сумма
-                    if len(table) > 1:  # Есть заголовок и хотя бы одна строка
-                        # Пытаемся найти заголовки
-                        headers = [str(cell).lower() if cell else '' for cell in table[0]]
-                        
-                        # Ищем индексы колонок
-                        name_idx = None
-                        qty_idx = None
-                        size_idx = None
-                        opening_idx = None
-                        
-                        for i, header in enumerate(headers):
-                            header_lower = header.lower() if header else ''
-                            if 'модель' in header_lower or 'полотн' in header_lower or 'короб' in header_lower or 'наличник' in header_lower or 'добор' in header_lower:
-                                name_idx = i
-                            elif 'кол' in header_lower and ('во' in header_lower or '-' in header):
-                                qty_idx = i
-                            elif 'размер' in header_lower:
-                                size_idx = i
-                            elif 'открыва' in header_lower:
-                                opening_idx = i
-                        
-                        # Если нашли хотя бы наименование, парсим строки
-                        if name_idx is not None:
-                            logger.info(f'Найдена таблица с изделиями. Индексы колонок: name={name_idx}, qty={qty_idx}, size={size_idx}, opening={opening_idx}')
-                            logger.info(f'Заголовки таблицы: {headers}')
-                            
-                            for row_idx, row in enumerate(table[1:]):  # Пропускаем заголовок
-                                if row and len(row) > name_idx and row[name_idx]:
-                                    product_name = str(row[name_idx]).strip()
-                                    
-                                    # Проверяем, не достигли ли конца списка изделий
-                                    # Останавливаемся, если встретили "Покупатель (Представитель)" или подобные строки
-                                    stop_patterns = [
-                                        r'покупатель\s*\(',
-                                        r'представитель',
-                                        r'способ\s+оплаты',
-                                        r'^дата\s+тип',
-                                    ]
-                                    product_name_lower = product_name.lower()
-                                    should_stop = False
-                                    for pattern in stop_patterns:
-                                        if re.search(pattern, product_name_lower):
-                                            logger.info(f'Достигнут конец списка изделий на строке {row_idx}: "{product_name[:50]}"')
-                                            should_stop = True
-                                            break
-                                    
-                                    if should_stop:
-                                        break  # Выходим из цикла обработки строк таблицы
-                                    
-                                    # Пропускаем пустые строки и строки с мусором
-                                    if product_name and len(product_name) > 5 and not product_name.startswith('Услуги'):
-                                        # Очищаем название от переносов строк
-                                        product_name = ' '.join(product_name.split())
-                                        
-                                        # Логируем всю строку для отладки
-                                        logger.info(f'Обработка строки {row_idx}: {row}')
-                                        
-                                        # Извлекаем количество
-                                        quantity = ''
-                                        if qty_idx is not None and qty_idx < len(row) and row[qty_idx]:
-                                            qty_str = str(row[qty_idx]).strip()
-                                            # Извлекаем первое число из строки
-                                            qty_match = re.search(r'(\d+)', qty_str)
-                                            if qty_match:
-                                                quantity = qty_match.group(1)
-                                        
-                                        # Извлекаем размер
-                                        size = ''
-                                        if size_idx is not None and size_idx < len(row) and row[size_idx]:
-                                            size = str(row[size_idx]).strip()
-                                            size = ' '.join(size.split())
-                                            logger.info(f'Размер для "{product_name[:30]}...": {size}')
-                                        else:
-                                            logger.info(f'Размер не найден для "{product_name[:30]}...". size_idx={size_idx}, len(row)={len(row)}')
-                                        
-                                        # Извлекаем тип открывания
-                                        opening = ''
-                                        if opening_idx is not None and opening_idx < len(row) and row[opening_idx]:
-                                            opening = str(row[opening_idx]).strip()
-                                            opening = ' '.join(opening.split())
-                                        
-                                        product = {
-                                            'product_name': product_name,
-                                            'quantity': quantity if quantity else '1',
-                                            'size': size,
-                                            'opening_type': opening,
-                                            'problem_description': '',
-                                        }
-                                        # Очищаем от None
-                                        product = {k: v if v and v != 'None' else '' for k, v in product.items()}
-                                        products.append(product)
-                                        logger.info(f'Добавлено изделие: {product}')
+                    if len(table) < 1:
+                        continue
+                    first_row = table[0]
+                    first_cell = str(first_row[0]).strip() if first_row and first_row[0] else ''
+                    has_header = _first_row_is_header(first_cell)
+                    rows = table[1:] if has_header else table
+                    headers = [str(c).lower() if c else '' for c in first_row]
+
+                    name_idx = None
+                    qty_idx = None
+                    size_idx = None
+                    opening_idx = None
+
+                    for i, h in enumerate(headers):
+                        hl = h.lower() if h else ''
+                        if any(x in hl for x in ('модель', 'полотн', 'короб', 'наличник', 'добор', 'вид', 'артикул')):
+                            name_idx = i
+                        elif 'кол' in hl and ('во' in hl or '-' in hl):
+                            qty_idx = i
+                        elif 'размер' in hl:
+                            size_idx = i
+                        elif 'открыва' in hl:
+                            opening_idx = i
+
+                    if name_idx is None and not has_header and first_cell:
+                        n = len(first_row) if first_row else 0
+                        name_idx, qty_idx, size_idx, opening_idx = 0, 1 if n > 1 else None, 2 if n > 2 else None, 4 if n > 4 else None
+
+                    if name_idx is None and has_header:
+                        continue
+
+                    if name_idx is not None:
+                        for row_idx, row in enumerate(rows):
+                            if row and len(row) > name_idx and row[name_idx]:
+                                product_name = str(row[name_idx]).strip()
+
+                                stop_patterns = [
+                                    r'покупатель\s*\(',
+                                    r'представитель',
+                                    r'способ\s+оплаты',
+                                    r'^дата\s+тип',
+                                ]
+                                product_name_lower = product_name.lower()
+                                should_stop = False
+                                for pattern in stop_patterns:
+                                    if re.search(pattern, product_name_lower):
+                                        should_stop = True
+                                        break
+
+                                if should_stop:
+                                    break
+
+                                if product_name and len(product_name) > 5 and not product_name.startswith('Услуги'):
+                                    product_name = ' '.join(product_name.split())
+
+                                    quantity = ''
+                                    if qty_idx is not None and qty_idx < len(row) and row[qty_idx]:
+                                        qty_str = str(row[qty_idx]).strip()
+                                        qty_match = re.search(r'(\d+)', qty_str)
+                                        if qty_match:
+                                            quantity = qty_match.group(1)
+
+                                    size = ''
+                                    if size_idx is not None and size_idx < len(row) and row[size_idx]:
+                                        size = str(row[size_idx]).strip()
+                                        size = ' '.join(size.split())
+
+                                    opening = ''
+                                    if opening_idx is not None and opening_idx < len(row) and row[opening_idx]:
+                                        opening = str(row[opening_idx]).strip()
+                                        opening = ' '.join(opening.split())
+
+                                    product = {
+                                        'product_name': product_name,
+                                        'quantity': quantity if quantity else '1',
+                                        'size': size,
+                                        'opening_type': opening,
+                                        'problem_description': '',
+                                    }
+                                    product = {k: v if v and v != 'None' else '' for k, v in product.items()}
+                                    products.append(product)
         
         # Если не нашли в таблицах, пытаемся найти в тексте построчно
         if not products:
