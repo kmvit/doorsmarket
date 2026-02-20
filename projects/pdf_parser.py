@@ -419,27 +419,30 @@ def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
                     first_cell = str(first_row[0]).strip() if first_row and first_row[0] else ''
                     has_header = _first_row_is_header(first_cell)
                     rows = table[1:] if has_header else table
-                    headers = [str(c).lower() if c else '' for c in first_row]
-
                     name_idx = None
                     qty_idx = None
                     size_idx = None
                     opening_idx = None
 
-                    for i, h in enumerate(headers):
-                        hl = h.lower() if h else ''
-                        if any(x in hl for x in ('модель', 'полотн', 'короб', 'наличник', 'добор', 'вид', 'артикул')):
-                            name_idx = i
-                        elif 'кол' in hl and ('во' in hl or '-' in hl):
-                            qty_idx = i
-                        elif 'размер' in hl:
-                            size_idx = i
-                        elif 'открыва' in hl:
-                            opening_idx = i
-
-                    if name_idx is None and not has_header and first_cell:
+                    if has_header:
+                        headers = [str(c).lower() if c else '' for c in first_row]
+                        for i, h in enumerate(headers):
+                            hl = h.lower() if h else ''
+                            if any(x in hl for x in ('модель', 'полотн', 'короб', 'наличник', 'добор', 'вид', 'артикул')):
+                                name_idx = i
+                            elif 'кол' in hl and ('во' in hl or '-' in hl):
+                                qty_idx = i
+                            elif 'размер' in hl:
+                                size_idx = i
+                            elif 'открыва' in hl:
+                                opening_idx = i
+                    else:
+                        # Для продолжений таблиц без заголовка используем стандартную структуру колонок.
                         n = len(first_row) if first_row else 0
-                        name_idx, qty_idx, size_idx, opening_idx = 0, 1 if n > 1 else None, 2 if n > 2 else None, 4 if n > 4 else None
+                        name_idx = 0 if n > 0 else None
+                        qty_idx = 1 if n > 1 else None
+                        size_idx = 2 if n > 2 else None
+                        opening_idx = 4 if n > 4 else None
 
                     if name_idx is None and has_header:
                         continue
