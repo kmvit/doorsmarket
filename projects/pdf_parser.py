@@ -262,12 +262,154 @@ def _first_row_is_header(first_cell: str) -> bool:
     return len(cell) < 60
 
 
+def _normalize_product_text(value: str) -> str:
+    """Нормализует название изделия для сравнения и дедупликации."""
+    return re.sub(r'[\s,.;:!]+', ' ', (value or '').lower()).strip()
+
+
+def _extract_products_from_page_text(page_text: str, next_page_first_line: str = '') -> List[Dict[str, str]]:
+    """
+    Дополняет изделия из обычного текста страницы.
+    Нужно для случаев, когда строка таблицы разрывается на стыке страниц.
+    """
+    if not page_text:
+        return []
+
+    lines = [re.sub(r'\s+', ' ', (line or '').strip()) for line in page_text.split('\n')]
+    lines = [line for line in lines if line]
+    products: List[Dict[str, str]] = []
+
+    # Ищем строки вида: "<наименование> <кол-во> <размер> <цена> <сумма>"
+    row_pattern = re.compile(
+        r'^(?P<name>.+?)\s+(?P<qty>\d+)\s+(?P<size>\d{2,4}\*\d{2,4})\s+\d+\s+\d+\s*$'
+    )
+    valid_name_starts = (
+        'короб', 'стеновые панели', 'фальшфрамуги', 'добор', 'наличник', 'wave', 'opera'
+    )
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = row_pattern.match(line)
+        if not match:
+            i += 1
+            continue
+
+        product_name = match.group('name').strip()
+        if not product_name.lower().startswith(valid_name_starts):
+            i += 1
+            continue
+
+        # Часто продолжение наименования уходит на следующую строку (например "INVERSO, ...").
+        appended_continuation = False
+        j = i + 1
+        while j < len(lines):
+            next_line = lines[j].strip()
+            is_next_header = bool(re.match(r'^(модель|дверной короб|наличник|добор|петли|ручки|механизмы|стекло|доп\.)', next_line, re.IGNORECASE))
+            has_table_numbers = bool(re.search(r'\d{2,4}\*\d{2,4}', next_line))
+            if not next_line or is_next_header or has_table_numbers or row_pattern.match(next_line):
+                break
+            one_word_continuations = {'верхние', 'боковые', 'оборотные', 'лицевые'}
+            if len(next_line.split()) < 2 and next_line.lower() not in one_word_continuations:
+                break
+            product_name = f'{product_name} {next_line}'.strip()
+            appended_continuation = True
+            j += 1
+        if appended_continuation:
+            i = j - 1
+
+        # Если перенос ушел на следующую страницу (часто "эмаль ..."), доклеиваем первую строку следующей страницы.
+        if next_page_first_line:
+            first_line = re.sub(r'\s+', ' ', next_page_first_line.strip())
+            should_add_next_page_line = (
+                first_line
+                and re.match(r'^(эмаль|бисквит|лицевые|оборотные)', first_line, re.IGNORECASE)
+                and first_line.lower() not in product_name.lower()
+                and 'эмаль' not in product_name.lower()
+                and 'фальшфрамуги' in product_name.lower()
+            )
+            if should_add_next_page_line:
+                product_name = f'{product_name} {first_line}'.strip()
+
+        products.append({
+            'product_name': product_name,
+            'quantity': match.group('qty'),
+            'size': match.group('size'),
+            'opening_type': '',
+            'problem_description': '',
+        })
+        i += 1
+
+    return products
+
+
+def _merge_product_candidates(products: List[Dict[str, str]], candidates: List[Dict[str, str]]) -> None:
+    """Сливает найденные изделия, избегая дублей и заменяя обрезанные строки полными."""
+    for candidate in candidates:
+        candidate_name_norm = _normalize_product_text(candidate.get('product_name', ''))
+        candidate_qty = candidate.get('quantity', '')
+        candidate_size = candidate.get('size', '')
+        if not candidate_name_norm:
+            continue
+        # Дополняем только фальшфрамуги: именно они в этом PDF чаще рвутся на стыке страниц.
+        if 'фальшфрамуги' not in candidate_name_norm:
+            continue
+
+        # 1) Точный дубль: пропускаем.
+        duplicate = False
+        for product in products:
+            if (
+                _normalize_product_text(product.get('product_name', '')) == candidate_name_norm
+                and product.get('quantity', '') == candidate_qty
+                and product.get('size', '') == candidate_size
+            ):
+                duplicate = True
+                break
+            # Мягкий дубль: те же qty/size и очень похожее название (одно является частью другого).
+            if (
+                product.get('quantity', '') == candidate_qty
+                and product.get('size', '') == candidate_size
+            ):
+                product_name_norm = _normalize_product_text(product.get('product_name', ''))
+                if product_name_norm and (
+                    product_name_norm in candidate_name_norm or candidate_name_norm in product_name_norm
+                ):
+                    duplicate = True
+                    break
+        if duplicate:
+            continue
+
+        # 2) Заменяем обрезанную строку (обычно без размера) на полноценную.
+        replaced = False
+        for product in products:
+            product_name_norm = _normalize_product_text(product.get('product_name', ''))
+            if (
+                product.get('quantity', '') == candidate_qty
+                and not product.get('size', '')
+                and (
+                    product_name_norm in candidate_name_norm
+                    or candidate_name_norm in product_name_norm
+                    or product_name_norm.startswith('фальшфрамуги komplanar для коробов komplanar')
+                )
+            ):
+                product['product_name'] = candidate.get('product_name', product.get('product_name', ''))
+                product['size'] = candidate_size or product.get('size', '')
+                replaced = True
+                break
+        if replaced:
+            continue
+
+        products.append(candidate)
+
+
 def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
     """Извлекает список бракованных изделий"""
     products = []
+    supplemental_candidates: List[Dict[str, str]] = []
     
     try:
-        for page in pdf.pages:
+        pages = list(pdf.pages)
+        for page_idx, page in enumerate(pages):
             tables = page.extract_tables()
             if tables:
                 for table in tables:
@@ -352,6 +494,20 @@ def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
                                     }
                                     product = {k: v if v and v != 'None' else '' for k, v in product.items()}
                                     products.append(product)
+
+            # Дополнительный проход по "сырому" тексту страницы для строк,
+            # которые разорваны на стыке страниц и теряются в extract_tables().
+            next_page_first_line = ''
+            if page_idx + 1 < len(pages):
+                next_text = pages[page_idx + 1].extract_text() or ''
+                next_lines = [line.strip() for line in next_text.split('\n') if line.strip()]
+                next_page_first_line = next_lines[0] if next_lines else ''
+
+            page_text_candidates = _extract_products_from_page_text(page.extract_text() or '', next_page_first_line)
+            supplemental_candidates.extend(page_text_candidates)
+
+        if supplemental_candidates:
+            _merge_product_candidates(products, supplemental_candidates)
         
         # Если не нашли в таблицах, пытаемся найти в тексте построчно
         if not products:
