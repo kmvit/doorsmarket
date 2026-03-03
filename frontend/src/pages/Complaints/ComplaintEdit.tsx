@@ -77,7 +77,7 @@ const ComplaintEdit = () => {
             setValue('manager_id', complaint.manager.id)
           }
           if (user?.role === 'service_manager') {
-            setValue('complaint_type', complaint.complaint_type || '')
+            setValue('complaint_type', (complaint.complaint_type ?? undefined) as ComplaintType | undefined)
             if (complaint.recipient) {
               setValue('recipient_id', complaint.recipient.id)
             }
@@ -112,7 +112,7 @@ const ComplaintEdit = () => {
 
     try {
       // Преобразуем данные для API
-      const apiData: Record<string, unknown> = {
+      const apiData: Partial<ComplaintCreateData> & { installer_assigned_id?: number } = {
         production_site_id: Number(data.production_site_id),
         reason_id: Number(data.reason_id),
         order_number: data.order_number,
@@ -145,7 +145,7 @@ const ComplaintEdit = () => {
         }
       }
 
-      await complaintsAPI.update(Number(id), apiData as ComplaintCreateData, attachments.length > 0 ? attachments : undefined)
+      await complaintsAPI.update(Number(id), apiData, attachments.length > 0 ? attachments : undefined)
       navigate(`/complaints/${id}`)
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || 
