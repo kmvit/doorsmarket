@@ -3,24 +3,32 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
-import { ComplaintCreateData } from '../../types/complaints'
+import { ComplaintCreateData, ComplaintType } from '../../types/complaints'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
 import { useComplaintsStore } from '../../store/complaintsStore'
+import { useAuthStore } from '../../store/authStore'
 import Input from '../../components/common/Input'
 import Button from '../../components/common/Button'
+import { User } from '../../types/auth'
 
 const ComplaintEdit = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const { fetchComplaint } = useComplaintsStore()
   const { currentComplaint } = useComplaintsStore()
-  const { register, handleSubmit, formState: { errors }, setValue } = useForm<ComplaintCreateData>()
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm<ComplaintCreateData & { complaint_type?: ComplaintType | ''; recipient_id?: number; installer_assigned_id?: number; commercial_offer_text?: string }>()
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
+  const [serviceManagers, setServiceManagers] = useState<User[]>([])
+  const [managers, setManagers] = useState<User[]>([])
+  const [installers, setInstallers] = useState<User[]>([])
   const [attachments, setAttachments] = useState<File[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [error, setError] = useState('')
+
+  const isServiceManager = user?.role === 'service_manager'
 
   useEffect(() => {
     const loadData = async () => {
@@ -28,13 +36,26 @@ const ComplaintEdit = () => {
 
       setIsLoadingData(true)
       try {
-        const [sites, reasonsData] = await Promise.all([
+        const loadPromises: Promise<unknown>[] = [
           referencesAPI.getProductionSites(),
           referencesAPI.getComplaintReasons(),
-        ])
+        ]
+        if (user?.role === 'service_manager') {
+          loadPromises.push(
+            referencesAPI.getUsersByRole('service_manager'),
+            referencesAPI.getUsersByRole('manager'),
+            referencesAPI.getUsersByRole('installer'),
+          )
+        }
 
-        setProductionSites(sites)
-        setReasons(reasonsData)
+        const results = await Promise.all(loadPromises)
+        setProductionSites(results[0] as ProductionSite[])
+        setReasons(results[1] as ComplaintReason[])
+        if (user?.role === 'service_manager' && results.length >= 5) {
+          setServiceManagers(results[2] as User[])
+          setManagers(results[3] as User[])
+          setInstallers(results[4] as User[])
+        }
 
         // Загружаем рекламацию
         await fetchComplaint(Number(id))
@@ -55,6 +76,16 @@ const ComplaintEdit = () => {
           if (complaint.manager) {
             setValue('manager_id', complaint.manager.id)
           }
+          if (user?.role === 'service_manager') {
+            setValue('complaint_type', complaint.complaint_type || '')
+            if (complaint.recipient) {
+              setValue('recipient_id', complaint.recipient.id)
+            }
+            if (complaint.installer_assigned) {
+              setValue('installer_assigned_id', complaint.installer_assigned.id)
+            }
+            setValue('commercial_offer_text', complaint.commercial_offer_text || '')
+          }
         }
       } catch (error) {
         console.error('Error loading data:', error)
@@ -65,7 +96,7 @@ const ComplaintEdit = () => {
     }
 
     loadData()
-  }, [id, fetchComplaint, setValue])
+  }, [id, fetchComplaint, setValue, user?.role])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -73,7 +104,7 @@ const ComplaintEdit = () => {
     }
   }
 
-  const onSubmit = async (data: ComplaintCreateData) => {
+  const onSubmit = async (data: ComplaintCreateData & { complaint_type?: ComplaintType | ''; recipient_id?: number; installer_assigned_id?: number; commercial_offer_text?: string }) => {
     if (!id) return
 
     setIsLoading(true)
@@ -81,7 +112,7 @@ const ComplaintEdit = () => {
 
     try {
       // Преобразуем данные для API
-      const apiData: ComplaintCreateData = {
+      const apiData: Record<string, unknown> = {
         production_site_id: Number(data.production_site_id),
         reason_id: Number(data.reason_id),
         order_number: data.order_number,
@@ -98,7 +129,23 @@ const ComplaintEdit = () => {
         apiData.manager_id = Number(data.manager_id)
       }
 
-      await complaintsAPI.update(Number(id), apiData, attachments.length > 0 ? attachments : undefined)
+      // Сервис-менеджер может редактировать все поля
+      if (isServiceManager) {
+        if (data.complaint_type) {
+          apiData.complaint_type = data.complaint_type
+        }
+        if (data.recipient_id) {
+          apiData.recipient_id = Number(data.recipient_id)
+        }
+        if (data.installer_assigned_id) {
+          apiData.installer_assigned_id = Number(data.installer_assigned_id)
+        }
+        if (data.commercial_offer_text !== undefined) {
+          apiData.commercial_offer_text = data.commercial_offer_text
+        }
+      }
+
+      await complaintsAPI.update(Number(id), apiData as ComplaintCreateData, attachments.length > 0 ? attachments : undefined)
       navigate(`/complaints/${id}`)
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || 
@@ -148,6 +195,72 @@ const ComplaintEdit = () => {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Секция назначения — только для сервис-менеджера */}
+          {isServiceManager && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Тип рекламации</label>
+                  <select
+                    {...register('complaint_type')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">Не выбран</option>
+                    <option value="manager">Менеджер</option>
+                    <option value="installer">Монтажник</option>
+                    <option value="factory">Фабрика</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Получатель (СМ)</label>
+                  <select
+                    {...register('recipient_id')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">Выберите сервис-менеджера</option>
+                    {serviceManagers.map((sm) => (
+                      <option key={sm.id} value={sm.id}>
+                        {sm.first_name} {sm.last_name} ({sm.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Менеджер заказа *</label>
+                  <select
+                    {...register('manager_id', { required: 'Выберите менеджера заказа' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">Выберите менеджера</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.first_name} {m.last_name} ({m.username})
+                      </option>
+                    ))}
+                  </select>
+                  {errors.manager_id && (
+                    <p className="mt-1 text-sm text-red-600">{errors.manager_id.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Назначенный монтажник</label>
+                  <select
+                    {...register('installer_assigned_id')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">Не назначен</option>
+                    {installers.map((inst) => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.first_name} {inst.last_name} ({inst.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Основная информация</h2>
 
@@ -296,6 +409,20 @@ const ComplaintEdit = () => {
                   placeholder="https://..."
                 />
               </div>
+
+              {isServiceManager && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Комментарий к коммерческому предложению
+                  </label>
+                  <textarea
+                    {...register('commercial_offer_text')}
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="Описание коммерческого предложения"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

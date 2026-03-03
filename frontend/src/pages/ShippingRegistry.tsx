@@ -74,21 +74,6 @@ const ShippingRegistryPage = () => {
     )
   }
 
-  const getOrderTypeBadge = (orderType: string) => {
-    if (orderType === 'complaint') {
-      return (
-        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-          Рекламация
-        </span>
-      )
-    }
-    return (
-      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-        Основной
-      </span>
-    )
-  }
-
   const renderStars = (rating: number | null) => {
     if (!rating) return <span className="text-gray-400">—</span>
 
@@ -208,10 +193,9 @@ const ShippingRegistryPage = () => {
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Кол-во дверей</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Вид заказа</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус доставки</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Кол-во дверей</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Оценка</th>
                   </tr>
                 </thead>
@@ -234,10 +218,9 @@ const ShippingRegistryPage = () => {
                       <td className="px-3 py-2 text-gray-900">{entry.client_name}</td>
                       <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{entry.address}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-900">{entry.contact_person}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-900">{entry.contact_phone}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-center text-gray-900">{entry.doors_count}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{getOrderTypeBadge(entry.order_type)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{getDeliveryStatusBadge(entry.delivery_status)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-center text-gray-900">{entry.doors_count}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-900">{entry.contact_phone}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-center">{renderStars(entry.client_rating)}</td>
                     </tr>
                   ))}

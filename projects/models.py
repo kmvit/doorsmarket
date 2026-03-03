@@ -533,7 +533,175 @@ class Complaint(models.Model):
                 exc,
                 exc_info=True,
             )
-    
+
+    def send_factory_dispute_email_notification(self):
+        """Отправка email уведомления в ОР при оспаривании СМ решения фабрики (рекламация снова уходит в ОР)"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f'Начинаем отправку email о споре для рекламации #{self.id}')
+
+        or_email = getattr(settings, 'OR_EMAIL', '')
+        if not or_email:
+            logger.warning(f'OR_EMAIL не настроен, email о споре для рекламации #{self.id} не отправлен')
+            return
+
+        try:
+            from users.push_utils import send_email_notification
+
+            frontend_url = getattr(settings, 'FRONTEND_URL', '')
+            if frontend_url:
+                complaint_url = f"{frontend_url.rstrip('/')}/complaints/{self.id}"
+            else:
+                complaint_url = f"/complaints/{self.id}"
+
+            def format_date(dt):
+                if dt:
+                    return dt.strftime('%d.%m.%Y %H:%M')
+                return 'не указана'
+
+            attachments = self.attachments.all()
+            defective_products = self.defective_products.all()
+            comments = self.comments.all()
+
+            # Комментарии СМ (аргументы оспаривания) — обязательно добавляем
+            dispute_arguments_html = ''
+            if self.dispute_arguments and self.dispute_arguments.strip():
+                dispute_arguments_html = f'''
+                <h3 style="color: #b91c1c;">⚠ Комментарии сервис-менеджера (оспаривание решения фабрики)</h3>
+                <p style="background: #fef2f2; padding: 12px; border-left: 4px solid #b91c1c;">{self.dispute_arguments}</p>
+                '''
+
+            additional_info_html = ''
+            if self.additional_info and self.additional_info.strip():
+                additional_info_html = f'''
+                <h3>Дополнительная информация</h3>
+                <p>{self.additional_info}</p>
+                '''
+
+            assignee_comment_html = ''
+            if self.assignee_comment and self.assignee_comment.strip():
+                assignee_comment_html = f'''
+                <h3>Комментарий для исполнителя</h3>
+                <p>{self.assignee_comment}</p>
+                '''
+
+            comments_html = []
+            if comments.exists():
+                comments_html.append('<h3>Комментарии (переписка):</h3><ul>')
+                for comment in comments:
+                    author_name = comment.author.get_full_name() or comment.author.username
+                    comment_date = format_date(comment.created_at)
+                    comments_html.append(
+                        f'<li><strong>{author_name}</strong> ({comment_date}):<br>{comment.text}</li>'
+                    )
+                comments_html.append('</ul>')
+                comments_html = '\n'.join(comments_html)
+            else:
+                comments_html = ''
+
+            attachments_list_html = []
+            if attachments.exists():
+                attachments_list_html.append('<h3>Вложения:</h3><ul>')
+                for attachment in attachments:
+                    file_url = attachment.get_absolute_url()
+                    file_name = attachment.file.name.split('/')[-1] if attachment.file.name else 'Без имени'
+                    file_size = attachment.file_size
+                    attachment_type = attachment.get_attachment_type_display()
+                    desc_html = f'<br><small>{attachment.description}</small>' if attachment.description else ''
+                    attachments_list_html.append(
+                        f'<li><strong>{attachment_type}:</strong> {file_name} ({file_size})<br>'
+                        f'<a href="{file_url}">{file_url}</a>{desc_html}</li>'
+                    )
+                attachments_list_html.append('</ul>')
+                attachments_html = '\n'.join(attachments_list_html)
+            else:
+                attachments_html = '<p><em>Вложения отсутствуют.</em></p>'
+
+            defective_products_html = []
+            if defective_products.exists():
+                defective_products_html.append('<h3>Бракованные изделия:</h3><ul>')
+                for product in defective_products:
+                    product_html = f'<li>'
+                    product_html += f'<strong>Наименование бракованного изделия:</strong> {product.product_name}<br>'
+                    if product.size:
+                        product_html += f'<strong>Размер изделия:</strong> {product.size}<br>'
+                    if product.opening_type:
+                        product_html += f'<strong>Открывание:</strong> {product.opening_type}<br>'
+                    product_html += f'<strong>Описание проблемы:</strong> {product.problem_description}'
+                    product_html += f'</li>'
+                    defective_products_html.append(product_html)
+                defective_products_html.append('</ul>')
+                defective_products_html = '\n'.join(defective_products_html)
+            else:
+                defective_products_html = '<p><em>Бракованные изделия отсутствуют.</em></p>'
+
+            subject = f'СМ оспорил решение фабрики - рекламация #{self.id} требует повторного рассмотрения'
+            dispute_preview = (self.dispute_arguments or '')[:200]
+            if len(self.dispute_arguments or '') > 200:
+                dispute_preview += '...'
+            message = (
+                f'Сервис-менеджер не удовлетворён ответом фабрики по рекламации #{self.id}.\n\n'
+                f'Рекламация снова направлена в отдел рекламаций для повторного рассмотрения.\n\n'
+                f'Комментарии СМ: {dispute_preview}\n\n'
+                f'Ссылка на рекламацию: {complaint_url}'
+            )
+
+            html_message = f'''
+            <html>
+            <body>
+                <h2 style="color: #b91c1c;">⚠ СМ оспорил решение фабрики - рекламация #{self.id}</h2>
+                <p><strong>Рекламация снова направлена в отдел рекламаций для повторного рассмотрения.</strong></p>
+
+                {dispute_arguments_html}
+
+                <h3>Основная информация</h3>
+                <p><strong>Дата создания заявки:</strong> {format_date(self.created_at)}<br>
+                <strong>Инициатор заявки:</strong> {self.initiator.get_full_name() or self.initiator.username}<br>
+                <strong>Получатель заявки:</strong> {self.recipient.get_full_name() or self.recipient.username}<br>
+                {'<strong>Менеджер заказа:</strong> ' + (self.manager.get_full_name() or self.manager.username) + '<br>' if self.manager else ''}
+                <strong>Производственная площадка:</strong> {self.production_site.name}<br>
+                <strong>Причина рекламации:</strong> {self.reason.name}<br>
+                <strong>Номер заказа:</strong> {self.order_number}</p>
+
+                <h3>Информация о клиенте</h3>
+                <p><strong>Наименование клиента:</strong> {self.client_name}<br>
+                <strong>Адрес:</strong> {self.address}<br>
+                <strong>Контактное лицо от клиента:</strong> {self.contact_person}<br>
+                <strong>Телефон контактного лица:</strong> {self.contact_phone}</p>
+
+                {additional_info_html}
+
+                {assignee_comment_html}
+
+                {defective_products_html}
+
+                {attachments_html}
+
+                {comments_html}
+
+                <p><a href="{complaint_url}">Открыть рекламацию в системе</a></p>
+            </body>
+            </html>
+            '''
+
+            email_sent = send_email_notification(
+                to_email=or_email,
+                subject=subject,
+                message=message,
+                html_message=html_message,
+            )
+            if email_sent:
+                logger.info('Email о споре отправлен на адрес %s для рекламации #%s', or_email, self.id)
+        except Exception as exc:
+            logger.error(
+                'Ошибка отправки email о споре на адрес %s для рекламации #%s: %s',
+                or_email,
+                self.id,
+                exc,
+                exc_info=True,
+            )
+
     def factory_approve(self, approve_comment=None):
         """ОР одобряет рекламацию - ответ получен"""
         self.status = ComplaintStatus.FACTORY_APPROVED
@@ -644,8 +812,8 @@ class Complaint(models.Model):
         
         self.dispute_arguments = arguments
         self.save()
-        
-        # Уведомления ОР
+
+        # Уведомления ОР (в системе)
         from users.models import User
         or_users = User.objects.filter(role='complaint_department')
         for or_user in or_users:
@@ -655,7 +823,14 @@ class Complaint(models.Model):
                 title=notification_title,
                 message=notification_message
             )
-    
+
+        # Email уведомление в ОР (как при назначении, плюс комментарии СМ)
+        try:
+            self.send_factory_dispute_email_notification()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception('Ошибка отправки email в ОР при оспаривании СМ: %s', e)
+
     def plan_installation(self, installer, installation_date):
         """Монтажник планирует дату монтажа"""
         self.installer_assigned = installer

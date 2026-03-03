@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
 import { ComplaintCreateData, ParsedComplaintData, ParsedProduct } from '../../types/complaints'
@@ -8,6 +8,7 @@ import { ProductionSite, ComplaintReason } from '../../types/complaints'
 import { User } from '../../types/auth'
 import { useAuthStore } from '../../store/authStore'
 import Button from '../../components/common/Button'
+import PhoneInput, { normalizePhone } from '../../components/common/PhoneInput'
 import FileUploadList from '../../components/complaints/FileUploadList'
 
 interface DefectiveProductForm {
@@ -20,7 +21,7 @@ interface DefectiveProductForm {
 const ComplaintCreate = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<ComplaintCreateData & { complaint_type?: string; installer_id?: number }>()
+  const { register, handleSubmit, control, formState: { errors }, watch, setValue } = useForm<ComplaintCreateData & { complaint_type?: string; installer_id?: number }>()
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [managers, setManagers] = useState<User[]>([])
@@ -124,7 +125,7 @@ const ComplaintCreate = () => {
             setValue('contact_person', parsedData.contact_person)
           }
           if (parsedData.contact_phone) {
-            setValue('contact_phone', parsedData.contact_phone)
+            setValue('contact_phone', normalizePhone(parsedData.contact_phone))
           }
           if (parsedData.address) {
             setValue('address', parsedData.address)
@@ -611,15 +612,22 @@ const ComplaintCreate = () => {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Телефон контактного лица <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="tel"
-                  {...register('contact_phone', { required: true })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="+7XXXXXXXXXX"
+                <Controller
+                  name="contact_phone"
+                  control={control}
+                  rules={{
+                    required: 'Введите номер телефона',
+                    validate: (v) =>
+                      !v || (v.length === 12 && v.startsWith('+7')) || 'Введите полный номер (10 цифр)',
+                  }}
+                  render={({ field }) => (
+                    <PhoneInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={errors.contact_phone?.message as string}
+                    />
+                  )}
                 />
-                {errors.contact_phone && (
-                  <p className="mt-1 text-sm text-red-600">Обязательное поле</p>
-                )}
               </div>
 
               <div className="md:col-span-2">
