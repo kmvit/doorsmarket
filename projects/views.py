@@ -62,6 +62,10 @@ def complaint_list(request):
         ComplaintStatus.CLOSED,
     }
     active_statuses = [status for status, _ in ComplaintStatus.choices if status not in completed_statuses]
+    sm_overdue_filter = (
+        Q(status='sm_response_overdue') |
+        Q(status='factory_approved', sm_response_deadline__lt=timezone.now())
+    )
     if my_tasks_key:
         role_task_filters = {
             'installer': {
@@ -85,7 +89,7 @@ def complaint_list(request):
                 'in_work': Q(status__in=active_statuses),
                 'new': Q(status='new'),
                 'review': Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']),
-                'overdue': Q(status='sm_response_overdue'),
+                'overdue': sm_overdue_filter,
             },
             'complaint_department': {
                 'in_work': Q(complaint_type='factory', status__in=active_statuses),
@@ -96,13 +100,13 @@ def complaint_list(request):
                 'new': Q(status='new'),
                 'factory_overdue': Q(status='factory_response_overdue'),
                 'shipping_overdue': Q(status='shipping_overdue'),
-                'sm_overdue': Q(status='sm_response_overdue'),
+                'sm_overdue': sm_overdue_filter,
             },
             'leader': {
                 'new': Q(status='new'),
                 'factory_overdue': Q(status='factory_response_overdue'),
                 'shipping_overdue': Q(status='shipping_overdue'),
-                'sm_overdue': Q(status='sm_response_overdue'),
+                'sm_overdue': sm_overdue_filter,
             },
         }
         
@@ -284,8 +288,23 @@ def complaint_detail(request, pk):
     if request.method == 'POST':
         action = request.path.split('/')[-2]  # Получаем действие из URL
         
-        # Действия менеджера
-        if request.user.role == 'manager' and complaint.manager == request.user:
+        # Действия менеджера (назначенный или из того же города)
+        def _manager_has_access(complaint):
+            if request.user.role != 'manager':
+                return False
+            if complaint.manager == request.user:
+                return True
+            user_city = getattr(request.user, 'city', None)
+            if not user_city:
+                return False
+            if complaint.manager and getattr(complaint.manager, 'city', None) == user_city:
+                return True
+            if not complaint.manager and complaint.initiator:
+                initiator_city = getattr(complaint.initiator, 'city', None)
+                return initiator_city and initiator_city.id == user_city.id
+            return False
+
+        if _manager_has_access(complaint):
             if action == 'start-production' and complaint.status == 'in_progress':
                 # Запуск производства
                 production_deadline = request.POST.get('production_deadline')
@@ -348,18 +367,30 @@ def complaint_detail(request, pk):
                     closure_reason = comment.text.replace(closure_prefix, '').strip() or 'Не указана'
                 break
     
+    # Менеджер может выполнять действия, если назначен или из того же города
+    can_do_manager_actions = False
+    if request.user.role == 'manager':
+        user_city = getattr(request.user, 'city', None)
+        if complaint.manager == request.user:
+            can_do_manager_actions = True
+        elif user_city and complaint.manager and getattr(complaint.manager, 'city_id', None) == user_city.id:
+            can_do_manager_actions = True
+        elif user_city and not complaint.manager and complaint.initiator and getattr(complaint.initiator, 'city_id', None) == user_city.id:
+            can_do_manager_actions = True
+
     context = {
         'complaint': complaint,
         'today': date.today().isoformat(),
         'available_installers': User.objects.filter(role='installer'),
         'closure_reason': closure_reason,
+        'can_do_manager_actions': can_do_manager_actions,
     }
     
     return render(request, 'projects/complaint_detail.html', context)
 
 
 @login_required(login_url='/api/v1/login/')
-@complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True)
+@complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True, allow_manager_all=True)
 def complaint_edit(request, pk):
     """Редактирование рекламации сервис-менеджером."""
     complaint = get_object_or_404(
@@ -372,10 +403,26 @@ def complaint_edit(request, pk):
         ),
         pk=pk
     )
-    # Разрешаем редактирование инициатору, СМ и пользователям с расширенными правами
+    # Разрешаем редактирование инициатору, СМ, менеджерам из того же города и пользователям с расширенными правами
+    def _manager_can_edit(complaint):
+        if request.user.role != 'manager':
+            return False
+        if complaint.manager == request.user:
+            return True
+        user_city = getattr(request.user, 'city', None)
+        if not user_city:
+            return False
+        if complaint.manager and getattr(complaint.manager, 'city', None) == user_city:
+            return True
+        if not complaint.manager and complaint.initiator:
+            initiator_city = getattr(complaint.initiator, 'city', None)
+            return initiator_city and initiator_city.id == user_city.id
+        return False
+
     if not (
         complaint.initiator == request.user or
-        request.user.role in ['service_manager', 'admin', 'leader']
+        request.user.role in ['service_manager', 'admin', 'leader'] or
+        _manager_can_edit(complaint)
     ):
         messages.error(request, 'У вас нет прав для редактирования этой рекламации')
         return redirect('projects:complaint_detail', pk=complaint.id)
@@ -1332,11 +1379,14 @@ def update_client_contact(request, pk):
     complaint = get_object_or_404(Complaint, pk=pk)
     
     # Проверка прав доступа
-    # Менеджер, СМ, Админ и Лидер могут редактировать
-    # Для менеджера - без ограничений (видит все рекламации)
+    # Менеджер — только в рамках своего города, СМ — в своём городе, Админ и Лидер — без ограничений
     if request.user.role == 'service_manager':
-        # СМ может редактировать рекламации в своем городе
         if request.user.city and complaint.manager and complaint.manager.city != request.user.city:
+            messages.error(request, 'У вас нет прав для редактирования этой рекламации')
+            return redirect('projects:complaint_detail', pk=complaint.id)
+    if request.user.role == 'manager':
+        from .api_views import _manager_has_complaint_access
+        if not _manager_has_complaint_access(request.user, complaint):
             messages.error(request, 'У вас нет прав для редактирования этой рекламации')
             return redirect('projects:complaint_detail', pk=complaint.id)
     
@@ -1447,10 +1497,10 @@ def sm_agree_client(request, pk):
             ComplaintComment.objects.create(
                 complaint=complaint,
                 author=request.user,
-                text=f'СМ согласовал решение фабрики с клиентом. Срок готовности: {deadline.strftime("%d.%m.%Y")}'
+                text=f'СМ назначил дату готовности. Срок: {deadline.strftime("%d.%m.%Y")}. Клиенту отправлено SMS.'
             )
             
-            messages.success(request, f'Решение согласовано с клиентом! Срок готовности: {deadline.strftime("%d.%m.%Y")}. ОР получил уведомление.')
+            messages.success(request, f'Дата назначена! Срок готовности: {deadline.strftime("%d.%m.%Y")}. Клиенту отправлено SMS, ОР получил уведомление.')
         else:
             messages.error(request, 'Укажите дату готовности заказа')
     

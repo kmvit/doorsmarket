@@ -205,6 +205,11 @@ class Complaint(models.Model):
         null=True,
         verbose_name='Дата ответа фабрики'
     )
+    sm_response_deadline = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Дедлайн ответа СМ'
+    )
     factory_reject_reason = models.TextField(
         blank=True,
         verbose_name='Причина отказа фабрики'
@@ -247,6 +252,17 @@ class Complaint(models.Model):
     
     def __str__(self):
         return f"Рекламация #{self.id} - {self.order_number}"
+
+    @staticmethod
+    def _add_business_days(start_date, days):
+        """Добавляет указанное количество рабочих дней (пн-пт)."""
+        result = start_date
+        added = 0
+        while added < days:
+            result += timedelta(days=1)
+            if result.weekday() < 5:
+                added += 1
+        return result
     
     def save(self, *args, **kwargs):
         """Автоматическая установка получателя и статуса"""
@@ -704,8 +720,10 @@ class Complaint(models.Model):
 
     def factory_approve(self, approve_comment=None):
         """ОР одобряет рекламацию - ответ получен"""
+        response_dt = timezone.now()
         self.status = ComplaintStatus.FACTORY_APPROVED
-        self.factory_response_date = timezone.now()
+        self.factory_response_date = response_dt
+        self.sm_response_deadline = self._add_business_days(response_dt, 2)
         if approve_comment:
             self.factory_approve_comment = approve_comment
         self.save()
@@ -758,21 +776,21 @@ class Complaint(models.Model):
             )
     
     def sm_agree_with_client(self, production_deadline):
-        """СМ согласовывает решение с клиентом"""
+        """СМ назначает дату готовности — клиенту отправляется SMS, статус → в производстве"""
         self.status = ComplaintStatus.IN_PRODUCTION
         self.client_agreement_date = timezone.now()
         self.production_deadline = production_deadline
         self.save()
         
-        # Уведомление ОР о согласовании
+        # Уведомление ОР о назначении даты
         from users.models import User
         or_users = User.objects.filter(role='complaint_department')
         for or_user in or_users:
             self._create_notification(
                 recipient=or_user,
                 notification_type='pc',
-                title='Решение согласовано с клиентом',
-                message=f'СМ согласовал решение по рекламации #{self.id} (заказ {self.order_number}) с клиентом. Срок готовности: {production_deadline.strftime("%d.%m.%Y")}. Следите за производством.'
+                title='Дата готовности назначена',
+                message=f'СМ назначил дату по рекламации #{self.id} (заказ {self.order_number}). Срок готовности: {production_deadline.strftime("%d.%m.%Y")}. Клиенту отправлено SMS. Следите за производством.'
             )
         
         # Отправка SMS клиенту

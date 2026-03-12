@@ -69,7 +69,16 @@ def complaint_access_required(
                     has_access = False
                     
                     if allow_manager_all and request.user.role == 'manager':
-                        has_access = True
+                        # Менеджер имеет доступ, если назначен или из того же города
+                        user_city = getattr(request.user, 'city', None)
+                        if complaint.manager == request.user:
+                            has_access = True
+                        elif user_city and complaint.manager and getattr(complaint.manager, 'city', None) == user_city:
+                            has_access = True
+                        elif user_city and not complaint.manager and complaint.initiator:
+                            initiator_city = getattr(complaint.initiator, 'city', None)
+                            if initiator_city and initiator_city.id == user_city.id:
+                                has_access = True
                     
                     if check_initiator and complaint.initiator == request.user:
                         has_access = True

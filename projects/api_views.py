@@ -37,6 +37,29 @@ from .serializers import (
 from users.models import User
 
 
+def _manager_has_complaint_access(user, complaint):
+    """
+    Менеджер имеет доступ к рекламации, если он назначен на неё
+    или если он из того же города, что и назначенный менеджер (или инициатор, если менеджер не назначен).
+    """
+    if user.role != 'manager':
+        return False
+    if complaint.manager == user:
+        return True
+    user_city = getattr(user, 'city', None)
+    if not user_city:
+        return False
+    # Менеджер из того же города, что и назначенный менеджер
+    mgr_city_id = getattr(complaint.manager, 'city_id', None) if complaint.manager else None
+    if complaint.manager and mgr_city_id == user_city.id:
+        return True
+    # Менеджер не назначен — используем город инициатора
+    initiator_city_id = getattr(complaint.initiator, 'city_id', None) if complaint.initiator else None
+    if not complaint.manager and complaint.initiator and initiator_city_id == user_city.id:
+        return True
+    return False
+
+
 class IsAuthenticated(permissions.IsAuthenticated):
     """Базовый класс для аутентифицированных пользователей"""
     pass
@@ -136,6 +159,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 ComplaintStatus.CLOSED,
             }
             active_statuses = [status for status, _ in ComplaintStatus.choices if status not in completed_statuses]
+            sm_overdue_filter = (
+                Q(status='sm_response_overdue') |
+                Q(status='factory_approved', sm_response_deadline__lt=timezone.now())
+            )
             
             role_task_filters = {
                 'installer': {
@@ -159,7 +186,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'in_work': Q(status__in=active_statuses),
                     'new': Q(status='new'),
                     'review': Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']),
-                    'overdue': Q(status='sm_response_overdue'),
+                    'overdue': sm_overdue_filter,
                     'plan_installation': Q(status='shipping_planned'),
                 },
                 'complaint_department': {
@@ -171,13 +198,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'new': Q(status='new'),
                     'factory_overdue': Q(status='factory_response_overdue'),
                     'shipping_overdue': Q(status='shipping_overdue'),
-                    'sm_overdue': Q(status='sm_response_overdue'),
+                    'sm_overdue': sm_overdue_filter,
                 },
                 'leader': {
                     'new': Q(status='new'),
                     'factory_overdue': Q(status='factory_response_overdue'),
                     'shipping_overdue': Q(status='shipping_overdue'),
-                    'sm_overdue': Q(status='sm_response_overdue'),
+                    'sm_overdue': sm_overdue_filter,
                 },
             }
             
@@ -319,7 +346,43 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         response_serializer = ComplaintDetailSerializer(complaint, context=self.get_serializer_context())
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-    
+
+    def partial_update(self, request, *args, **kwargs):
+        """Частичное обновление рекламации с поддержкой файлов (attachments, commercial_offers)"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        complaint = serializer.save()
+
+        # Обрабатываем новые вложения (файлы)
+        files = request.FILES.getlist('attachments')
+        for file in files:
+            file_ext = file.name.lower().split('.')[-1]
+            if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                attachment_type = 'photo'
+            elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
+                attachment_type = 'video'
+            else:
+                attachment_type = 'document'
+            ComplaintAttachment.objects.create(
+                complaint=complaint,
+                file=file,
+                attachment_type=attachment_type
+            )
+
+        # Обрабатываем новые коммерческие предложения (КП)
+        commercial_offers = request.FILES.getlist('commercial_offers')
+        for co_file in commercial_offers:
+            ComplaintAttachment.objects.create(
+                complaint=complaint,
+                file=co_file,
+                attachment_type='commercial_offer',
+                description='Коммерческое предложение'
+            )
+
+        response_serializer = ComplaintDetailSerializer(complaint, context=self.get_serializer_context())
+        return Response(response_serializer.data)
+
     @action(detail=False, methods=['post'], url_path='parse-pdf')
     def parse_pdf(self, request):
         """
@@ -390,8 +453,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         elif obj.installer_assigned == user:
             has_access = True
         elif user.role == 'manager':
-            # Менеджеры могут видеть все рекламации
-            has_access = True
+            # Менеджеры видят рекламации своего города (в т.ч. чужых менеджеров)
+            has_access = _manager_has_complaint_access(user, obj)
         elif user.role == 'service_manager':
             # СМ могут видеть рекламации по своему городу
             if user.city and obj.initiator.city == user.city:
@@ -513,9 +576,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role != 'manager' or complaint.manager != user:
+        if not _manager_has_complaint_access(user, complaint):
             return Response(
-                {'error': 'Только назначенный менеджер может запустить производство'},
+                {'error': 'Только назначенный менеджер или менеджер из того же города может запустить производство'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -545,9 +608,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role != 'manager' or complaint.manager != user:
+        if not _manager_has_complaint_access(user, complaint):
             return Response(
-                {'error': 'Только назначенный менеджер может отметить товар на складе'},
+                {'error': 'Только назначенный менеджер или менеджер из того же города может отметить товар на складе'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -561,9 +624,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role != 'manager' or complaint.manager != user:
+        if not _manager_has_complaint_access(user, complaint):
             return Response(
-                {'error': 'Только назначенный менеджер может планировать отгрузку'},
+                {'error': 'Только назначенный менеджер или менеджер из того же города может планировать отгрузку'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -589,13 +652,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def agree_client(self, request, pk=None):
-        """СМ согласовывает решение с клиентом"""
+        """СМ назначает дату готовности — клиенту отправляется SMS"""
         complaint = self.get_object()
         user = request.user
         
         if user.role not in ['service_manager', 'admin']:
             return Response(
-                {'error': 'Только сервис-менеджер может согласовывать решение с клиентом'},
+                {'error': 'Только сервис-менеджер может назначать дату готовности'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -698,6 +761,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         # Проверка для СМ - может редактировать рекламации в своем городе
         if user.role == 'service_manager':
             if user.city and complaint.manager and complaint.manager.city != user.city:
+                return Response(
+                    {'error': 'У вас нет прав для редактирования этой рекламации'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        # Проверка для менеджера - только в рамках своего города
+        if user.role == 'manager':
+            if not _manager_has_complaint_access(user, complaint):
                 return Response(
                     {'error': 'У вас нет прав для редактирования этой рекламации'},
                     status=status.HTTP_403_FORBIDDEN
@@ -1333,6 +1403,28 @@ class ComplaintReasonViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['order', 'name']
 
 
+def _user_has_complaint_access(user, complaint):
+    """Проверка доступа пользователя к рекламации (для DefectiveProduct, Attachment и т.д.)"""
+    if user.role in ['admin', 'leader'] or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+        return True
+    if complaint.initiator == user or complaint.recipient == user or complaint.manager == user:
+        return True
+    if complaint.installer_assigned == user:
+        return True
+    if user.role == 'manager':
+        return _manager_has_complaint_access(user, complaint)
+    if user.role == 'complaint_department' and complaint.complaint_type == 'factory':
+        return True
+    if user.role == 'service_manager':
+        initiator_city = getattr(complaint.initiator, 'city', None)
+        user_city = getattr(user, 'city', None)
+        if user_city and initiator_city == user_city:
+            return True
+        if not user_city:
+            return True
+    return False
+
+
 class DefectiveProductViewSet(viewsets.ModelViewSet):
     """ViewSet для бракованных изделий"""
     serializer_class = DefectiveProductSerializer
@@ -1341,12 +1433,31 @@ class DefectiveProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Фильтрация по рекламации"""
         complaint_id = self.request.query_params.get('complaint')
-        queryset = DefectiveProduct.objects.all()
+        queryset = DefectiveProduct.objects.select_related('complaint', 'complaint__initiator')
         
         if complaint_id:
             queryset = queryset.filter(complaint_id=complaint_id)
         
         return queryset
+
+    def _check_complaint_access(self, complaint):
+        from rest_framework.exceptions import PermissionDenied
+        if not _user_has_complaint_access(self.request.user, complaint):
+            raise PermissionDenied("У вас нет доступа к этой рекламации")
+
+    def perform_create(self, serializer):
+        complaint = serializer.validated_data['complaint']
+        self._check_complaint_access(complaint)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        complaint = serializer.instance.complaint
+        self._check_complaint_access(complaint)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._check_complaint_access(instance.complaint)
+        instance.delete()
 
 
 class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
@@ -1409,6 +1520,10 @@ class DashboardStatsView(APIView):
             ComplaintStatus.CLOSED,
         }
         active_statuses = [choice[0] for choice in ComplaintStatus.choices if choice[0] not in completed_statuses]
+        sm_overdue_filter = (
+            Q(status='sm_response_overdue') |
+            Q(status='factory_approved', sm_response_deadline__lt=timezone.now())
+        )
         
         def add_stat(key, label, query, url_param=None):
             count = Complaint.objects.filter(query).count()
@@ -1526,7 +1641,7 @@ class DashboardStatsView(APIView):
             add_stat(
                 'overdue',
                 'Просроченные ответы',
-                base_filter_active & Q(status='sm_response_overdue')
+                base_filter_active & sm_overdue_filter
             )
             add_stat(
                 'plan_installation',
@@ -1573,7 +1688,7 @@ class DashboardStatsView(APIView):
             add_stat(
                 'sm_overdue',
                 'Ответ СМ просрочен',
-                Q(status='sm_response_overdue')
+                sm_overdue_filter
             )
         
         return Response({'stats': stats})

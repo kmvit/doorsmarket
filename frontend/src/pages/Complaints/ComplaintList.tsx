@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
@@ -8,6 +8,7 @@ import { ComplaintReason } from '../../types/complaints'
 import { City } from '../../types/auth'
 import apiClient from '../../api/client'
 import Button from '../../components/common/Button'
+import PhoneLink from '../../components/common/PhoneLink'
 
 const ComplaintList = () => {
   const navigate = useNavigate()
@@ -18,6 +19,8 @@ const ComplaintList = () => {
   const [cities, setCities] = useState<City[]>([])
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
   const [showFilters, setShowFilters] = useState(false)
+  const topScrollRef = useRef<HTMLDivElement>(null)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // Проверяем наличие токена перед загрузкой данных
@@ -228,6 +231,30 @@ const ComplaintList = () => {
     return words.slice(0, maxWords).join(' ') + '...'
   }
 
+  const syncScroll = (source: 'top' | 'bottom') => (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = (e.target as HTMLDivElement).scrollLeft
+    if (source === 'top' && tableScrollRef.current) {
+      tableScrollRef.current.scrollLeft = scrollLeft
+    } else if (source === 'bottom' && topScrollRef.current) {
+      topScrollRef.current.scrollLeft = scrollLeft
+    }
+  }
+
+  const tableHeader = (
+    <>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Номер заказа</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контактное лицо</th>
+      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
+    </>
+  )
+
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-7xl mx-auto">
@@ -411,21 +438,27 @@ const ComplaintList = () => {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+            <>
+              <div
+                ref={topScrollRef}
+                className="overflow-x-auto overflow-y-hidden border-b border-gray-200"
+                style={{ height: 12 }}
+                onScroll={syncScroll('top')}
+              >
+                <table className="min-w-full divide-y divide-gray-200" style={{ visibility: 'hidden' }}>
+                  <thead className="bg-gray-50">
+                    <tr>{tableHeader}</tr>
+                  </thead>
+                </table>
+              </div>
+              <div
+                ref={tableScrollRef}
+                className="overflow-x-auto"
+                onScroll={syncScroll('bottom')}
+              >
+                <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Номер заказа</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контактное лицо</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
-                  </tr>
+                  <tr>{tableHeader}</tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {complaints.map((complaint) => (
@@ -469,20 +502,21 @@ const ComplaintList = () => {
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {truncateText(complaint.address || '', 8)}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(complaint)}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {complaint.contact_person}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {complaint.contact_phone}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(complaint)}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900" onClick={(e) => e.stopPropagation()}>
+                        <PhoneLink phone={complaint.contact_phone} stopPropagation />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

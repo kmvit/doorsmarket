@@ -3,13 +3,22 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
-import { ComplaintCreateData, ComplaintType } from '../../types/complaints'
+import { ComplaintCreateData, ComplaintType, DefectiveProduct } from '../../types/complaints'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
 import Input from '../../components/common/Input'
 import Button from '../../components/common/Button'
+import FileUploadList from '../../components/complaints/FileUploadList'
 import { User } from '../../types/auth'
+
+interface DefectiveProductForm {
+  id?: number
+  product_name: string
+  size: string
+  opening_type: string
+  problem_description: string
+}
 
 const ComplaintEdit = () => {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +33,9 @@ const ComplaintEdit = () => {
   const [managers, setManagers] = useState<User[]>([])
   const [installers, setInstallers] = useState<User[]>([])
   const [attachments, setAttachments] = useState<File[]>([])
+  const [commercialOffers, setCommercialOffers] = useState<File[]>([])
+  const [defectiveProducts, setDefectiveProducts] = useState<DefectiveProductForm[]>([])
+  const [deletedProductIds, setDeletedProductIds] = useState<number[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [error, setError] = useState('')
@@ -86,6 +98,16 @@ const ComplaintEdit = () => {
             }
             setValue('commercial_offer_text', complaint.commercial_offer_text || '')
           }
+          // Бракованные изделия — для полного редактирования СМ
+          if (complaint.defective_products && complaint.defective_products.length > 0) {
+            setDefectiveProducts(complaint.defective_products.map((p: DefectiveProduct) => ({
+              id: p.id,
+              product_name: p.product_name || '',
+              size: p.size || '',
+              opening_type: p.opening_type || '',
+              problem_description: p.problem_description || '',
+            })))
+          }
         }
       } catch (error) {
         console.error('Error loading data:', error)
@@ -99,9 +121,43 @@ const ComplaintEdit = () => {
   }, [id, fetchComplaint, setValue, user?.role])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setAttachments(Array.from(e.target.files))
+    const files = e.target.files
+    if (files && files.length > 0) {
+      setAttachments(prev => [...prev, ...Array.from(files)])
+      e.target.value = ''
     }
+  }
+
+  const handleCommercialOffersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      setCommercialOffers(prev => [...prev, ...Array.from(files)])
+      e.target.value = ''
+    }
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const removeCommercialOffer = (index: number) => {
+    setCommercialOffers(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const addDefectiveProduct = () => {
+    setDefectiveProducts(prev => [...prev, { product_name: '', size: '', opening_type: '', problem_description: '' }])
+  }
+
+  const updateDefectiveProduct = (index: number, field: keyof DefectiveProductForm, value: string) => {
+    setDefectiveProducts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  }
+
+  const removeDefectiveProduct = (index: number) => {
+    const product = defectiveProducts[index]
+    if (product.id) {
+      setDeletedProductIds(prev => [...prev, product.id!])
+    }
+    setDefectiveProducts(prev => prev.filter((_, i) => i !== index))
   }
 
   const onSubmit = async (data: ComplaintCreateData & { complaint_type?: ComplaintType | ''; recipient_id?: number; installer_assigned_id?: number; commercial_offer_text?: string }) => {
@@ -145,7 +201,37 @@ const ComplaintEdit = () => {
         }
       }
 
-      await complaintsAPI.update(Number(id), apiData, attachments.length > 0 ? attachments : undefined)
+      await complaintsAPI.update(
+        Number(id),
+        apiData,
+        attachments.length > 0 ? attachments : undefined,
+        commercialOffers.length > 0 ? commercialOffers : undefined
+      )
+
+      // Бракованные изделия: удаление, создание, обновление
+      for (const productId of deletedProductIds) {
+        await complaintsAPI.deleteDefectiveProduct(productId)
+      }
+      for (const product of defectiveProducts) {
+        if (product.id) {
+          await complaintsAPI.updateDefectiveProduct(product.id, {
+            product_name: product.product_name,
+            size: product.size,
+            opening_type: product.opening_type,
+            problem_description: product.problem_description,
+          })
+        } else if (product.product_name.trim() || product.problem_description.trim()) {
+          await complaintsAPI.createDefectiveProduct({
+            complaint: Number(id),
+            product_name: product.product_name || '—',
+            size: product.size,
+            opening_type: product.opening_type,
+            problem_description: product.problem_description || '—',
+            order: defectiveProducts.indexOf(product),
+          })
+        }
+      }
+
       navigate(`/complaints/${id}`)
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || 
@@ -426,33 +512,112 @@ const ComplaintEdit = () => {
             </div>
           </div>
 
+          {/* Бракованные изделия — только для сервис-менеджера */}
+          {isServiceManager && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Бракованные изделия</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Наименование, параметры и описание проблемы по каждому изделию.
+              </p>
+              <div className="space-y-4">
+                {defectiveProducts.map((product, index) => (
+                  <div key={product.id || `new-${index}`} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-sm font-medium text-gray-700">Изделие #{index + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeDefectiveProduct(index)}
+                        className="text-red-600 hover:text-red-700 text-sm"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Наименование</label>
+                        <input
+                          type="text"
+                          value={product.product_name}
+                          onChange={(e) => updateDefectiveProduct(index, 'product_name', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Название изделия"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Размер</label>
+                        <input
+                          type="text"
+                          value={product.size}
+                          onChange={(e) => updateDefectiveProduct(index, 'size', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Размеры"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Открывание</label>
+                        <input
+                          type="text"
+                          value={product.opening_type}
+                          onChange={(e) => updateDefectiveProduct(index, 'opening_type', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Тип открывания"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Описание проблемы</label>
+                        <input
+                          type="text"
+                          value={product.problem_description}
+                          onChange={(e) => updateDefectiveProduct(index, 'problem_description', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Описание дефекта"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={addDefectiveProduct}>
+                  + Добавить изделие
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Дополнительные файлы</h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Фото/Видео/Документы
-              </label>
-              <input
-                type="file"
-                multiple
-                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
-                onChange={handleFileChange}
-                className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
-              />
-              <p className="text-xs text-gray-500 mt-2">
-                Можно выбрать несколько файлов. Поддерживаются изображения, видео и документы.
-              </p>
-              {attachments.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-medium text-gray-700">Выбранные файлы:</p>
-                  {attachments.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                      <span className="text-sm text-gray-700">{file.name}</span>
-                      <span className="text-xs text-gray-500">
-                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                      </span>
-                    </div>
-                  ))}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Фото/Видео/Документы
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={handleFileChange}
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Можно выбрать несколько файлов. Поддерживаются изображения, видео и документы.
+                </p>
+                <FileUploadList files={attachments} onRemove={removeAttachment} type="attachments" />
+              </div>
+              {isServiceManager && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Коммерческое предложение (КП)
+                  </label>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={handleCommercialOffersChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Можно выбрать несколько файлов КП. PDF, Word, Excel.
+                  </p>
+                  <FileUploadList files={commercialOffers} onRemove={removeCommercialOffer} type="commercial_offers" />
                 </div>
               )}
             </div>

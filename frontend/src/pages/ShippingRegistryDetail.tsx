@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { shippingAPI } from '../api/shipping'
 import { ShippingRegistry } from '../types/complaints'
 import Button from '../components/common/Button'
+import PhoneLink from '../components/common/PhoneLink'
 
 const ShippingRegistryDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -213,7 +214,9 @@ const ShippingRegistryDetail = () => {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Телефон</p>
-                      <p className="text-base text-gray-900">{entry.contact_phone}</p>
+                      <p className="text-base text-gray-900">
+                        <PhoneLink phone={entry.contact_phone} />
+                      </p>
                     </div>
                   </div>
                 </div>

@@ -390,6 +390,7 @@ class WebDashboardView(View):
         """Количество задач по категориям для дашборда"""
         from projects.models import Complaint, ComplaintStatus
         from django.db.models import Q
+        from django.utils import timezone
         
         summaries = []
         
@@ -423,6 +424,10 @@ class WebDashboardView(View):
             ComplaintStatus.CLOSED,
         }
         active_statuses = [choice[0] for choice in ComplaintStatus.choices if choice[0] not in completed_statuses]
+        sm_overdue_filter = (
+            Q(status='sm_response_overdue') |
+            Q(status='factory_approved', sm_response_deadline__lt=timezone.now())
+        )
 
         if user.role == 'installer':
             add_summary(
@@ -489,7 +494,7 @@ class WebDashboardView(View):
             add_summary(
                 'overdue',
                 'Просроченные ответы',
-                Q(status='sm_response_overdue') & city_filter
+                sm_overdue_filter & city_filter
             )
         elif user.role == 'complaint_department':
             add_summary(
@@ -526,7 +531,7 @@ class WebDashboardView(View):
             add_summary(
                 'sm_overdue',
                 'Ответ СМ просрочен',
-                Q(status='sm_response_overdue')
+                sm_overdue_filter
             )
         
         return summaries

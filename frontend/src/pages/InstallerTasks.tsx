@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../store/complaintsStore'
 import { ComplaintFilters } from '../types/complaints'
 import Button from '../components/common/Button'
+import PhoneLink from '../components/common/PhoneLink'
 
 const InstallerTasks = () => {
   const navigate = useNavigate()
@@ -264,7 +265,9 @@ const InstallerTasks = () => {
                       >
                         <div className="text-sm font-medium text-gray-900">{complaint.client_name}</div>
                         <div className="text-sm text-gray-500">{complaint.address}</div>
-                        <div className="text-sm text-gray-500">{complaint.contact_phone}</div>
+                        <div className="text-sm text-gray-500">
+                          <PhoneLink phone={complaint.contact_phone} stopPropagation />
+                        </div>
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap cursor-pointer"

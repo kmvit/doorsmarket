@@ -1,19 +1,22 @@
 """
 Management команда для проверки просроченных ответов от СМ
 Должна запускаться по расписанию (например, через cron каждый час)
+СМ должен в течение 2 р.д. озвучить клиенту решение и назначить дату готовности.
 """
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
-from projects.models import Complaint, ComplaintStatus
+from projects.models import Complaint, ComplaintStatus, Notification
 from users.models import User
 
 
 class Command(BaseCommand):
-    help = 'Проверяет просроченные ответы СМ по согласованию с клиентом и отправляет уведомления'
+    help = 'Проверяет просроченные ответы СМ по назначению даты и отправляет уведомления'
 
     def handle(self, *args, **options):
         now = timezone.now()
+        newly_overdue_count = 0
+        reminder_count = 0
         
         # Находим рекламации со статусом "Ответ получен",
         # которые были отправлены более 2 рабочих дней назад
@@ -32,8 +35,9 @@ class Command(BaseCommand):
                     complaint.status = ComplaintStatus.SM_RESPONSE_OVERDUE
                     complaint.save()
                     
-                    # Отправляем уведомления СМ и ОР
+                    # Отправляем уведомления СМ (в т.ч. push на телефон) и ОР
                     self.send_overdue_notifications(complaint)
+                    newly_overdue_count += 1
                     
                     self.stdout.write(
                         self.style.WARNING(
@@ -41,7 +45,7 @@ class Command(BaseCommand):
                         )
                     )
         
-        # Ежедневные напоминания для уже просроченных
+        # Ежедневные напоминания для уже просроченных (только 1 раз в день)
         overdue_complaints = Complaint.objects.filter(
             complaint_type='factory',
             status=ComplaintStatus.SM_RESPONSE_OVERDUE
@@ -50,17 +54,17 @@ class Command(BaseCommand):
         for complaint in overdue_complaints:
             if complaint.factory_response_date:
                 days_overdue = self.count_business_days(complaint.factory_response_date, now)
-                self.send_daily_reminder(complaint, days_overdue)
-                
-                self.stdout.write(
-                    self.style.ERROR(
-                        f'СМ просрочил ответ по рекламации #{complaint.id} на {days_overdue} р.д.'
+                if self.send_daily_reminder(complaint, days_overdue, now):
+                    reminder_count += 1
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f'СМ просрочил ответ по рекламации #{complaint.id} на {days_overdue} р.д. (напоминание отправлено)'
+                        )
                     )
-                )
         
         self.stdout.write(
             self.style.SUCCESS(
-                f'Проверка завершена. Просрочено: {waiting_complaints.count()}, Напоминаний: {overdue_complaints.count()}'
+                f'Проверка завершена. Новых просрочек: {newly_overdue_count}, Напоминаний: {reminder_count}'
             )
         )
     
@@ -79,15 +83,15 @@ class Command(BaseCommand):
     
     def send_overdue_notifications(self, complaint):
         """Отправка уведомлений о просрочке (при первой просрочке)"""
-        # Уведомление СМ в личный кабинет
+        # Push-уведомление СМ на телефон
         complaint._create_notification(
             recipient=complaint.recipient,
-            notification_type='pc',
-            title='⚠️ Просрочено информирование клиента',
-            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) ожидает, что вы озвучите клиенту решение фабрики более 2 рабочих дней! Необходимо срочно связаться с клиентом.'
+            notification_type='push',
+            title='⚠️ СМ просрочил ответ',
+            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) — в течение 2 р.д. нужно было озвучить клиенту решение и назначить дату. Назначьте дату готовности.'
         )
         
-        # Уведомления всем ОР в личный кабинет
+        # Уведомления всем ОР
         or_users = User.objects.filter(role='complaint_department')
         for or_user in or_users:
             complaint._create_notification(
@@ -97,24 +101,35 @@ class Command(BaseCommand):
                 message=f'СМ не озвучил решение фабрики по рекламации #{complaint.id} (заказ {complaint.order_number}) клиенту в течение 2 рабочих дней.'
             )
     
-    def send_daily_reminder(self, complaint, days_overdue):
-        """Ежедневные напоминания о просроченных рекламациях"""
-        # Уведомление СМ в личный кабинет
+    def send_daily_reminder(self, complaint, days_overdue, now):
+        """Ежедневные напоминания о просроченных рекламациях (только 1 раз в день)"""
+        today = now.date()
+        # Проверяем, не отправляли ли уже напоминание сегодня
+        sm_reminder_sent_today = Notification.objects.filter(
+            complaint=complaint,
+            title__startswith='🔴 Напоминание',
+            created_at__date=today
+        ).exists()
+        if sm_reminder_sent_today:
+            return False
+
+        # Push-уведомление СМ на телефон
         complaint._create_notification(
             recipient=complaint.recipient,
-            notification_type='pc',
+            notification_type='push',
             title=f'🔴 Напоминание: просрочка {days_overdue} р.д.',
-            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) всё ещё ожидает звонка клиенту по решению фабрики!'
+            message=f'Рекламация #{complaint.id} (заказ {complaint.order_number}) — назначьте дату готовности, клиенту уйдёт SMS.'
         )
         
-        # Уведомления всем ОР в личный кабинет
+        # Уведомления всем ОР
         or_users = User.objects.filter(role='complaint_department')
         for or_user in or_users:
             complaint._create_notification(
                 recipient=or_user,
                 notification_type='pc',
                 title=f'🔴 Напоминание: просрочка СМ {days_overdue} р.д.',
-                message=f'СМ всё ещё не озвучил клиенту решение по рекламации #{complaint.id} (заказ {complaint.order_number}).'
+                message=f'СМ всё ещё не назначил дату по рекламации #{complaint.id} (заказ {complaint.order_number}).'
             )
+        return True
 
 

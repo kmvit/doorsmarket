@@ -9,6 +9,7 @@ import Button from '../../components/common/Button'
 import { ROLE_DISPLAY } from '../../utils/constants'
 import AttachmentUpload from '../../components/complaints/AttachmentUpload'
 import FileViewer from '../../components/common/FileViewer'
+import PhoneLink from '../../components/common/PhoneLink'
 
 const ComplaintDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -140,11 +141,18 @@ const ComplaintDetail = () => {
     )
   }
 
+  const canDoManagerActions = user?.role === 'manager' && (
+    currentComplaint.manager?.id === user.id ||
+    (user.city?.id && currentComplaint.manager?.city?.id === user.city?.id) ||
+    (user.city?.id && !currentComplaint.manager && currentComplaint.initiator?.city?.id === user.city?.id)
+  )
+
   const canEdit = user && (
     currentComplaint.initiator.id === user.id ||
     user.role === 'admin' ||
     user.role === 'service_manager' ||
-    user.role === 'leader'
+    user.role === 'leader' ||
+    canDoManagerActions
   )
 
 
@@ -263,7 +271,7 @@ const ComplaintDetail = () => {
           setFormData({ ...formData, shippingDate: '' })
           break
         case 'factory_approve':
-          if (!confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу согласовать решение с клиентом.')) return
+          if (!confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу озвучить решение клиенту и назначить дату готовности.')) return
           await complaintsAPI.factoryApprove(Number(id), formData.approveComment || '')
           setShowForms({ ...showForms, approve: false })
           setFormData({ ...formData, approveComment: '' })
@@ -438,7 +446,9 @@ const ComplaintDetail = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Телефон</p>
-                  <p className="text-base font-semibold text-gray-900">{currentComplaint.contact_phone}</p>
+                  <p className="text-base font-semibold text-gray-900">
+                    <PhoneLink phone={currentComplaint.contact_phone} />
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Площадка</p>
@@ -666,7 +676,11 @@ const ComplaintDetail = () => {
                         : currentComplaint.installer_assigned.username}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {currentComplaint.installer_assigned.phone_number || 'Телефон не указан'}
+                      {currentComplaint.installer_assigned.phone_number ? (
+                        <PhoneLink phone={currentComplaint.installer_assigned.phone_number} />
+                      ) : (
+                        'Телефон не указан'
+                      )}
                     </p>
                   </div>
                 )}
@@ -956,7 +970,7 @@ const ComplaintDetail = () => {
                                   <svg className="h-5 w-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                                   </svg>
-                                  Согласование с клиентом
+                                  Назначение даты готовности
                                 </>
                               )}
                             </h4>
@@ -968,13 +982,13 @@ const ComplaintDetail = () => {
                                 </>
                               ) : currentComplaint.status === 'sm_response_overdue' ? (
                                 <>
-                                  <span className="text-red-600 font-semibold">⚠️ Просрочено!</span>
-                                  {' '}Фабрика ожидает подтверждения. Свяжитесь с клиентом как можно скорее.
+                                  <span className="text-red-600 font-semibold">⚠️ СМ просрочил ответ!</span>
+                                  {' '}В течение 2 р.д. нужно было озвучить клиенту решение и назначить дату. Назначьте дату готовности — клиенту уйдёт SMS.
                                 </>
                               ) : (
                                 <>
                                   <span className="text-green-600 font-semibold">✓ Ответ получен от фабрики</span>
-                                  {' '}Озвучьте клиенту решение или верните его в фабрику, если не согласны.
+                                  {' '}В течение 2 р.д. озвучьте клиенту решение и предварительный срок готовности. Выберите дату — клиенту уйдёт SMS.
                                 </>
                               )}
                             </p>
@@ -987,9 +1001,9 @@ const ComplaintDetail = () => {
                                     className="w-full mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white"
                                   >
                                     <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
-                                    ✓ Ответ фабрики согласован
+                                    Выбор даты
                                   </Button>
                                 ) : (
                                   <div className="mb-2 p-3 bg-white border-2 border-green-200 rounded-xl">
@@ -1003,6 +1017,7 @@ const ComplaintDetail = () => {
                                         min={new Date().toISOString().split('T')[0]}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                       />
+                                      <p className="text-xs text-gray-500 mt-1">После подтверждения клиенту будет отправлено SMS с датой готовности</p>
                                     </div>
                                     <div className="flex space-x-2">
                                       <Button
@@ -1078,7 +1093,7 @@ const ComplaintDetail = () => {
                               Заказ в производстве
                             </h4>
                             <p className="text-xs text-gray-700">
-                              Решение фабрики согласовано, заказ запущен в производство. Следите за сроками готовности и информируйте клиента.
+                              Дата готовности назначена, клиенту отправлено SMS. Заказ в производстве. Следите за сроками.
                             </p>
                           </div>
                         )}
@@ -1316,7 +1331,7 @@ const ComplaintDetail = () => {
                 )}
 
                 {/* Действия для менеджера */}
-                {user?.role === 'manager' && currentComplaint.manager?.id === user.id && (
+                {canDoManagerActions && (
                   <>
                     {(currentComplaint.status === 'new' || !currentComplaint.complaint_type) && (
                       <div className="p-4 border-2 border-yellow-200 rounded-xl bg-yellow-50">

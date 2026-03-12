@@ -194,7 +194,12 @@ export const complaintsAPI = {
   },
 
   // Обновить рекламацию
-  update: async (id: number, data: Partial<ComplaintCreateData> & { installer_assigned_id?: number }, files?: File[]): Promise<Complaint> => {
+  update: async (
+    id: number,
+    data: Partial<ComplaintCreateData> & { installer_assigned_id?: number },
+    files?: File[],
+    commercialOffers?: File[]
+  ): Promise<Complaint> => {
     const formData = new FormData()
     
     // Поля, которые должны передаваться с _id
@@ -212,10 +217,17 @@ export const complaintsAPI = {
       }
     })
     
-    // Добавляем новые файлы
+    // Добавляем новые файлы (фото/видео/документы)
     if (files && files.length > 0) {
       files.forEach((file) => {
         formData.append('attachments', file)
+      })
+    }
+    
+    // Добавляем коммерческие предложения (КП)
+    if (commercialOffers && commercialOffers.length > 0) {
+      commercialOffers.forEach((file) => {
+        formData.append('commercial_offers', file)
       })
     }
     

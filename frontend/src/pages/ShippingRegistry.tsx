@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { shippingAPI } from '../api/shipping'
 import { ShippingRegistry, ShippingRegistryFilters } from '../types/complaints'
 import Button from '../components/common/Button'
+import PhoneLink from '../components/common/PhoneLink'
 
 const ShippingRegistryPage = () => {
   const navigate = useNavigate()
@@ -10,13 +11,27 @@ const ShippingRegistryPage = () => {
   const [entries, setEntries] = useState<ShippingRegistry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const topScrollRef = useRef<HTMLDivElement>(null)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
   const [filters, setFilters] = useState<ShippingRegistryFilters>({
     search: searchParams.get('search') || undefined,
     order_type: (searchParams.get('order_type') as any) || undefined,
     delivery_status: (searchParams.get('delivery_status') as any) || undefined,
     manager: searchParams.get('manager') ? Number(searchParams.get('manager')) : undefined,
   })
+  const [localFilters, setLocalFilters] = useState<ShippingRegistryFilters>(filters)
   const [showFilters, setShowFilters] = useState(false)
+
+  useEffect(() => {
+    const newFilters: ShippingRegistryFilters = {
+      search: searchParams.get('search') || undefined,
+      order_type: (searchParams.get('order_type') as any) || undefined,
+      delivery_status: (searchParams.get('delivery_status') as any) || undefined,
+      manager: searchParams.get('manager') ? Number(searchParams.get('manager')) : undefined,
+    }
+    setLocalFilters(newFilters)
+    setFilters((prev) => (JSON.stringify(prev) === JSON.stringify(newFilters) ? prev : newFilters))
+  }, [searchParams])
 
   useEffect(() => {
     fetchData()
@@ -38,12 +53,13 @@ const ShippingRegistryPage = () => {
   }
 
   const handleFilterChange = (key: keyof ShippingRegistryFilters, value: any) => {
-    const newFilters = { ...filters, [key]: value }
-    setFilters(newFilters)
+    setLocalFilters((prev) => ({ ...prev, [key]: value }))
+  }
 
-    // Обновляем URL параметры
+  const handleApplyFilters = () => {
+    setFilters(localFilters)
     const newSearchParams = new URLSearchParams()
-    Object.entries(newFilters).forEach(([k, v]) => {
+    Object.entries(localFilters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
         newSearchParams.set(k, String(v))
       }
@@ -51,9 +67,10 @@ const ShippingRegistryPage = () => {
     setSearchParams(newSearchParams)
   }
 
-  const clearFilters = () => {
+  const handleResetFilters = () => {
     const clearedFilters: ShippingRegistryFilters = {}
     setFilters(clearedFilters)
+    setLocalFilters(clearedFilters)
     setSearchParams({})
   }
 
@@ -73,6 +90,30 @@ const ShippingRegistryPage = () => {
       </span>
     )
   }
+
+  const syncScroll = (source: 'top' | 'bottom') => (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = (e.target as HTMLDivElement).scrollLeft
+    if (source === 'top' && tableScrollRef.current) {
+      tableScrollRef.current.scrollLeft = scrollLeft
+    } else if (source === 'bottom' && topScrollRef.current) {
+      topScrollRef.current.scrollLeft = scrollLeft
+    }
+  }
+
+  const tableHeader = (
+    <>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">№</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Номер заказа</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Менеджер</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус доставки</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Кол-во дверей</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
+      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Оценка</th>
+    </>
+  )
 
   const renderStars = (rating: number | null) => {
     if (!rating) return <span className="text-gray-400">—</span>
@@ -129,52 +170,67 @@ const ShippingRegistryPage = () => {
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mb-6 border border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Фильтры</h3>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={clearFilters}>
-                Сбросить
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                {showFilters ? 'Скрыть фильтры' : 'Показать фильтры'}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              {showFilters ? 'Скрыть фильтры' : 'Показать фильтры'}
+            </Button>
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
-                <input
-                  type="text"
-                  value={filters.search || ''}
-                  onChange={(e) => handleFilterChange('search', e.target.value || undefined)}
-                  placeholder="Номер заказа, клиент, адрес..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
+                  <input
+                    type="text"
+                    value={localFilters.search || ''}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    placeholder="Номер заказа, клиент, адрес..."
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Вид заказа</label>
+                  <select
+                    value={localFilters.order_type || ''}
+                    onChange={(e) => handleFilterChange('order_type', e.target.value || undefined)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">Все</option>
+                    <option value="main">Основной</option>
+                    <option value="complaint">Рекламация</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Статус доставки</label>
+                  <select
+                    value={localFilters.delivery_status || ''}
+                    onChange={(e) => handleFilterChange('delivery_status', e.target.value || undefined)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">Все</option>
+                    <option value="pending">Ожидает</option>
+                    <option value="in_transit">В пути</option>
+                    <option value="delivered">Доставлено</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Вид заказа</label>
-                <select
-                  value={filters.order_type || ''}
-                  onChange={(e) => handleFilterChange('order_type', e.target.value || undefined)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleApplyFilters}
+                  className="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
                 >
-                  <option value="">Все</option>
-                  <option value="main">Основной</option>
-                  <option value="complaint">Рекламация</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Статус доставки</label>
-                <select
-                  value={filters.delivery_status || ''}
-                  onChange={(e) => handleFilterChange('delivery_status', e.target.value || undefined)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  Применить фильтры
+                </button>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors"
                 >
-                  <option value="">Все</option>
-                  <option value="pending">Ожидает</option>
-                  <option value="in_transit">В пути</option>
-                  <option value="delivered">Доставлено</option>
-                </select>
+                  Сбросить
+                </button>
               </div>
             </div>
           )}
@@ -183,21 +239,27 @@ const ShippingRegistryPage = () => {
         {/* Таблица */}
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
           {entries && entries.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <>
+              <div
+                ref={topScrollRef}
+                className="overflow-x-auto overflow-y-hidden border-b border-gray-200"
+                style={{ height: 12 }}
+                onScroll={syncScroll('top')}
+              >
+                <table className="min-w-full divide-y divide-gray-200 text-sm" style={{ visibility: 'hidden' }}>
+                  <thead className="bg-gray-50">
+                    <tr>{tableHeader}</tr>
+                  </thead>
+                </table>
+              </div>
+              <div
+                ref={tableScrollRef}
+                className="overflow-x-auto"
+                onScroll={syncScroll('bottom')}
+              >
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">№</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Номер заказа</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Менеджер</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус доставки</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Кол-во дверей</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Оценка</th>
-                  </tr>
+                  <tr>{tableHeader}</tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {entries.map((entry, index) => (
@@ -220,13 +282,16 @@ const ShippingRegistryPage = () => {
                       <td className="px-3 py-2 whitespace-nowrap text-gray-900">{entry.contact_person}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{getDeliveryStatusBadge(entry.delivery_status)}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-center text-gray-900">{entry.doors_count}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-900">{entry.contact_phone}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-900" onClick={(e) => e.stopPropagation()}>
+                        <PhoneLink phone={entry.contact_phone} stopPropagation />
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap text-center">{renderStars(entry.client_rating)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           ) : (
             <div className="text-center py-12">
               <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
