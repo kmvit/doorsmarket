@@ -1,7 +1,7 @@
 from django import forms
 
 from users.models import User
-from .models import Complaint, ComplaintReason, ProductionSite, ComplaintType
+from .models import Complaint, ComplaintReason, ProductionSite
 
 
 class ComplaintEditForm(forms.ModelForm):
@@ -10,7 +10,6 @@ class ComplaintEditForm(forms.ModelForm):
     class Meta:
         model = Complaint
         fields = [
-            'complaint_type',
             'recipient',
             'manager',
             'production_site',
@@ -27,9 +26,6 @@ class ComplaintEditForm(forms.ModelForm):
             'commercial_offer_text',
         ]
         widgets = {
-            'complaint_type': forms.Select(
-                attrs={'class': 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white'}
-            ),
             'recipient': forms.Select(
                 attrs={'class': 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white'}
             ),
@@ -83,16 +79,11 @@ class ComplaintEditForm(forms.ModelForm):
         self.fields['reason'].queryset = ComplaintReason.objects.filter(is_active=True).order_by('name')
         self.fields['production_site'].queryset = ProductionSite.objects.filter(is_active=True).order_by('name')
 
-        # Поле complaint_type не обязательно
-        self.fields['complaint_type'].required = False
-        self.fields['complaint_type'].choices = [('', '---------')] + list(ComplaintType.choices)
-
         # Файл не обязателен
         self.fields['commercial_offer'].required = False
         self.fields['assignee_comment'].required = False
 
         # Подсказки
-        self.fields['complaint_type'].help_text = 'Определяет текущий тип обработки рекламации'
         self.fields['recipient'].help_text = 'Сервис-менеджер, ответственный за рекламацию'
         self.fields['manager'].help_text = 'Менеджер, ведущий заказ'
         self.fields['assignee_comment'].help_text = 'Комментарий увидит менеджер или монтажник, выполняющий задачу'

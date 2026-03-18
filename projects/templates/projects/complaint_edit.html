@@ -30,16 +30,6 @@
                 <h2 class="text-xl font-semibold text-gray-900 mb-4">Назначение</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Тип рекламации</label>
-                        {{ form.complaint_type }}
-                        {% if form.complaint_type.errors %}
-                            <p class="mt-1 text-sm text-red-600">{{ form.complaint_type.errors.0 }}</p>
-                        {% else %}
-                            <p class="mt-1 text-xs text-gray-500">{{ form.complaint_type.help_text }}</p>
-                        {% endif %}
-                    </div>
-
-                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Получатель (СМ)</label>
                         {{ form.recipient }}
                         {% if form.recipient.errors %}
