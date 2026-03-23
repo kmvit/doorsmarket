@@ -228,7 +228,11 @@
         <!-- Список рекламаций -->
         <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
             {% if complaints %}
-                <div class="overflow-x-auto">
+                <!-- Верхний скролл -->
+                <div id="top-scroll" class="overflow-x-auto" style="overflow-y: hidden; height: 12px;">
+                    <div id="top-scroll-inner" style="height: 1px;"></div>
+                </div>
+                <div id="table-scroll" class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
@@ -369,5 +373,42 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const topScroll = document.getElementById('top-scroll');
+    const tableScroll = document.getElementById('table-scroll');
+    const topScrollInner = document.getElementById('top-scroll-inner');
+
+    if (!topScroll || !tableScroll || !topScrollInner) return;
+
+    function syncWidth() {
+        const table = tableScroll.querySelector('table');
+        if (table) {
+            topScrollInner.style.width = table.scrollWidth + 'px';
+        }
+    }
+
+    syncWidth();
+    window.addEventListener('resize', syncWidth);
+
+    let isSyncingTop = false;
+    let isSyncingTable = false;
+
+    topScroll.addEventListener('scroll', function() {
+        if (isSyncingTop) { isSyncingTop = false; return; }
+        isSyncingTable = true;
+        tableScroll.scrollLeft = topScroll.scrollLeft;
+    });
+
+    tableScroll.addEventListener('scroll', function() {
+        if (isSyncingTable) { isSyncingTable = false; return; }
+        isSyncingTop = true;
+        topScroll.scrollLeft = tableScroll.scrollLeft;
+    });
+});
+</script>
 {% endblock %}
 

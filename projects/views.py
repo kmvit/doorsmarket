@@ -683,11 +683,19 @@ def shipping_registry(request):
     manager_filter = request.GET.get('manager', '')
     search_query = request.GET.get('search', '')
     
+    has_filters = bool(request.GET)
+    if has_filters:
+        exclude_delivered = request.GET.get('exclude_delivered', '0') == '1'
+    else:
+        exclude_delivered = True
+    
     if order_type_filter:
         shipping_entries = shipping_entries.filter(order_type=order_type_filter)
     
     if delivery_status_filter:
         shipping_entries = shipping_entries.filter(delivery_status=delivery_status_filter)
+    elif exclude_delivered:
+        shipping_entries = shipping_entries.exclude(delivery_status='delivered')
     
     if manager_filter:
         shipping_entries = shipping_entries.filter(manager_id=manager_filter)
@@ -720,6 +728,7 @@ def shipping_registry(request):
         'current_delivery_status': delivery_status_filter,
         'current_manager': manager_filter,
         'search_query': search_query,
+        'exclude_delivered': exclude_delivered,
     }
     
     return render(request, 'projects/shipping_registry.html', context)
