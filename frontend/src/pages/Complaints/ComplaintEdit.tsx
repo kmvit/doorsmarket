@@ -586,6 +586,75 @@ const ComplaintEdit = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Дополнительные файлы</h2>
             <div className="space-y-4">
+              {/* Существующие вложения */}
+              {currentComplaint?.attachments && currentComplaint.attachments.filter(a => a.attachment_type !== 'commercial_offer').length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Существующие вложения</label>
+                  <div className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    {currentComplaint.attachments
+                      .filter(a => a.attachment_type !== 'commercial_offer')
+                      .map((attachment) => (
+                        <div key={attachment.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                          <div className="flex items-center space-x-3 flex-1 min-w-0">
+                            <div className="flex-shrink-0">
+                              {attachment.attachment_type === 'photo' ? (
+                                <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              ) : attachment.attachment_type === 'video' ? (
+                                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              ) : (
+                                <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <a href={attachment.file} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary-600 hover:text-primary-700 truncate block">
+                                {attachment.file.split('/').pop()}
+                              </a>
+                              <p className="text-xs text-gray-500">
+                                {attachment.attachment_type === 'photo' ? 'Фото' : attachment.attachment_type === 'video' ? 'Видео' : 'Документ'}
+                                {attachment.file_size ? ` • ${attachment.file_size}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Вы можете добавить дополнительные файлы ниже.</p>
+                </div>
+              )}
+
+              {/* Существующие КП */}
+              {currentComplaint?.attachments && currentComplaint.attachments.filter(a => a.attachment_type === 'commercial_offer').length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Существующие коммерческие предложения</label>
+                  <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    {currentComplaint.attachments
+                      .filter(a => a.attachment_type === 'commercial_offer')
+                      .map((attachment, idx) => (
+                        <div key={attachment.id} className="flex items-center justify-between p-2 bg-white rounded border border-blue-200">
+                          <div className="flex items-center space-x-3 flex-1 min-w-0">
+                            <svg className="h-6 w-6 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <div className="flex-1 min-w-0">
+                              <a href={attachment.file} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary-600 hover:text-primary-700 truncate block">
+                                КП #{idx + 1}
+                              </a>
+                              <p className="text-xs text-gray-500">{attachment.file_size || ''}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Вы можете добавить дополнительные КП ниже.</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Фото/Видео/Документы

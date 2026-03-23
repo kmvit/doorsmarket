@@ -167,7 +167,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         required=False
     )
     recipient_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='service_manager'),
+        queryset=User.objects.filter(is_active=True),
         source='recipient',
         write_only=True,
         required=False
@@ -179,13 +179,13 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         required=False
     )
     production_site_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductionSite.objects.filter(is_active=True),
+        queryset=ProductionSite.objects.all(),
         source='production_site',
         write_only=True,
         required=False
     )
     reason_id = serializers.PrimaryKeyRelatedField(
-        queryset=ComplaintReason.objects.filter(is_active=True),
+        queryset=ComplaintReason.objects.all(),
         source='reason',
         write_only=True,
         required=False
@@ -290,7 +290,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         required=False
     )
     recipient_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='service_manager'),
+        queryset=User.objects.filter(is_active=True),
         source='recipient',
         write_only=True,
         required=False
@@ -308,12 +308,12 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         required=False
     )
     production_site_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductionSite.objects.filter(is_active=True),
+        queryset=ProductionSite.objects.all(),
         source='production_site',
         write_only=True
     )
     reason_id = serializers.PrimaryKeyRelatedField(
-        queryset=ComplaintReason.objects.filter(is_active=True),
+        queryset=ComplaintReason.objects.all(),
         source='reason',
         write_only=True
     )
