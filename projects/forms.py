@@ -73,11 +73,28 @@ class ComplaintEditForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Настраиваем queryset полей
-        self.fields['manager'].queryset = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
-        self.fields['recipient'].queryset = User.objects.filter(role='service_manager', is_active=True).order_by('first_name', 'last_name')
-        self.fields['reason'].queryset = ComplaintReason.objects.filter(is_active=True).order_by('name')
-        self.fields['production_site'].queryset = ProductionSite.objects.filter(is_active=True).order_by('name')
+        instance = self.instance
+
+        # Настраиваем queryset полей, гарантируя что текущие значения всегда в списке
+        manager_qs = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
+        if instance and instance.pk and instance.manager_id:
+            manager_qs = manager_qs | User.objects.filter(pk=instance.manager_id)
+        self.fields['manager'].queryset = manager_qs.distinct()
+
+        recipient_qs = User.objects.filter(role='service_manager', is_active=True).order_by('first_name', 'last_name')
+        if instance and instance.pk and instance.recipient_id:
+            recipient_qs = recipient_qs | User.objects.filter(pk=instance.recipient_id)
+        self.fields['recipient'].queryset = recipient_qs.distinct()
+
+        reason_qs = ComplaintReason.objects.filter(is_active=True).order_by('name')
+        if instance and instance.pk and instance.reason_id:
+            reason_qs = reason_qs | ComplaintReason.objects.filter(pk=instance.reason_id)
+        self.fields['reason'].queryset = reason_qs.distinct()
+
+        production_site_qs = ProductionSite.objects.filter(is_active=True).order_by('name')
+        if instance and instance.pk and instance.production_site_id:
+            production_site_qs = production_site_qs | ProductionSite.objects.filter(pk=instance.production_site_id)
+        self.fields['production_site'].queryset = production_site_qs.distinct()
 
         # Файл не обязателен
         self.fields['commercial_offer'].required = False
