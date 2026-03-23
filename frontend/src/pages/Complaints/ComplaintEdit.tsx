@@ -234,6 +234,7 @@ const ComplaintEdit = () => {
 
       navigate(`/complaints/${id}`)
     } catch (err: any) {
+      console.error('[ComplaintEdit] Ошибка обновления:', err.response?.status, err.response?.data || err.message)
       const errorMessage = err.response?.data?.detail || 
                           err.response?.data?.error || 
                           (typeof err.response?.data === 'object' ? JSON.stringify(err.response.data) : 'Ошибка обновления рекламации')

@@ -176,7 +176,7 @@ export const complaintsAPI = {
     try {
     const response = await apiClient.post('/complaints/', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
     return response.data
@@ -234,7 +234,7 @@ export const complaintsAPI = {
     try {
     const response = await apiClient.patch(`/complaints/${id}/`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
       
@@ -424,7 +424,7 @@ export const complaintsAPI = {
 
     const response = await apiClient.post('/attachments/', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
     return response.data
@@ -470,7 +470,7 @@ export const complaintsAPI = {
 
     const response = await apiClient.post('/complaints/parse-pdf/', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
     return response.data

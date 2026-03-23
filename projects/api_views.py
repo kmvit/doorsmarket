@@ -349,7 +349,17 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         """Частичное обновление рекламации с поддержкой файлов (attachments, commercial_offers)"""
+        import logging
+        logger = logging.getLogger(__name__)
+
         instance = self.get_object()
+        logger.info(
+            'partial_update complaint #%s: content_type=%s, FILES keys=%s, FILES attachments count=%d',
+            instance.pk,
+            request.content_type,
+            list(request.FILES.keys()),
+            len(request.FILES.getlist('attachments')),
+        )
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         complaint = serializer.save()
