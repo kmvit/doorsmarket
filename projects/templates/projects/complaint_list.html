@@ -229,7 +229,28 @@
         <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
             {% if complaints %}
                 <!-- Верхний скролл -->
-                <div id="top-scroll" class="overflow-x-auto" style="overflow-y: hidden; height: 12px;">
+                <style>
+                    #top-scroll {
+                        overflow-x: scroll;
+                        overflow-y: hidden;
+                    }
+                    #top-scroll::-webkit-scrollbar {
+                        height: 14px;
+                    }
+                    #top-scroll::-webkit-scrollbar-track {
+                        background: #f3f4f6;
+                        border-radius: 7px;
+                    }
+                    #top-scroll::-webkit-scrollbar-thumb {
+                        background: #d1d5db;
+                        border-radius: 7px;
+                        border: 2px solid #f3f4f6;
+                    }
+                    #top-scroll::-webkit-scrollbar-thumb:hover {
+                        background: #9ca3af;
+                    }
+                </style>
+                <div id="top-scroll" style="height: 14px;">
                     <div id="top-scroll-inner" style="height: 1px;"></div>
                 </div>
                 <div id="table-scroll" class="overflow-x-auto">
@@ -387,25 +408,27 @@ document.addEventListener('DOMContentLoaded', function() {
     function syncWidth() {
         const table = tableScroll.querySelector('table');
         if (table) {
-            topScrollInner.style.width = table.scrollWidth + 'px';
+            const w = table.scrollWidth;
+            topScrollInner.style.width = w + 'px';
+            topScroll.style.display = (w > tableScroll.clientWidth) ? 'block' : 'none';
         }
     }
 
     syncWidth();
+    setTimeout(syncWidth, 100);
     window.addEventListener('resize', syncWidth);
 
-    let isSyncingTop = false;
-    let isSyncingTable = false;
+    let syncing = null;
 
     topScroll.addEventListener('scroll', function() {
-        if (isSyncingTop) { isSyncingTop = false; return; }
-        isSyncingTable = true;
+        if (syncing === 'table') { syncing = null; return; }
+        syncing = 'top';
         tableScroll.scrollLeft = topScroll.scrollLeft;
     });
 
     tableScroll.addEventListener('scroll', function() {
-        if (isSyncingTable) { isSyncingTable = false; return; }
-        isSyncingTop = true;
+        if (syncing === 'top') { syncing = null; return; }
+        syncing = 'table';
         topScroll.scrollLeft = tableScroll.scrollLeft;
     });
 });

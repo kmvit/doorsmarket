@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { shippingAPI } from '../api/shipping'
 import { ShippingRegistry, ShippingRegistryFilters } from '../types/complaints'
@@ -13,22 +13,24 @@ const ShippingRegistryPage = () => {
   const [error, setError] = useState<string | null>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
   const tableScrollRef = useRef<HTMLDivElement>(null)
-  const [filters, setFilters] = useState<ShippingRegistryFilters>({
-    search: searchParams.get('search') || undefined,
-    order_type: (searchParams.get('order_type') as any) || undefined,
-    delivery_status: (searchParams.get('delivery_status') as any) || undefined,
-    manager: searchParams.get('manager') ? Number(searchParams.get('manager')) : undefined,
-  })
+  const buildFiltersFromParams = (params: URLSearchParams): ShippingRegistryFilters => {
+    const hasAnyParam = Array.from(params.keys()).length > 0
+    const excludeParam = params.get('exclude_delivered')
+    return {
+      search: params.get('search') || undefined,
+      order_type: (params.get('order_type') as any) || undefined,
+      delivery_status: (params.get('delivery_status') as any) || undefined,
+      manager: params.get('manager') ? Number(params.get('manager')) : undefined,
+      exclude_delivered: hasAnyParam ? excludeParam === 'true' : true,
+    }
+  }
+
+  const [filters, setFilters] = useState<ShippingRegistryFilters>(() => buildFiltersFromParams(searchParams))
   const [localFilters, setLocalFilters] = useState<ShippingRegistryFilters>(filters)
   const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
-    const newFilters: ShippingRegistryFilters = {
-      search: searchParams.get('search') || undefined,
-      order_type: (searchParams.get('order_type') as any) || undefined,
-      delivery_status: (searchParams.get('delivery_status') as any) || undefined,
-      manager: searchParams.get('manager') ? Number(searchParams.get('manager')) : undefined,
-    }
+    const newFilters = buildFiltersFromParams(searchParams)
     setLocalFilters(newFilters)
     setFilters((prev) => (JSON.stringify(prev) === JSON.stringify(newFilters) ? prev : newFilters))
   }, [searchParams])
@@ -68,9 +70,9 @@ const ShippingRegistryPage = () => {
   }
 
   const handleResetFilters = () => {
-    const clearedFilters: ShippingRegistryFilters = {}
-    setFilters(clearedFilters)
-    setLocalFilters(clearedFilters)
+    const defaultFilters: ShippingRegistryFilters = { exclude_delivered: true }
+    setFilters(defaultFilters)
+    setLocalFilters(defaultFilters)
     setSearchParams({})
   }
 
@@ -91,13 +93,38 @@ const ShippingRegistryPage = () => {
     )
   }
 
+  const [topScrollWidth, setTopScrollWidth] = useState(0)
+
+  const updateTopScrollWidth = useCallback(() => {
+    if (tableScrollRef.current) {
+      const table = tableScrollRef.current.querySelector('table')
+      if (table) {
+        setTopScrollWidth(table.scrollWidth)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    updateTopScrollWidth()
+    window.addEventListener('resize', updateTopScrollWidth)
+    return () => window.removeEventListener('resize', updateTopScrollWidth)
+  }, [entries, updateTopScrollWidth])
+
+  const syncingRef = useRef<'top' | 'bottom' | null>(null)
+
   const syncScroll = (source: 'top' | 'bottom') => (e: React.UIEvent<HTMLDivElement>) => {
+    if (syncingRef.current && syncingRef.current !== source) {
+      syncingRef.current = null
+      return
+    }
+    syncingRef.current = source
     const scrollLeft = (e.target as HTMLDivElement).scrollLeft
     if (source === 'top' && tableScrollRef.current) {
       tableScrollRef.current.scrollLeft = scrollLeft
     } else if (source === 'bottom' && topScrollRef.current) {
       topScrollRef.current.scrollLeft = scrollLeft
     }
+    requestAnimationFrame(() => { syncingRef.current = null })
   }
 
   const tableHeader = (
@@ -231,6 +258,15 @@ const ShippingRegistryPage = () => {
                 >
                   Сбросить
                 </button>
+                <label className="inline-flex items-center px-4 py-2 bg-green-50 text-green-700 rounded-xl cursor-pointer hover:bg-green-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={localFilters.exclude_delivered || false}
+                    onChange={(e) => handleFilterChange('exclude_delivered', e.target.checked || undefined)}
+                    className="mr-2"
+                  />
+                  Кроме доставленных
+                </label>
               </div>
             </div>
           )}
@@ -242,15 +278,11 @@ const ShippingRegistryPage = () => {
             <>
               <div
                 ref={topScrollRef}
-                className="overflow-x-auto overflow-y-hidden border-b border-gray-200"
-                style={{ height: 12 }}
+                className="top-scrollbar border-b border-gray-200"
+                style={{ height: 14 }}
                 onScroll={syncScroll('top')}
               >
-                <table className="min-w-full divide-y divide-gray-200 text-sm" style={{ visibility: 'hidden' }}>
-                  <thead className="bg-gray-50">
-                    <tr>{tableHeader}</tr>
-                  </thead>
-                </table>
+                <div style={{ width: topScrollWidth, height: 1 }} />
               </div>
               <div
                 ref={tableScrollRef}

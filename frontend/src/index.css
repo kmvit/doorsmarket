@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+.top-scrollbar {
+  overflow-x: scroll;
+  overflow-y: hidden;
+}
+.top-scrollbar::-webkit-scrollbar {
+  height: 14px;
+}
+.top-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 7px;
+}
+.top-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 7px;
+  border: 2px solid #f3f4f6;
+}
+.top-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

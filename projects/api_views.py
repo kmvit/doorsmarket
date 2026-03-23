@@ -1356,6 +1356,10 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         # ОР видит все
         # complaint_department - без дополнительной фильтрации
         
+        exclude_delivered = self.request.query_params.get('exclude_delivered')
+        if exclude_delivered in ('true', '1', 'True'):
+            queryset = queryset.exclude(delivery_status='delivered')
+        
         return queryset
     
     @action(detail=False, methods=['get'])

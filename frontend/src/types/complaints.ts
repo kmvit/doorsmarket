@@ -243,6 +243,7 @@ export interface ShippingRegistryFilters {
   delivery_destination?: DeliveryDestination
   search?: string
   ordering?: string
+  exclude_delivered?: boolean
 }
 
 export interface ShippingRegistryStats {

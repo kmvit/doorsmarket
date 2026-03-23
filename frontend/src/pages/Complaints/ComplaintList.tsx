@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
@@ -231,13 +231,38 @@ const ComplaintList = () => {
     return words.slice(0, maxWords).join(' ') + '...'
   }
 
+  const [topScrollWidth, setTopScrollWidth] = useState(0)
+
+  const updateTopScrollWidth = useCallback(() => {
+    if (tableScrollRef.current) {
+      const table = tableScrollRef.current.querySelector('table')
+      if (table) {
+        setTopScrollWidth(table.scrollWidth)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    updateTopScrollWidth()
+    window.addEventListener('resize', updateTopScrollWidth)
+    return () => window.removeEventListener('resize', updateTopScrollWidth)
+  }, [complaints, updateTopScrollWidth])
+
+  const syncingRef = useRef<'top' | 'bottom' | null>(null)
+
   const syncScroll = (source: 'top' | 'bottom') => (e: React.UIEvent<HTMLDivElement>) => {
+    if (syncingRef.current && syncingRef.current !== source) {
+      syncingRef.current = null
+      return
+    }
+    syncingRef.current = source
     const scrollLeft = (e.target as HTMLDivElement).scrollLeft
     if (source === 'top' && tableScrollRef.current) {
       tableScrollRef.current.scrollLeft = scrollLeft
     } else if (source === 'bottom' && topScrollRef.current) {
       topScrollRef.current.scrollLeft = scrollLeft
     }
+    requestAnimationFrame(() => { syncingRef.current = null })
   }
 
   const tableHeader = (
@@ -441,15 +466,11 @@ const ComplaintList = () => {
             <>
               <div
                 ref={topScrollRef}
-                className="overflow-x-auto overflow-y-hidden border-b border-gray-200"
-                style={{ height: 12 }}
+                className="top-scrollbar border-b border-gray-200"
+                style={{ height: 14 }}
                 onScroll={syncScroll('top')}
               >
-                <table className="min-w-full divide-y divide-gray-200" style={{ visibility: 'hidden' }}>
-                  <thead className="bg-gray-50">
-                    <tr>{tableHeader}</tr>
-                  </thead>
-                </table>
+                <div style={{ width: topScrollWidth, height: 1 }} />
               </div>
               <div
                 ref={tableScrollRef}
