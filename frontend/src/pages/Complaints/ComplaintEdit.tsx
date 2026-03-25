@@ -121,17 +121,17 @@ const ComplaintEdit = () => {
   }, [id, fetchComplaint, setValue, user?.role])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      setAttachments(prev => [...prev, ...Array.from(files)])
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files)
+      setAttachments(prev => [...prev, ...newFiles])
       e.target.value = ''
     }
   }
 
   const handleCommercialOffersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      setCommercialOffers(prev => [...prev, ...Array.from(files)])
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files)
+      setCommercialOffers(prev => [...prev, ...newFiles])
       e.target.value = ''
     }
   }
