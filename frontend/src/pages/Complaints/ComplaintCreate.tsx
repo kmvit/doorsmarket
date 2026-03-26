@@ -55,7 +55,12 @@ const ComplaintCreate = () => {
         // Загружаем пользователей отдельно с обработкой ошибок
         try {
           const managersData = await referencesAPI.getUsersByRole('manager')
-          setManagers(managersData || [])
+          const allManagers = managersData || []
+          if (user?.city?.id) {
+            setManagers(allManagers.filter(m => m.city?.id === user.city!.id))
+          } else {
+            setManagers(allManagers)
+          }
         } catch (error) {
           console.warn('Failed to load managers:', error)
           setManagers([])
