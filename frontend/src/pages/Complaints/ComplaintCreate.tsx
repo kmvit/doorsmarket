@@ -68,7 +68,12 @@ const ComplaintCreate = () => {
 
         try {
           const installersData = await referencesAPI.getUsersByRole('installer')
-          setInstallers(installersData || [])
+          const allInstallers = installersData || []
+          if (user?.city?.id) {
+            setInstallers(allInstallers.filter(i => i.city?.id === user.city!.id))
+          } else {
+            setInstallers(allInstallers)
+          }
         } catch (error) {
           console.warn('Failed to load installers:', error)
           setInstallers([])
