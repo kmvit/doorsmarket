@@ -71,8 +71,15 @@ const ComplaintEdit = () => {
         setReasons(results[1] as ComplaintReason[])
         if (user?.role === 'service_manager' && results.length >= 5) {
           setServiceManagers(results[2] as User[])
-          setManagers(results[3] as User[])
-          setInstallers(results[4] as User[])
+          const allManagers = results[3] as User[]
+          const allInstallers = results[4] as User[]
+          if (user.city?.id) {
+            setManagers(allManagers.filter(m => m.city?.id === user.city!.id))
+            setInstallers(allInstallers.filter(i => i.city?.id === user.city!.id))
+          } else {
+            setManagers(allManagers)
+            setInstallers(allInstallers)
+          }
         }
 
         // Загружаем рекламацию
