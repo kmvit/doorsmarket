@@ -1204,17 +1204,18 @@ const ComplaintDetail = () => {
                       </div>
                     )}
                     
-                    {/* Кнопка "Заказ на складе" для ОР */}
-                    {currentComplaint.complaint_type === 'factory' && currentComplaint.status === 'in_production' && (
+                    {/* Кнопка "Заказ на складе, можно забирать" для ОР */}
+                    {currentComplaint.complaint_type === 'factory' && 
+                     ['in_production', 'factory_approved', 'sm_response_overdue'].includes(currentComplaint.status) && (
                       <Button
                         onClick={() => handleAction('mark_warehouse_or')}
                         disabled={isProcessing}
                         className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white"
                       >
                         <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                         </svg>
-                        Заказ на складе
+                        Заказ на складе, можно забирать
                       </Button>
                     )}
                   </>

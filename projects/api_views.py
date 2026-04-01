@@ -1060,9 +1060,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if complaint.status != 'in_production':
+        if complaint.status not in ('in_production', 'factory_approved', 'sm_response_overdue'):
             return Response(
-                {'error': 'Товар должен быть в статусе "В производстве"'},
+                {'error': 'Товар должен быть в статусе "В производстве", "Ответ получен" или "СМ просрочил ответ"'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
