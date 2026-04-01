@@ -31,8 +31,15 @@ const ComplaintProcess = () => {
           referencesAPI.getUsersByRole('installer'),
           referencesAPI.getUsersByRole('manager'),
         ])
-        setInstallers(installersData || [])
-        setManagers(managersData || [])
+        const allInstallers = installersData || []
+        const allManagers = managersData || []
+        if (user?.city?.id) {
+          setInstallers(allInstallers.filter(i => i.city?.id === user.city!.id))
+          setManagers(allManagers.filter(m => m.city?.id === user.city!.id))
+        } else {
+          setInstallers(allInstallers)
+          setManagers(allManagers)
+        }
       } catch (error) {
         console.error('Ошибка загрузки пользователей:', error)
       }
