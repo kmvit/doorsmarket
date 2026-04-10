@@ -33,9 +33,12 @@ const ComplaintProcess = () => {
         ])
         const allInstallers = installersData || []
         const allManagers = managersData || []
-        if (user?.city?.id) {
-          setInstallers(allInstallers.filter(i => i.city?.id === user.city!.id))
-          setManagers(allManagers.filter(m => m.city?.id === user.city!.id))
+        const isServiceManager = user?.role === 'service_manager'
+        const userCityId = user?.city?.id ?? user?.city_id
+
+        if (isServiceManager && userCityId) {
+          setInstallers(allInstallers.filter(i => i.city?.id === userCityId))
+          setManagers(allManagers.filter(m => m.city?.id === userCityId))
         } else {
           setInstallers(allInstallers)
           setManagers(allManagers)
@@ -45,7 +48,7 @@ const ComplaintProcess = () => {
       }
     }
     loadUsers()
-  }, [])
+  }, [user?.role, user?.city?.id, user?.city_id])
 
   useEffect(() => {
     if (currentComplaint) {
