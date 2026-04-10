@@ -56,13 +56,21 @@ const ComplaintDetail = () => {
     const loadUsers = async () => {
       try {
         const installersData = await referencesAPI.getUsersByRole('installer')
-        setInstallers(installersData || [])
+        const allInstallers = installersData || []
+        const isServiceManager = user?.role === 'service_manager'
+        const userCityId = user?.city?.id ?? user?.city_id
+
+        if (isServiceManager && userCityId) {
+          setInstallers(allInstallers.filter(installer => installer.city?.id === userCityId))
+        } else {
+          setInstallers(allInstallers)
+        }
       } catch (error) {
         console.error('Ошибка загрузки пользователей:', error)
       }
     }
     loadUsers()
-  }, [])
+  }, [user?.role, user?.city?.id, user?.city_id])
 
   useEffect(() => {
     if (currentComplaint) {
