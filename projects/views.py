@@ -678,6 +678,13 @@ def shipping_registry(request):
         else:
             # Если у менеджера не задан город, показываем только его записи
             shipping_entries = shipping_entries.filter(manager=request.user)
+    elif request.user.role == 'service_manager':
+        user_city = getattr(request.user, 'city', None)
+        if user_city:
+            shipping_entries = shipping_entries.filter(manager__city=user_city)
+        else:
+            # Если у СМ не задан город, не показываем чужие города
+            shipping_entries = shipping_entries.none()
     # admin/leader/service_manager/complaint_department - без дополнительной фильтрации
     
     # Фильтры
@@ -722,12 +729,14 @@ def shipping_registry(request):
     
     # Списки для фильтров
     managers = User.objects.filter(role='manager').order_by('first_name', 'last_name')
-    if request.user.role == 'manager':
+    if request.user.role in ['manager', 'service_manager']:
         user_city = getattr(request.user, 'city', None)
         if user_city:
             managers = managers.filter(city=user_city)
-        else:
+        elif request.user.role == 'manager':
             managers = managers.filter(id=request.user.id)
+        else:
+            managers = managers.none()
     
     context = {
         'shipping_entries': shipping_entries,
@@ -763,7 +772,10 @@ def shipping_detail(request, pk):
             return redirect('projects:shipping_registry')
 
     if request.user.role == 'service_manager':
-        if request.user.city and entry.manager.city != request.user.city:
+        if not request.user.city:
+            messages.error(request, 'У вас нет доступа к этой записи')
+            return redirect('projects:shipping_registry')
+        if entry.manager.city != request.user.city:
             messages.error(request, 'У вас нет доступа к этой записи')
             return redirect('projects:shipping_registry')
     
