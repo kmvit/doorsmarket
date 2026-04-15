@@ -51,6 +51,29 @@ class DefectiveProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+    def validate(self, attrs):
+        """
+        Нормализует и ограничивает длину текстовых полей, чтобы длинные
+        названия из распарсенного КП не ломали создание изделия.
+        """
+        product_name_max = DefectiveProduct._meta.get_field('product_name').max_length
+        size_max = DefectiveProduct._meta.get_field('size').max_length
+        opening_type_max = DefectiveProduct._meta.get_field('opening_type').max_length
+
+        if 'product_name' in attrs and attrs['product_name'] is not None:
+            attrs['product_name'] = str(attrs['product_name']).strip()[:product_name_max]
+
+        if 'size' in attrs and attrs['size'] is not None:
+            attrs['size'] = str(attrs['size']).strip()[:size_max]
+
+        if 'opening_type' in attrs and attrs['opening_type'] is not None:
+            attrs['opening_type'] = str(attrs['opening_type']).strip()[:opening_type_max]
+
+        if 'problem_description' in attrs and attrs['problem_description'] is not None:
+            attrs['problem_description'] = str(attrs['problem_description']).strip()
+
+        return attrs
+
 
 class ComplaintAttachmentSerializer(serializers.ModelSerializer):
     """Сериализатор для вложений рекламаций"""

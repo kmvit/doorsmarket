@@ -671,11 +671,14 @@ def shipping_registry(request):
     ).all()
     
     # Фильтрация по городам
-    # Администратор, Руководитель, Менеджер и СМ видят все
-    if request.user.role in ['admin', 'leader', 'manager', 'service_manager']:
-        pass  # Без фильтрации
-    # ОР видит все
-    # complaint_department - без дополнительной фильтрации
+    if request.user.role == 'manager':
+        user_city = getattr(request.user, 'city', None)
+        if user_city:
+            shipping_entries = shipping_entries.filter(manager__city=user_city)
+        else:
+            # Если у менеджера не задан город, показываем только его записи
+            shipping_entries = shipping_entries.filter(manager=request.user)
+    # admin/leader/service_manager/complaint_department - без дополнительной фильтрации
     
     # Фильтры
     order_type_filter = request.GET.get('order_type', '')
@@ -719,6 +722,12 @@ def shipping_registry(request):
     
     # Списки для фильтров
     managers = User.objects.filter(role='manager').order_by('first_name', 'last_name')
+    if request.user.role == 'manager':
+        user_city = getattr(request.user, 'city', None)
+        if user_city:
+            managers = managers.filter(city=user_city)
+        else:
+            managers = managers.filter(id=request.user.id)
     
     context = {
         'shipping_entries': shipping_entries,
@@ -742,7 +751,17 @@ def shipping_detail(request, pk):
     entry = get_object_or_404(ShippingRegistry, pk=pk)
     
     # Проверка прав по городу
-    # Менеджер видит все, СМ - только по своему городу
+    # Менеджер и СМ видят только по своему городу
+    if request.user.role == 'manager':
+        user_city = getattr(request.user, 'city', None)
+        if user_city:
+            if entry.manager.city != user_city:
+                messages.error(request, 'У вас нет доступа к этой записи')
+                return redirect('projects:shipping_registry')
+        elif entry.manager != request.user:
+            messages.error(request, 'У вас нет доступа к этой записи')
+            return redirect('projects:shipping_registry')
+
     if request.user.role == 'service_manager':
         if request.user.city and entry.manager.city != request.user.city:
             messages.error(request, 'У вас нет доступа к этой записи')

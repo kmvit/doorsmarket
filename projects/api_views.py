@@ -1343,8 +1343,9 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         """
         Фильтрация по ролям согласно логике из views.py
         
-        Администратор, Руководитель, Менеджер и СМ видят все записи
-        ОР видит все записи
+        Администратор, Руководитель и СМ видят все записи.
+        Менеджер видит записи только своего города.
+        ОР видит все записи.
         """
         user = self.request.user
         
@@ -1360,11 +1361,14 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         )
         
         # Фильтрация по городам
-        # Администратор, Руководитель, Менеджер и СМ видят все
-        if user.role in ['admin', 'leader', 'manager', 'service_manager']:
-            pass  # Без фильтрации
-        # ОР видит все
-        # complaint_department - без дополнительной фильтрации
+        if user.role == 'manager':
+            user_city = getattr(user, 'city', None)
+            if user_city:
+                queryset = queryset.filter(manager__city=user_city)
+            else:
+                # Если город у менеджера не задан, оставляем только его собственные записи
+                queryset = queryset.filter(manager=user)
+        # admin/leader/service_manager/complaint_department - без дополнительной фильтрации
         
         exclude_delivered = self.request.query_params.get('exclude_delivered')
         if exclude_delivered in ('true', '1', 'True'):
