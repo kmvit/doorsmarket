@@ -1690,7 +1690,40 @@ class DashboardStatsView(APIView):
                 'Просрочен ответ',
                 Q(complaint_type='factory', status='factory_response_overdue')
             )
-        elif user.role in ['admin', 'leader']:
+        elif user.role == 'leader':
+            user_city = getattr(user, 'city', None)
+            if user_city:
+                leader_city_filter = Q(initiator__city=user_city)
+            else:
+                # Если у руководителя не задан город, не показываем чужие города
+                leader_city_filter = Q(pk__in=[])
+
+            add_stat(
+                'in_work',
+                'Все в работе',
+                Q(status__in=active_statuses) & leader_city_filter
+            )
+            add_stat(
+                'new',
+                'Новые рекламации',
+                Q(status='new') & leader_city_filter
+            )
+            add_stat(
+                'factory_overdue',
+                'Ответ фабрики просрочен',
+                Q(status='factory_response_overdue') & leader_city_filter
+            )
+            add_stat(
+                'shipping_overdue',
+                'Отгрузка просрочена',
+                Q(status='shipping_overdue') & leader_city_filter
+            )
+            add_stat(
+                'sm_overdue',
+                'Ответ СМ просрочен',
+                sm_overdue_filter & leader_city_filter
+            )
+        elif user.role == 'admin':
             add_stat(
                 'in_work',
                 'Все в работе',

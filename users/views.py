@@ -512,7 +512,35 @@ class WebDashboardView(View):
                 'Просрочен ответ',
                 Q(complaint_type='factory', status='factory_response_overdue')
             )
-        elif user.role in ['admin', 'leader']:
+        elif user.role == 'leader':
+            user_city = getattr(user, 'city', None)
+            if user_city:
+                leader_city_filter = Q(initiator__city=user_city)
+            else:
+                # Если у руководителя не задан город, не показываем чужие города
+                leader_city_filter = Q(pk__in=[])
+
+            add_summary(
+                'new',
+                'Новые рекламации',
+                Q(status='new') & leader_city_filter
+            )
+            add_summary(
+                'factory_overdue',
+                'Ответ фабрики просрочен',
+                Q(status='factory_response_overdue') & leader_city_filter
+            )
+            add_summary(
+                'shipping_overdue',
+                'Отгрузка просрочена',
+                Q(status='shipping_overdue') & leader_city_filter
+            )
+            add_summary(
+                'sm_overdue',
+                'Ответ СМ просрочен',
+                sm_overdue_filter & leader_city_filter
+            )
+        elif user.role == 'admin':
             add_summary(
                 'new',
                 'Новые рекламации',
