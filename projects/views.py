@@ -51,7 +51,7 @@ def complaint_list(request):
     if needs_planning and request.user.role == 'installer':
         complaints = complaints.filter(
             installer_assigned=request.user,
-            status__in=['waiting_installer_date', 'needs_planning']
+            status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue']
         )
     
     # Фильтр "Мои задачи" для быстрого доступа из дашборда
@@ -71,7 +71,7 @@ def complaint_list(request):
             'installer': {
                 'in_work': (Q(installer_assigned=request.user) | Q(initiator=request.user)) & Q(status__in=active_statuses),
                 'needs_planning': Q(installer_assigned=request.user, status__in=[
-                    'waiting_installer_date', 'needs_planning', 'installer_not_planned'
+                    'waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue'
                 ]),
                 'planned': Q(installer_assigned=request.user, status__in=[
                     'installation_planned', 'both_planned'
@@ -84,6 +84,7 @@ def complaint_list(request):
                 'in_work': (Q(manager=request.user) | Q(initiator=request.user) | Q(recipient=request.user)) & Q(status__in=active_statuses),
                 'in_progress': Q(manager=request.user, status='in_progress'),
                 'on_warehouse': Q(manager=request.user, status='on_warehouse'),
+                'shipping_overdue': Q(status='shipping_overdue'),
             },
             'service_manager': {
                 'in_work': Q(status__in=active_statuses),
@@ -1033,7 +1034,7 @@ def installer_planning(request):
     # Фильтрация по статусу
     filter_type = request.GET.get('filter')
     if filter_type == 'needs_planning':
-        complaints = complaints.filter(status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned'])
+        complaints = complaints.filter(status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue'])
     elif filter_type == 'planned':
         complaints = complaints.filter(status__in=['installation_planned', 'both_planned'])
     elif filter_type == 'completed':
@@ -1113,7 +1114,7 @@ def installer_planning(request):
     
     stats = {
         'total': Complaint.objects.filter(stats_base_filter).count(),
-        'needs_planning': Complaint.objects.filter(stats_base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']).count(),
+        'needs_planning': Complaint.objects.filter(stats_base_filter, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue']).count(),
         'planned': Complaint.objects.filter(stats_base_filter, status__in=['installation_planned', 'both_planned']).count(),
         'completed': Complaint.objects.filter(stats_base_filter, status__in=['under_sm_review', 'completed']).count(),
         'closed': Complaint.objects.filter(stats_base_filter, status=ComplaintStatus.CLOSED).count(),

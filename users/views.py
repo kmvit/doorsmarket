@@ -439,7 +439,7 @@ class WebDashboardView(View):
             add_summary(
                 'needs_planning',
                 'Требуют планирования',
-                Q(installer_assigned=user, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']),
+                Q(installer_assigned=user, status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue']),
                 url_param='needs_planning'
             )
             add_summary(
@@ -469,6 +469,11 @@ class WebDashboardView(View):
                 'on_warehouse',
                 'Готово к отгрузке',
                 Q(manager=user, status='on_warehouse')
+            )
+            add_summary(
+                'shipping_overdue',
+                'Отгрузка просрочена',
+                Q(manager=user, status='shipping_overdue')
             )
         elif user.role == 'service_manager':
             if user.city:

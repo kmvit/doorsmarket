@@ -168,7 +168,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 'installer': {
                     'in_work': (Q(installer_assigned=user) | Q(initiator=user)) & Q(status__in=active_statuses),
                     'needs_planning': Q(installer_assigned=user, status__in=[
-                        'waiting_installer_date', 'needs_planning', 'installer_not_planned'
+                        'waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue'
                     ]),
                     'planned': Q(installer_assigned=user, status__in=[
                         'installation_planned', 'both_planned'
@@ -181,6 +181,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'in_work': (Q(manager=user) | Q(initiator=user) | Q(recipient=user)) & Q(status__in=active_statuses),
                     'in_progress': Q(manager=user, status='in_progress'),
                     'on_warehouse': Q(manager=user, status='on_warehouse'),
+                    'shipping_overdue': Q(status='shipping_overdue'),
                 },
                 'service_manager': {
                     'in_work': Q(status__in=active_statuses),
@@ -216,7 +217,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if needs_planning and user.role == 'installer':
             # Для монтажника дополняем базовый фильтр статусами, не перезаписываем
             queryset = queryset.filter(
-                status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']
+                status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue']
             )
         
         # Исключаем закрытые рекламации только для списка, не для детального просмотра
@@ -1585,7 +1586,7 @@ class DashboardStatsView(APIView):
             add_stat(
                 'needs_planning',
                 'Требуют планирования',
-                installer_base_filter & Q(status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned']),
+                installer_base_filter & Q(status__in=['waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue']),
                 url_param='needs_planning'
             )
             add_stat(
@@ -1636,6 +1637,11 @@ class DashboardStatsView(APIView):
                 'on_warehouse',
                 'Готово к отгрузке',
                 Q(manager=user, status='on_warehouse') & city_filter
+            )
+            add_stat(
+                'shipping_overdue',
+                'Отгрузка просрочена',
+                Q(status='shipping_overdue') & city_filter
             )
         elif user.role == 'service_manager':
             # Для СМ применяем фильтр: рекламации из его города ИЛИ созданные им

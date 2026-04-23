@@ -92,8 +92,13 @@ const ComplaintFilters = ({ onApply }: ComplaintFiltersProps) => {
                 <option value="in_production">В производстве</option>
                 <option value="on_warehouse">На складе</option>
                 <option value="shipping_planned">Отгрузка запланирована</option>
+                <option value="shipping_overdue">Отгрузка просрочена</option>
                 <option value="installation_planned">Монтаж запланирован</option>
+                <option value="installer_not_planned">Монтажник не запланировал</option>
+                <option value="installer_overdue">Просрочена монтажником</option>
                 <option value="both_planned">Отгрузка и монтаж запланированы</option>
+                <option value="factory_response_overdue">Ответ фабрики просрочен</option>
+                <option value="sm_response_overdue">СМ просрочил ответ</option>
                 <option value="under_sm_review">На проверке у СМ</option>
                 <option value="completed">Выполнена</option>
                 <option value="resolved">Решена</option>
