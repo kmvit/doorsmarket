@@ -5,8 +5,9 @@ from .models import City, User
 
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name')
+    list_display = ('id', 'name', 'warehouse_notification_email')
     search_fields = ('name',)
+    fields = ('name', 'warehouse_notification_email')
 
 
 @admin.register(User)

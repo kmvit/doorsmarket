@@ -916,7 +916,40 @@ class Complaint(models.Model):
                 title='Требуется проверка',
                 message=f'Рекламация #{self.id} (заказ {self.order_number}) выполнена монтажником. Клиент: {self.client_name}. Требуется проверка качества работы.'
             )
-    
+
+    def request_reorder(self, requested_by, comment_text=''):
+        """Монтажник запрашивает перезаказ товара — рекламация возвращается СМ для повторной обработки."""
+        # Сбрасываем тип и статус, чтобы СМ заново выбрал направление (как новая рекламация)
+        self.complaint_type = None
+        self.status = ComplaintStatus.NEW
+        self.save(update_fields=['complaint_type', 'status'])
+
+        # Сохраняем причину перезаказа как комментарий к рекламации
+        comment_body = '⚠️ Запрос на перезаказ товара от монтажника.'
+        if comment_text:
+            comment_body += f'\nКомментарий: {comment_text}'
+        ComplaintComment.objects.create(
+            complaint=self,
+            author=requested_by,
+            text=comment_body,
+        )
+
+        # Уведомляем СМ
+        sm_recipient = self._get_service_manager()
+        if sm_recipient:
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='pc',
+                title='Запрос на перезаказ товара',
+                message=f'Монтажник по рекламации #{self.id} (заказ {self.order_number}) сообщил о необходимости перезаказа товара. Обработайте рекламацию заново.'
+            )
+            self._create_notification(
+                recipient=sm_recipient,
+                notification_type='push',
+                title='Перезаказ товара',
+                message=f'Рекламация #{self.id} требует перезаказа — обработайте заново.'
+            )
+
     def check_installer_overdue(self):
         """Проверяет просрочку выполнения монтажником (более месяца с момента назначения)"""
         if not self.installer_assigned or not self.installer_assigned_at:

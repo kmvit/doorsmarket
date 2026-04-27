@@ -252,16 +252,25 @@ const ComplaintCreate = () => {
     setDefectiveProducts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
   }
 
+  const onInvalidSubmit = () => {
+    setError('Пожалуйста, заполните все обязательные поля, отмеченные *')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const onSubmit = async (data: ComplaintCreateData & { complaint_type?: string; installer_id?: number }) => {
+    setError('')
+
     // Проверка для монтажников - обязательно должны быть вложения
     if (user?.role === 'installer' && attachments.length === 0) {
       setError('⚠️ Для монтажников обязательно нужно прикрепить фото/видео/документы!')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
     // Для монтажников обязательно описание проблемы (дополнительная информация)
     if (user?.role === 'installer' && !(data.additional_info || '').trim()) {
       setError('⚠️ Поле «Описание проблемы» (Дополнительная информация) обязательно для заполнения!')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
@@ -274,18 +283,18 @@ const ComplaintCreate = () => {
     )
     if (productWithoutDescription) {
       setError('⚠️ Для каждого бракованного изделия обязательно заполните поле «Описание проблемы»!')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
     setIsLoading(true)
-    setError('')
 
     try {
-      // Преобразуем данные для API
-      // Проверяем обязательные поля
+      // Дополнительная защита: проверяем обязательные поля перед отправкой
       if (!data.production_site_id || !data.reason_id) {
         setError('Пожалуйста, заполните все обязательные поля (Производственная площадка и Причина рекламации)')
         setIsLoading(false)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
 
@@ -396,7 +405,7 @@ const ComplaintCreate = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-6">
           {/* Назначение */}
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>

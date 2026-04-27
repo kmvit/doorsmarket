@@ -269,6 +269,11 @@ export const complaintsAPI = {
     return response.data
   },
 
+  requestReorder: async (id: number, comment: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/request_reorder/`, { comment })
+    return response.data
+  },
+
   planInstallation: async (id: number, installerId: number, installationDate: string): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/plan_installation/`, {
       installer_id: installerId,

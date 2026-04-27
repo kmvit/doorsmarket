@@ -35,6 +35,7 @@ from .serializers import (
     ComplaintReasonSerializer,
 )
 from users.models import User
+from users.push_utils import send_email_notification
 
 
 def _manager_has_complaint_access(user, complaint):
@@ -535,7 +536,30 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint.mark_completed()
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
-    
+
+    @action(detail=True, methods=['post'])
+    def request_reorder(self, request, pk=None):
+        """Монтажник запрашивает перезаказ товара — рекламация возвращается СМ."""
+        complaint = self.get_object()
+        user = request.user
+
+        if user.role != 'installer' or complaint.installer_assigned != user:
+            return Response(
+                {'error': 'Только назначенный монтажник может оформить товар на заказ'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if complaint.status not in ('installation_planned', 'both_planned'):
+            return Response(
+                {'error': 'Перезаказ доступен только когда монтаж запланирован'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment_text = (request.data.get('comment') or '').strip()
+        complaint.request_reorder(requested_by=user, comment_text=comment_text)
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def plan_installation(self, request, pk=None):
         """Планирование монтажа"""
@@ -1068,9 +1092,37 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
         
         complaint.mark_on_warehouse()
+
+        # Отправляем email уведомление, если у города ОР настроен адрес
+        city = getattr(user, 'city', None)
+        city_email = getattr(city, 'warehouse_notification_email', None)
+        if city_email:
+            city_name = city.name
+            html_body = f"""
+<html><body style="font-family: Arial, sans-serif; color: #333;">
+<h2 style="color: #2c5282;">Товар на складе — Рекламация #{complaint.id}</h2>
+<table style="border-collapse: collapse; width: 100%;">
+  <tr><td style="padding: 8px; font-weight: bold; width: 200px;">Город:</td><td style="padding: 8px;">{city_name}</td></tr>
+  <tr style="background:#f7fafc;"><td style="padding: 8px; font-weight: bold;">Номер заказа:</td><td style="padding: 8px;">{complaint.order_number}</td></tr>
+  <tr><td style="padding: 8px; font-weight: bold;">Клиент:</td><td style="padding: 8px;">{complaint.client_name}</td></tr>
+  <tr style="background:#f7fafc;"><td style="padding: 8px; font-weight: bold;">Адрес:</td><td style="padding: 8px;">{complaint.address}</td></tr>
+  <tr><td style="padding: 8px; font-weight: bold;">Контактное лицо:</td><td style="padding: 8px;">{complaint.contact_person}</td></tr>
+  <tr style="background:#f7fafc;"><td style="padding: 8px; font-weight: bold;">Телефон:</td><td style="padding: 8px;">{complaint.contact_phone}</td></tr>
+  <tr><td style="padding: 8px; font-weight: bold;">ОР:</td><td style="padding: 8px;">{user.get_full_name() or user.username}</td></tr>
+</table>
+<p style="margin-top: 16px; color: #718096; font-size: 13px;">Это автоматическое уведомление системы рекламаций.</p>
+</body></html>
+"""
+            send_email_notification(
+                to_email=city_email,
+                subject=f'Товар на складе — Рекламация #{complaint.id} (заказ {complaint.order_number})',
+                message=f'Товар по рекламации #{complaint.id} (заказ {complaint.order_number}) на складе. Клиент: {complaint.client_name}, Адрес: {complaint.address}',
+                html_message=html_body,
+            )
+
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
-    
+
     @action(detail=True, methods=['post'])
     def close(self, request, pk=None):
         """СМ закрывает рекламацию напрямую"""

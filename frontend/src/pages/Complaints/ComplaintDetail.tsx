@@ -33,6 +33,7 @@ const ComplaintDetail = () => {
     reject?: boolean
     approve?: boolean
     reschedule?: boolean
+    requestReorder?: boolean
   }>({})
   const [formData, setFormData] = useState<{
     installationDate?: string
@@ -43,6 +44,7 @@ const ComplaintDetail = () => {
     disputeArguments?: string
     rejectReason?: string
     approveComment?: string
+    reorderComment?: string
   }>({})
   const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
 
@@ -254,6 +256,16 @@ const ComplaintDetail = () => {
           break
         case 'complete':
           await complaintsAPI.complete(Number(id))
+          break
+        case 'request_reorder':
+          if (!formData.reorderComment || !formData.reorderComment.trim()) {
+            alert('Опишите, какой товар необходимо перезаказать')
+            return
+          }
+          if (!confirm('Подтвердите запрос на перезаказ. Рекламация вернётся к сервис-менеджеру для повторной обработки.')) return
+          await complaintsAPI.requestReorder(Number(id), formData.reorderComment)
+          setShowForms({ ...showForms, requestReorder: false })
+          setFormData({ ...formData, reorderComment: '' })
           break
         case 'start_production':
           if (!formData.productionDeadline) {
@@ -1335,6 +1347,56 @@ const ComplaintDetail = () => {
                         </svg>
                         ✓ Отметить выполненной
                       </Button>
+                    )}
+
+                    {/* Оформить товар на заказ (перезаказ) */}
+                    {['installation_planned', 'both_planned'].includes(currentComplaint.status) && (
+                      !showForms.requestReorder ? (
+                        <Button
+                          onClick={() => setShowForms({ ...showForms, requestReorder: true })}
+                          disabled={isProcessing}
+                          variant="outline"
+                          className="w-full border-orange-400 text-orange-700 hover:bg-orange-50"
+                        >
+                          <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                          </svg>
+                          Оформить товар на заказ
+                        </Button>
+                      ) : (
+                        <div className="p-4 border-2 border-orange-200 rounded-xl bg-orange-50">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-2">Запрос на перезаказ товара</h4>
+                          <p className="text-xs text-gray-700 mb-3">
+                            Опишите, какой дополнительный товар необходимо заказать. Рекламация вернётся к сервис-менеджеру для повторной обработки.
+                          </p>
+                          <textarea
+                            value={formData.reorderComment || ''}
+                            onChange={(e) => setFormData({ ...formData, reorderComment: e.target.value })}
+                            rows={4}
+                            placeholder="Например: требуется дозаказать створку 800x2000, фурнитуру и уплотнитель…"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 mb-3"
+                          />
+                          <div className="flex space-x-2">
+                            <Button
+                              onClick={() => handleAction('request_reorder')}
+                              disabled={isProcessing}
+                              className="flex-1 bg-orange-600 text-white hover:bg-orange-700"
+                            >
+                              Отправить СМ
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                setShowForms({ ...showForms, requestReorder: false })
+                                setFormData({ ...formData, reorderComment: '' })
+                              }}
+                              variant="outline"
+                              className="flex-1"
+                            >
+                              Отмена
+                            </Button>
+                          </div>
+                        </div>
+                      )
                     )}
                   </>
                 )}

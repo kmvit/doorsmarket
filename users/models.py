@@ -8,6 +8,13 @@ class City(models.Model):
     Города, в которых работают пользователи
     """
     name = models.CharField(max_length=255)
+    warehouse_notification_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name='Email уведомления "Товар на складе"',
+        help_text='Если указан, при нажатии кнопки "Товар на складе" ОР этого города будет отправлено письмо на этот адрес'
+    )
+
     def __str__(self):
         return self.name
 
