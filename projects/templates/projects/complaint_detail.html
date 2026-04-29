@@ -753,7 +753,7 @@
                             {% endif %}
                             
                             <!-- Отметить выполненным -->
-                            {% if complaint.status in 'installation_planned,both_planned' %}
+                            {% if complaint.status in 'installation_planned,both_planned,installer_overdue' %}
                             <a href="{% url 'projects:installer_complete' complaint.id %}" class="block w-full px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-center font-semibold rounded-xl hover:shadow-lg transition-all">
                                 <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
