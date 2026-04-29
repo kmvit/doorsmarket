@@ -1336,7 +1336,7 @@ const ComplaintDetail = () => {
                     )}
                     
                     {/* Отметить выполненным */}
-                    {['installation_planned', 'both_planned'].includes(currentComplaint.status) && (
+                    {['installation_planned', 'both_planned', 'installer_overdue'].includes(currentComplaint.status) && (
                       <Button
                         onClick={() => handleAction('complete')}
                         disabled={isProcessing}

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python manage.py migrate users 0004_city_warehouse_notification_email)"
+      "Bash(python manage.py migrate users 0004_city_warehouse_notification_email)",
+      "Bash(xargs ls *)"
     ]
   }
 }
