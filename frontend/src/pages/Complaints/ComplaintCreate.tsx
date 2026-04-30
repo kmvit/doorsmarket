@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
@@ -38,6 +38,8 @@ const ComplaintCreate = () => {
   const [isParsingPDF, setIsParsingPDF] = useState(false)
   const [showProductSelection, setShowProductSelection] = useState(false)
   const [parsedProducts, setParsedProducts] = useState<ParsedProduct[]>([])
+  // Защита от повторного создания рекламации при дублирующихся кликах
+  const createdComplaintIdRef = useRef<number | null>(null)
 
   const complaintType = watch('complaint_type')
 
@@ -258,6 +260,13 @@ const ComplaintCreate = () => {
   }
 
   const onSubmit = async (data: ComplaintCreateData & { complaint_type?: string; installer_id?: number }) => {
+    // Если рекламация уже была создана в этой сессии формы — просто переходим к ней,
+    // а не создаём дубликат при повторных кликах "Создать рекламацию".
+    if (createdComplaintIdRef.current) {
+      navigate(`/complaints/${createdComplaintIdRef.current}`)
+      return
+    }
+
     setError('')
 
     // Проверка для монтажников - обязательно должны быть вложения
@@ -287,95 +296,94 @@ const ComplaintCreate = () => {
       return
     }
 
+    if (!data.production_site_id || !data.reason_id) {
+      setError('Пожалуйста, заполните все обязательные поля (Производственная площадка и Причина рекламации)')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     setIsLoading(true)
 
+    const apiData: ComplaintCreateData = {
+      production_site_id: Number(data.production_site_id),
+      reason_id: Number(data.reason_id),
+      order_number: data.order_number,
+      client_name: data.client_name,
+      address: data.address,
+      contact_person: data.contact_person,
+      contact_phone: data.contact_phone,
+      additional_info: data.additional_info || '',
+      assignee_comment: data.assignee_comment || '',
+      document_package_link: data.document_package_link || '',
+    }
+
+    if (data.manager_id) apiData.manager_id = Number(data.manager_id)
+    if (data.recipient_id) apiData.recipient_id = Number(data.recipient_id)
+    if (data.complaint_type) apiData.complaint_type = data.complaint_type as 'manager' | 'installer' | 'factory'
+    if (data.installer_id) apiData.installer_assigned_id = Number(data.installer_id)
+
+    // 1) Основная рекламация — критичный шаг. Если упадёт, прерываем и показываем ошибку.
+    let complaint
     try {
-      // Дополнительная защита: проверяем обязательные поля перед отправкой
-      if (!data.production_site_id || !data.reason_id) {
-        setError('Пожалуйста, заполните все обязательные поля (Производственная площадка и Причина рекламации)')
-        setIsLoading(false)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-        return
-      }
-
-      const apiData: ComplaintCreateData = {
-        production_site_id: Number(data.production_site_id),
-        reason_id: Number(data.reason_id),
-        order_number: data.order_number,
-        client_name: data.client_name,
-        address: data.address,
-        contact_person: data.contact_person,
-        contact_phone: data.contact_phone,
-        additional_info: data.additional_info || '',
-        assignee_comment: data.assignee_comment || '',
-        document_package_link: data.document_package_link || '',
-      }
-
-      // Добавляем опциональные поля
-      if (data.manager_id) {
-        apiData.manager_id = Number(data.manager_id)
-      }
-
-      if (data.recipient_id) {
-        apiData.recipient_id = Number(data.recipient_id)
-      }
-
-      if (data.complaint_type) {
-        apiData.complaint_type = data.complaint_type as 'manager' | 'installer' | 'factory'
-      }
-
-      if (data.installer_id) {
-        apiData.installer_assigned_id = Number(data.installer_id)
-      }
-
-      // Создаем рекламацию с обычными вложениями и КП отдельно
-      const complaint = await complaintsAPI.create(
-        apiData, 
+      complaint = await complaintsAPI.create(
+        apiData,
         attachments.length > 0 ? attachments : undefined,
         commercialOffers.length > 0 ? commercialOffers : undefined
       )
-
-      // Создаем бракованные изделия
-      if (defectiveProducts.some(p => p.product_name || p.size || p.opening_type || p.problem_description)) {
-        for (let i = 0; i < defectiveProducts.length; i++) {
-          const product = defectiveProducts[i]
-          if (product.product_name || product.size || product.opening_type || product.problem_description) {
-            await complaintsAPI.createDefectiveProduct({
-              complaint: complaint.id,
-              product_name: product.product_name || '',
-              size: product.size || '',
-              opening_type: product.opening_type || '',
-              problem_description: product.problem_description || '',
-              order: i,
-            })
-          }
-        }
-      }
-
-      // Если рекламация типа "Фабрика", отправляем email уведомление после создания всех данных
-      if (data.complaint_type === 'factory') {
-        try {
-          await complaintsAPI.sendFactoryEmail(complaint.id)
-        } catch (emailError) {
-          console.warn('Ошибка отправки email уведомления:', emailError)
-          // Не прерываем процесс создания рекламации из-за ошибки email
-        }
-      }
-
-      navigate(`/complaints/${complaint.id}`)
+      createdComplaintIdRef.current = complaint.id
     } catch (err: any) {
-      const data = err.response?.data
+      const errData = err.response?.data
       let errorMessage = 'Ошибка создания рекламации'
-      if (typeof data === 'object') {
-        errorMessage = data.detail || data.error
-          || (typeof data.additional_info === 'string' ? data.additional_info : data.additional_info?.[0])
-          || Object.values(data).flat().find((v): v is string => typeof v === 'string')
-          || JSON.stringify(data)
+      if (typeof errData === 'object' && errData) {
+        errorMessage = errData.detail || errData.error
+          || (typeof errData.additional_info === 'string' ? errData.additional_info : errData.additional_info?.[0])
+          || Object.values(errData).flat().find((v): v is string => typeof v === 'string')
+          || JSON.stringify(errData)
       }
       setError(errorMessage)
-    } finally {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       setIsLoading(false)
+      return
     }
+
+    // 2) Бракованные изделия — некритично. Каждое в своём try/catch, чтобы один сбой не валил всё.
+    const failedProductNumbers: number[] = []
+    for (let i = 0; i < defectiveProducts.length; i++) {
+      const product = defectiveProducts[i]
+      const hasAnyField = product.product_name || product.size || product.opening_type || product.problem_description
+      if (!hasAnyField) continue
+      try {
+        await complaintsAPI.createDefectiveProduct({
+          complaint: complaint.id,
+          product_name: product.product_name || '',
+          size: product.size || '',
+          opening_type: product.opening_type || '',
+          problem_description: product.problem_description || '',
+          order: i,
+        })
+      } catch (productErr) {
+        console.warn(`Не удалось добавить изделие #${i + 1}:`, productErr)
+        failedProductNumbers.push(i + 1)
+      }
+    }
+
+    // 3) Email для фабричной рекламации — некритично.
+    if (data.complaint_type === 'factory') {
+      try {
+        await complaintsAPI.sendFactoryEmail(complaint.id)
+      } catch (emailError) {
+        console.warn('Ошибка отправки email уведомления:', emailError)
+      }
+    }
+
+    // Рекламация создана. Переходим в детали независимо от частичных сбоев на дополнительных шагах.
+    if (failedProductNumbers.length > 0) {
+      alert(
+        `Рекламация создана, но не удалось добавить изделия: №${failedProductNumbers.join(', №')}. ` +
+        `Откройте рекламацию и добавьте их вручную.`
+      )
+    }
+    navigate(`/complaints/${complaint.id}`)
   }
 
   const showRecipient = user && !['manager', 'installer', 'service_manager'].includes(user.role)

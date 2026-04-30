@@ -1296,7 +1296,7 @@ class DefectiveProduct(models.Model):
         related_name='defective_products',
         verbose_name='Рекламация'
     )
-    product_name = models.CharField(max_length=255, verbose_name='Наименование бракованного изделия')
+    product_name = models.CharField(max_length=255, blank=True, default='', verbose_name='Наименование бракованного изделия')
     size = models.CharField(
         max_length=100,
         blank=True,
