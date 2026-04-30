@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import City, User
+from orders.models import Salon
 
 
 @admin.register(City)
@@ -17,5 +18,5 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('username', 'email', 'first_name', 'last_name', 'phone_number')
     
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Дополнительная информация', {'fields': ('role', 'city', 'phone_number')}),
+        ('Дополнительная информация', {'fields': ('role', 'city', 'phone_number', 'salon')}),
     )

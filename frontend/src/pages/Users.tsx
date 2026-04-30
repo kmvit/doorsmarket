@@ -141,6 +141,9 @@ const Users = () => {
                     Город
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Салон
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Контакты
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -162,6 +165,9 @@ const Users = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {user.city?.name || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {user.salon?.name || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       <div>{user.email}</div>

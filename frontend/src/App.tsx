@@ -16,6 +16,10 @@ import ManagerProduction from './pages/ManagerProduction'
 import Notifications from './pages/Notifications'
 import Users from './pages/Users'
 import Offline from './pages/Offline'
+import OrderList from './pages/Orders/OrderList'
+import OrderDetail from './pages/Orders/OrderDetail'
+import OrderCreate from './pages/Orders/OrderCreate'
+import OrderEdit from './pages/Orders/OrderEdit'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
 
@@ -175,6 +179,46 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Users />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderList />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/create"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderCreate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderEdit />
                     </Layout>
                   </ProtectedRoute>
                 }

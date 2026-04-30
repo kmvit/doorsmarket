@@ -11,6 +11,12 @@ export interface User {
   }
   city_id?: number
   phone_number?: string
+  salon?: {
+    id: number
+    name: string
+    city_name?: string
+  }
+  salon_id?: number
   date_joined: string
 }
 

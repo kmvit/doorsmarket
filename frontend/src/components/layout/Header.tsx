@@ -4,11 +4,16 @@ import { useAuthStore } from '../../store/authStore'
 import { ROLE_DISPLAY } from '../../utils/constants'
 import apiClient from '../../api/client'
 
+const ORDERS_ROLES = ['manager', 'service_manager', 'leader', 'admin']
+
 const Header = () => {
   const { user, logout, isAuthenticated, isLoading } = useAuthStore()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
+
+  const isOrdersModule = location.pathname.startsWith('/orders')
+  const showModuleSwitcher = user && ORDERS_ROLES.includes(user.role)
 
   // Загрузка количества непрочитанных уведомлений
   useEffect(() => {
@@ -106,8 +111,36 @@ const Header = () => {
               </Link>
             </div>
 
+            {/* Переключатель модулей */}
+            {showModuleSwitcher && (
+              <div className="hidden md:flex items-center ml-6">
+                <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium">
+                  <Link
+                    to="/complaints"
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      !isOrdersModule
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Рекламации
+                  </Link>
+                  <Link
+                    to="/orders"
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      isOrdersModule
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Заказы и замеры
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* Навигационные ссылки (Desktop) */}
-            <div className="hidden md:ml-8 md:flex md:space-x-2">
+            <div className="hidden md:ml-4 md:flex md:space-x-2">
               <Link
                 to="/dashboard"
                 className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -122,7 +155,7 @@ const Header = () => {
                 Главная
               </Link>
 
-              {user.role !== 'installer' && (
+              {user.role !== 'installer' && !ORDERS_ROLES.includes(user.role) && (
                 <Link
                   to="/complaints"
                   className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -218,15 +251,6 @@ const Header = () => {
                 </Link>
               )}
 
-              <Link
-                to="/complaints/create"
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-xl transition-all shadow-md"
-              >
-                <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Создать
-              </Link>
             </div>
           </div>
 
@@ -321,6 +345,30 @@ const Header = () => {
               <p className="text-xs text-gray-600">{ROLE_DISPLAY[user.role] || user.role}</p>
             </div>
 
+            {/* Переключатель модулей (mobile) */}
+            {showModuleSwitcher && (
+              <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-2">
+                <Link
+                  to="/complaints"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex-1 text-center px-3 py-2 rounded-lg transition-all ${
+                    !isOrdersModule ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  Рекламации
+                </Link>
+                <Link
+                  to="/orders"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex-1 text-center px-3 py-2 rounded-lg transition-all ${
+                    isOrdersModule ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  Заказы и замеры
+                </Link>
+              </div>
+            )}
+
             {/* Навигационные ссылки */}
             <Link
               to="/dashboard"
@@ -333,7 +381,7 @@ const Header = () => {
               Главная
             </Link>
 
-            {user.role !== 'installer' && (
+            {user.role !== 'installer' && !ORDERS_ROLES.includes(user.role) && (
               <Link
                 to="/complaints"
                 onClick={() => setMobileMenuOpen(false)}
@@ -411,16 +459,6 @@ const Header = () => {
               </Link>
             )}
 
-            <Link
-              to="/complaints/create"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center px-3 py-2 text-base font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-lg transition-all shadow-md"
-            >
-              <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Создать рекламацию
-            </Link>
 
             {/* Выход */}
             <button

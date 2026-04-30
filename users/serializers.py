@@ -10,6 +10,16 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 
+class SalonBriefSerializer(serializers.Serializer):
+    """Краткий сериализатор для салона (без импорта модели orders напрямую)"""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    city_name = serializers.SerializerMethodField()
+
+    def get_city_name(self, obj):
+        return obj.city.name if obj.city else None
+
+
 class UserSerializer(serializers.ModelSerializer):
     """Сериализатор для пользователя"""
     city = CitySerializer(read_only=True)
@@ -20,7 +30,12 @@ class UserSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
-    
+    salon = SalonBriefSerializer(read_only=True)
+    salon_id = serializers.SerializerMethodField()
+
+    def get_salon_id(self, obj):
+        return obj.salon_id
+
     class Meta:
         model = User
         fields = [
@@ -33,6 +48,8 @@ class UserSerializer(serializers.ModelSerializer):
             'city',
             'city_id',
             'phone_number',
+            'salon',
+            'salon_id',
             'date_joined',
         ]
         read_only_fields = ['id', 'date_joined']

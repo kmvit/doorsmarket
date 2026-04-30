@@ -43,11 +43,19 @@ class User(AbstractUser):
     role = models.CharField(max_length=50, choices=Role.choices, default=Role.SERVICE_MANAGER)
     city = models.ForeignKey(City, on_delete=models.PROTECT, null=True, blank=True)
     phone_number = models.CharField(
-        max_length=20, 
-        blank=True, 
-        null=True, 
+        max_length=20,
+        blank=True,
+        null=True,
         verbose_name='Номер телефона',
         help_text='Формат: +7XXXXXXXXXX'
+    )
+    salon = models.ForeignKey(
+        'orders.Salon',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name='Салон',
     )
     
     def __str__(self):
