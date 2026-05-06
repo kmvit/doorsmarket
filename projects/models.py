@@ -955,8 +955,13 @@ class Complaint(models.Model):
         if not self.installer_assigned or not self.installer_assigned_at:
             return False
         
-        # Проверяем, не завершена ли уже рекламация
-        if self.status in [ComplaintStatus.COMPLETED, ComplaintStatus.RESOLVED, ComplaintStatus.CLOSED]:
+        # Проверяем, не завершена ли уже рекламация (или на проверке у СМ)
+        if self.status in [
+            ComplaintStatus.COMPLETED,
+            ComplaintStatus.RESOLVED,
+            ComplaintStatus.CLOSED,
+            ComplaintStatus.UNDER_SM_REVIEW,
+        ]:
             return False
         
         # Проверяем, прошло ли более месяца (30 дней)
