@@ -5,6 +5,9 @@ import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { Salon, CreateOrderData, OrderStatus } from '../../types/orders'
 import OrderItemsEditor from './OrderItemsEditor'
+import KpUploadTab from './KpUploadTab'
+
+type CreateTab = 'manual' | 'kp'
 
 const OrderCreate = () => {
   const navigate = useNavigate()
@@ -12,6 +15,7 @@ const OrderCreate = () => {
   const [salons, setSalons] = useState<Salon[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<CreateTab>('manual')
 
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
@@ -73,12 +77,35 @@ const OrderCreate = () => {
 
   const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 
+  const defaultSalonId = (user as any)?.salon_id || (salons.length === 1 ? salons[0].id : 0)
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Новый заказ</h1>
       </div>
 
+      {/* Переключатель вкладок */}
+      <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-6 max-w-md">
+        <button
+          type="button"
+          onClick={() => setTab('manual')}
+          className={`flex-1 px-3 py-2 rounded-lg transition-all ${tab === 'manual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Вручную
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('kp')}
+          className={`flex-1 px-3 py-2 rounded-lg transition-all ${tab === 'kp' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Загрузить КП
+        </button>
+      </div>
+
+      {tab === 'kp' ? (
+        <KpUploadTab salons={salons} defaultSalonId={defaultSalonId} />
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
@@ -251,6 +278,7 @@ const OrderCreate = () => {
           </button>
         </div>
       </form>
+      )}
     </div>
   )
 }

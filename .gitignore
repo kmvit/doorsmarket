@@ -163,3 +163,6 @@ yarn-error.log
 *.cert
 secret_key.txt
 
+# Документы заказчика (ТЗ, образцы PDF и т.п. — не коммитим в репо)
+documentanions/
+

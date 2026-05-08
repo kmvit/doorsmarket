@@ -8,22 +8,24 @@ export interface Salon {
   is_active: boolean
 }
 
-export type OrderStatus = 'draft' | 'active' | 'cancelled'
+export type OrderStatus = 'draft' | 'active' | 'measurement_requested' | 'cancelled'
 
 export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   draft: 'Черновик',
   active: 'Активный',
+  measurement_requested: 'Заявка на замер',
   cancelled: 'Отменён',
 }
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   draft: 'bg-gray-100 text-gray-700',
   active: 'bg-green-100 text-green-700',
+  measurement_requested: 'bg-blue-100 text-blue-700',
   cancelled: 'bg-red-100 text-red-700',
 }
 
 export type DoorType = 'entrance' | 'interior' | 'other' | ''
-export type OpeningType = 'left' | 'right' | 'left_inner' | 'right_inner' | 'sliding' | 'other' | ''
+export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | ''
 export type AddonKind = 'box' | 'platband' | 'extension' | 'hinges' | 'handle' | 'mechanism' | 'glass' | 'extra' | 'service'
 
 export const DOOR_TYPE_DISPLAY: Record<string, string> = {
@@ -33,12 +35,40 @@ export const DOOR_TYPE_DISPLAY: Record<string, string> = {
 }
 
 export const OPENING_TYPE_DISPLAY: Record<string, string> = {
-  left: 'Левое',
-  right: 'Правое',
-  left_inner: 'Левое внутреннее',
-  right_inner: 'Правое внутреннее',
-  sliding: 'Раздвижное',
-  other: 'Другое',
+  A: 'A — правое наружнее, лицо снаружи',
+  B: 'B — правое наружнее, лицо внутри',
+  B_INVERSO: 'B Inverso — правое внутреннее, лицо снаружи',
+  C: 'C — левое наружнее, лицо снаружи',
+  D: 'D — левое наружнее, лицо внутри',
+  D_INVERSO: 'D Inverso — левое внутреннее, лицо снаружи',
+}
+
+export const OPENING_TYPE_SHORT: Record<string, string> = {
+  A: 'A',
+  B: 'B',
+  B_INVERSO: 'B Inverso',
+  C: 'C',
+  D: 'D',
+  D_INVERSO: 'D Inverso',
+}
+
+export type ActivityKind =
+  | 'created' | 'updated' | 'items_changed' | 'status_changed'
+  | 'file_attached' | 'comment_added'
+  | 'measurement_requested' | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
+  | ''
+
+export const ACTIVITY_KIND_DISPLAY: Record<string, string> = {
+  created: 'Заказ создан',
+  updated: 'Заказ обновлён',
+  items_changed: 'Изменены позиции',
+  status_changed: 'Изменён статус',
+  file_attached: 'Загружен файл',
+  comment_added: 'Добавлен комментарий',
+  measurement_requested: 'Заявка на замер',
+  measurement_scheduled: 'Замер запланирован',
+  measurement_done: 'Замер выполнен',
+  measurement_processed: 'Замер обработан',
 }
 
 export const ADDON_KIND_DISPLAY: Record<AddonKind, string> = {
@@ -112,6 +142,10 @@ export interface Order {
   status_display: string
   commercial_offer_url: string | null
   items?: OrderItem[]
+  last_activity_at: string | null
+  last_activity_kind: ActivityKind
+  last_activity_kind_display: string
+  lift_impossible_warning: string | null
 }
 
 export interface OrderListItem {
@@ -128,6 +162,9 @@ export interface OrderListItem {
   address: string
   status: OrderStatus
   status_display: string
+  last_activity_at: string | null
+  last_activity_kind: ActivityKind
+  last_activity_kind_display: string
 }
 
 export interface CreateOrderItemAddonData {
@@ -177,4 +214,104 @@ export interface OrderFilters {
   search?: string
   my_orders?: boolean
   exclude_cancelled?: boolean
+}
+
+// ===== Phase 2 =====
+
+export type MeasurementPayer = 'client' | 'salon'
+
+export const MEASUREMENT_PAYER_DISPLAY: Record<MeasurementPayer, string> = {
+  client: 'Клиент',
+  salon: 'Салон',
+}
+
+export interface MeasurementRequest {
+  id: number
+  order: number
+  contact_name: string
+  contact_position: string
+  contact_phone: string
+  desired_date: string | null
+  payer: MeasurementPayer
+  payer_display: string
+  opening_plan_url: string | null
+  comment: string
+  created_at: string
+  created_by: number | null
+  created_by_name: string | null
+}
+
+export interface CreateMeasurementRequestData {
+  contact_name: string
+  contact_position?: string
+  contact_phone: string
+  desired_date?: string | null
+  payer: MeasurementPayer
+  comment?: string
+}
+
+export interface OrderActionReminder {
+  id: number
+  order: number
+  due_at: string
+  action_text: string
+  done: boolean
+  done_at: string | null
+  created_at: string
+  created_by: number | null
+  created_by_name: string | null
+  notified: boolean
+  is_overdue: boolean
+}
+
+export interface CreateActionReminderData {
+  order: number
+  due_at: string
+  action_text: string
+}
+
+export interface WorkshopOrder {
+  id: number
+  created_at: string
+  client_name: string
+  address: string
+  status: OrderStatus
+  status_display: string
+  last_activity_at: string | null
+  last_activity_kind: string
+  last_activity_kind_display: string
+  contact_phone: string
+  kp_number: string
+  manager: OrderManager
+  salon_name: string
+  comment: string
+  next_action_at: string | null
+  next_action_text: string
+  last_comment: string
+}
+
+// ===== Парсинг КП =====
+
+export interface ParsedKpItem {
+  opening_number: number
+  room_name: string
+  model_name: string
+  quantity: number
+  price: string | number | null
+  amount: string | number | null
+  door_type: string
+  opening_type: string
+  door_height: number | null
+  door_width: number | null
+  addons: any[]
+}
+
+export interface ParsedKpData {
+  kp_number: string
+  kp_date: string | null
+  client_name: string
+  contact_phone: string
+  address: string
+  manager_name: string
+  items: ParsedKpItem[]
 }

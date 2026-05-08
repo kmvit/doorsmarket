@@ -182,10 +182,16 @@ const OrderList = () => {
                         {order.address && (
                           <div className="text-xs text-gray-500 truncate max-w-[200px]">{order.address}</div>
                         )}
-                        {order.contact_phone && (
-                          <div className="text-xs text-gray-500">{order.contact_phone}</div>
-                        )}
                       </Link>
+                      {order.contact_phone && (
+                        <a
+                          href={`tel:${order.contact_phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-primary-600 hover:underline"
+                        >
+                          {order.contact_phone}
+                        </a>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{order.salon_name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">

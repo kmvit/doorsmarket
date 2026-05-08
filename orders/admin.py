@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Salon, Order, OrderItem, OrderItemAddon, OrderAttachment
+from .models import (
+    Salon, Order, OrderItem, OrderItemAddon, OrderAttachment,
+    MeasurementRequest, OrderActionReminder,
+)
 
 
 @admin.register(Salon)
@@ -37,3 +40,20 @@ class OrderAdmin(admin.ModelAdmin):
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ('id', 'order', 'opening_number', 'room_name', 'model_name', 'quantity')
     inlines = [OrderItemAddonInline]
+
+
+@admin.register(MeasurementRequest)
+class MeasurementRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'contact_name', 'contact_phone', 'desired_date', 'payer', 'created_at')
+    list_filter = ('payer',)
+    search_fields = ('contact_name', 'contact_phone', 'order__client_name')
+    raw_id_fields = ('order', 'created_by')
+
+
+@admin.register(OrderActionReminder)
+class OrderActionReminderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'action_text', 'due_at', 'done', 'done_at', 'created_by')
+    list_filter = ('done', 'notified')
+    search_fields = ('action_text', 'order__client_name')
+    raw_id_fields = ('order', 'created_by')
+    date_hierarchy = 'due_at'

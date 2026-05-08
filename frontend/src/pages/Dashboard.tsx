@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
+import { remindersAPI } from '../api/orders'
 
 interface DashboardStat {
   key: string
@@ -19,6 +20,25 @@ const Dashboard = () => {
   const [isEditingPhone, setIsEditingPhone] = useState(false)
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
   const [isSavingPhone, setIsSavingPhone] = useState(false)
+  const [reminderTodayCount, setReminderTodayCount] = useState<number | null>(null)
+  const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
+
+  const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'admin'].includes(user.role)
+
+  useEffect(() => {
+    if (!showWorkshopCard) return
+    const load = async () => {
+      try {
+        const [today, overdue] = await Promise.all([
+          remindersAPI.list({ today: true, mine: true }).catch(() => []),
+          remindersAPI.list({ overdue: true, mine: true }).catch(() => []),
+        ])
+        setReminderTodayCount(today.length)
+        setReminderOverdueCount(overdue.length)
+      } catch {}
+    }
+    load()
+  }, [showWorkshopCard])
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -101,6 +121,31 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-6xl mx-auto animate-fadeIn">
+        {/* Карточка "Наработки" — для модуля заказов */}
+        {showWorkshopCard && (
+          <Link
+            to="/workshop"
+            className="block mb-6 bg-gradient-to-r from-primary-600 to-cyan-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">Наработки</h2>
+                <p className="text-sm opacity-90 mt-0.5">
+                  {reminderTodayCount !== null ? `${reminderTodayCount} на сегодня` : 'загрузка...'}
+                  {reminderOverdueCount !== null && reminderOverdueCount > 0 && (
+                    <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-medium">
+                      {reminderOverdueCount} просрочено
+                    </span>
+                  )}
+                </p>
+              </div>
+              <svg className="h-8 w-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            </div>
+          </Link>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
             Добро пожаловать, {user?.first_name && user?.last_name

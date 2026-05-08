@@ -26,7 +26,22 @@ class Salon(models.Model):
 class OrderStatus(models.TextChoices):
     DRAFT = 'draft', 'Черновик'
     ACTIVE = 'active', 'Активный'
+    MEASUREMENT_REQUESTED = 'measurement_requested', 'Заявка на замер'
     CANCELLED = 'cancelled', 'Отменён'
+
+
+class ActivityKind(models.TextChoices):
+    """Виды активности по заказу — отображаются в Наработках"""
+    CREATED = 'created', 'Заказ создан'
+    UPDATED = 'updated', 'Заказ обновлён'
+    ITEMS_CHANGED = 'items_changed', 'Изменены позиции'
+    STATUS_CHANGED = 'status_changed', 'Изменён статус'
+    FILE_ATTACHED = 'file_attached', 'Загружен файл'
+    COMMENT_ADDED = 'comment_added', 'Добавлен комментарий'
+    MEASUREMENT_REQUESTED = 'measurement_requested', 'Заявка на замер'
+    MEASUREMENT_SCHEDULED = 'measurement_scheduled', 'Замер запланирован'
+    MEASUREMENT_DONE = 'measurement_done', 'Замер выполнен'
+    MEASUREMENT_PROCESSED = 'measurement_processed', 'Замер обработан'
 
 
 class Order(models.Model):
@@ -65,6 +80,18 @@ class Order(models.Model):
         blank=True,
         verbose_name='Коммерческое предложение',
     )
+    last_activity_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата последней активности',
+    )
+    last_activity_kind = models.CharField(
+        max_length=40,
+        choices=ActivityKind.choices,
+        blank=True,
+        default='',
+        verbose_name='Вид активности',
+    )
 
     class Meta:
         verbose_name = 'Заказ'
@@ -74,6 +101,14 @@ class Order(models.Model):
     def __str__(self):
         return f'Заказ #{self.id} — {self.client_name}'
 
+    def touch_activity(self, kind: str, save: bool = True):
+        """Обновить дату/вид последней активности."""
+        from django.utils import timezone
+        self.last_activity_at = timezone.now()
+        self.last_activity_kind = kind
+        if save:
+            self.save(update_fields=['last_activity_at', 'last_activity_kind', 'updated_at'])
+
 
 class DoorType(models.TextChoices):
     ENTRANCE = 'entrance', 'Входная'
@@ -82,12 +117,12 @@ class DoorType(models.TextChoices):
 
 
 class OpeningType(models.TextChoices):
-    LEFT = 'left', 'Левое'
-    RIGHT = 'right', 'Правое'
-    LEFT_INNER = 'left_inner', 'Левое внутреннее'
-    RIGHT_INNER = 'right_inner', 'Правое внутреннее'
-    SLIDING = 'sliding', 'Раздвижное'
-    OTHER = 'other', 'Другое'
+    A = 'A', 'A — правое наружнее, лицо снаружи'
+    B = 'B', 'B — правое наружнее, лицо внутри'
+    B_INVERSO = 'B_INVERSO', 'B Inverso — правое внутреннее, лицо снаружи'
+    C = 'C', 'C — левое наружнее, лицо снаружи'
+    D = 'D', 'D — левое наружнее, лицо внутри'
+    D_INVERSO = 'D_INVERSO', 'D Inverso — левое внутреннее, лицо снаружи'
 
 
 class OrderItem(models.Model):
@@ -188,3 +223,90 @@ class OrderAttachment(models.Model):
 
     def __str__(self):
         return self.name or self.file.name
+
+
+class MeasurementPayer(models.TextChoices):
+    CLIENT = 'client', 'Клиент'
+    SALON = 'salon', 'Салон'
+
+
+class MeasurementRequest(models.Model):
+    """Заявка на замер (одна на заказ)."""
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='measurement_request',
+        verbose_name='Заказ',
+    )
+    contact_name = models.CharField(max_length=255, verbose_name='Контактное лицо ФИО')
+    contact_position = models.CharField(max_length=255, blank=True, verbose_name='Должность')
+    contact_phone = models.CharField(max_length=50, verbose_name='Телефон контактного лица')
+    desired_date = models.DateField(null=True, blank=True, verbose_name='Желаемая дата замера')
+    payer = models.CharField(
+        max_length=20,
+        choices=MeasurementPayer.choices,
+        default=MeasurementPayer.CLIENT,
+        verbose_name='Кто оплачивает замер',
+    )
+    opening_plan = models.FileField(
+        upload_to='orders/opening_plans/',
+        null=True,
+        blank=True,
+        verbose_name='План открывания',
+    )
+    comment = models.TextField(blank=True, verbose_name='Комментарий')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создана')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_measurement_requests',
+        verbose_name='Создал',
+    )
+
+    class Meta:
+        verbose_name = 'Заявка на замер'
+        verbose_name_plural = 'Заявки на замер'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Заявка на замер по заказу #{self.order_id}'
+
+
+class OrderActionReminder(models.Model):
+    """Наработка / напоминание о следующем действии по заказу."""
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='action_reminders',
+        verbose_name='Заказ',
+    )
+    due_at = models.DateTimeField(verbose_name='Срок')
+    action_text = models.CharField(max_length=500, verbose_name='Действие')
+    done = models.BooleanField(default=False, verbose_name='Выполнено')
+    done_at = models.DateTimeField(null=True, blank=True, verbose_name='Выполнено в')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_action_reminders',
+        verbose_name='Создал',
+    )
+    notified = models.BooleanField(
+        default=False,
+        verbose_name='Уведомление отправлено',
+        help_text='True после отправки in-app уведомления при наступлении due_at',
+    )
+
+    class Meta:
+        verbose_name = 'Наработка'
+        verbose_name_plural = 'Наработки'
+        ordering = ['done', 'due_at']
+        indexes = [
+            models.Index(fields=['done', 'due_at']),
+            models.Index(fields=['order', 'done']),
+        ]
+
+    def __str__(self):
+        return f'{self.action_text} (до {self.due_at})'

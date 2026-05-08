@@ -1,4 +1,4 @@
-import { CreateOrderItemData, DoorType, OpeningType } from '../../types/orders'
+import { CreateOrderItemData, DoorType, OpeningType, OPENING_TYPE_DISPLAY } from '../../types/orders'
 
 interface Props {
   items: CreateOrderItemData[]
@@ -139,14 +139,15 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
                     value={item.opening_type || ''}
                     onChange={(e) => updateItem(idx, 'opening_type', e.target.value as OpeningType)}
                     className={selectCls}
+                    title={item.opening_type ? OPENING_TYPE_DISPLAY[item.opening_type] : ''}
                   >
                     <option value="">—</option>
-                    <option value="left">Лев.</option>
-                    <option value="right">Прав.</option>
-                    <option value="left_inner">Лев. внутр.</option>
-                    <option value="right_inner">Прав. внутр.</option>
-                    <option value="sliding">Раздвижное</option>
-                    <option value="other">Другое</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="B_INVERSO">B Inverso</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                    <option value="D_INVERSO">D Inverso</option>
                   </select>
                 </td>
                 <td className="px-2 py-1.5">

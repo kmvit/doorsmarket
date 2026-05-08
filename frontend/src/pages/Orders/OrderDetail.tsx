@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
-import { Order, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import NextActionBlock from './NextActionBlock'
+import MeasurementRequestForm from './MeasurementRequestForm'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -12,6 +14,8 @@ const OrderDetail = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [measurementRequest, setMeasurementRequest] = useState<MeasurementRequest | null>(null)
+  const [showMrModal, setShowMrModal] = useState(false)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
 
@@ -19,8 +23,12 @@ const OrderDetail = () => {
     const load = async () => {
       setIsLoading(true)
       try {
-        const data = await ordersAPI.getById(Number(id))
+        const [data, mr] = await Promise.all([
+          ordersAPI.getById(Number(id)),
+          ordersAPI.getMeasurementRequest(Number(id)).catch(() => null),
+        ])
         setOrder(data)
+        setMeasurementRequest(mr)
       } catch (err: any) {
         setError('Заказ не найден или нет доступа')
       } finally {
@@ -29,6 +37,13 @@ const OrderDetail = () => {
     }
     load()
   }, [id])
+
+  const reloadOrder = async () => {
+    try {
+      const data = await ordersAPI.getById(Number(id))
+      setOrder(data)
+    } catch {}
+  }
 
   const handleDelete = async () => {
     if (!order || !window.confirm(`Удалить заказ #${order.id}?`)) return
@@ -84,6 +99,16 @@ const OrderDetail = () => {
         <span className="text-gray-900">Заказ #{order.id}</span>
       </div>
 
+      {/* Предупреждение о невозможности подъёма */}
+      {order.lift_impossible_warning && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 font-medium flex items-center gap-2">
+          <svg className="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          {order.lift_impossible_warning}
+        </div>
+      )}
+
       {/* Шапка */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -99,6 +124,15 @@ const OrderDetail = () => {
         </div>
         {canEdit && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowMrModal(true)}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"
+            >
+              <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              {measurementRequest ? 'Заявка на замер' : 'Заявка на замер'}
+            </button>
             <Link
               to={`/orders/${order.id}/edit`}
               className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl transition-all"
@@ -133,7 +167,11 @@ const OrderDetail = () => {
             {order.contact_phone && (
               <div className="flex justify-between">
                 <dt className="text-gray-500">Телефон</dt>
-                <dd className="font-medium text-gray-900">{order.contact_phone}</dd>
+                <dd className="font-medium">
+                  <a href={`tel:${order.contact_phone}`} className="text-primary-600 hover:underline">
+                    {order.contact_phone}
+                  </a>
+                </dd>
               </div>
             )}
             {order.address && (
@@ -230,6 +268,18 @@ const OrderDetail = () => {
               <dt className="text-gray-500">Обновлён</dt>
               <dd className="text-gray-900">{formatDateTime(order.updated_at)}</dd>
             </div>
+            {order.last_activity_at && (
+              <>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Последняя активность</dt>
+                  <dd className="text-gray-900">{formatDateTime(order.last_activity_at)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Вид активности</dt>
+                  <dd className="text-gray-700">{order.last_activity_kind_display}</dd>
+                </div>
+              </>
+            )}
           </dl>
           {order.comment && (
             <div className="mt-3 pt-3 border-t border-gray-100">
@@ -238,6 +288,62 @@ const OrderDetail = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Заявка на замер (если создана) + Следующее действие */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {measurementRequest && (
+          <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-4 ring-1 ring-blue-100">
+            <h2 className="text-sm font-semibold text-blue-700 uppercase tracking-wider mb-3">Заявка на замер</h2>
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Контактное лицо</dt>
+                <dd className="font-medium text-gray-900">{measurementRequest.contact_name}</dd>
+              </div>
+              {measurementRequest.contact_position && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Должность</dt>
+                  <dd className="text-gray-700">{measurementRequest.contact_position}</dd>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Телефон</dt>
+                <dd>
+                  <a href={`tel:${measurementRequest.contact_phone}`} className="text-primary-600 hover:underline">
+                    {measurementRequest.contact_phone}
+                  </a>
+                </dd>
+              </div>
+              {measurementRequest.desired_date && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Желаемая дата</dt>
+                  <dd className="text-gray-900">{formatDate(measurementRequest.desired_date)}</dd>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Кто оплачивает</dt>
+                <dd className="text-gray-900">{measurementRequest.payer_display}</dd>
+              </div>
+              {measurementRequest.opening_plan_url && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">План открывания</dt>
+                  <dd>
+                    <a href={measurementRequest.opening_plan_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+                      Открыть
+                    </a>
+                  </dd>
+                </div>
+              )}
+              {measurementRequest.comment && (
+                <div className="pt-2 border-t border-blue-100 mt-2">
+                  <p className="text-xs text-gray-500 mb-1">Комментарий</p>
+                  <p className="text-sm text-gray-700">{measurementRequest.comment}</p>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+        <NextActionBlock orderId={order.id} canEdit={canEdit} />
       </div>
 
       {/* Позиции */}
@@ -282,7 +388,9 @@ const OrderDetail = () => {
                       <td className="px-3 py-2 text-gray-900 max-w-[200px]">{item.model_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-600">
                         <div>{item.door_type ? DOOR_TYPE_DISPLAY[item.door_type] : '—'}</div>
-                        <div className="text-xs text-gray-400">{item.opening_type ? OPENING_TYPE_DISPLAY[item.opening_type] : ''}</div>
+                        <div className="text-xs text-gray-400" title={item.opening_type ? OPENING_TYPE_DISPLAY[item.opening_type] : ''}>
+                          {item.opening_type ? OPENING_TYPE_SHORT[item.opening_type] : ''}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-gray-600">
                         {item.door_height && item.door_width ? `${item.door_height} × ${item.door_width}` : '—'}
@@ -309,6 +417,20 @@ const OrderDetail = () => {
           </div>
         )}
       </div>
+
+      {showMrModal && (
+        <MeasurementRequestForm
+          orderId={order.id}
+          defaultClientName={order.client_name}
+          defaultPhone={order.contact_phone}
+          existing={measurementRequest}
+          onClose={() => setShowMrModal(false)}
+          onSaved={(mr) => {
+            setMeasurementRequest(mr)
+            reloadOrder()
+          }}
+        />
+      )}
     </div>
   )
 }
