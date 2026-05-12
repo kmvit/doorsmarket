@@ -6,6 +6,7 @@ import { salonsAPI } from '../../api/salons'
 import { Order, Salon, CreateOrderData, OrderStatus } from '../../types/orders'
 import OrderItemsEditor from './OrderItemsEditor'
 import OrderAddonsEditor from './OrderAddonsEditor'
+import NextActionBlock from './NextActionBlock'
 
 const OrderEdit = () => {
   const { id } = useParams<{ id: string }>()
@@ -324,6 +325,11 @@ const OrderEdit = () => {
             onChange={(addons) => setField('addons', addons)}
           />
         </div>
+
+        {/* Следующие действия (отдельный блок — не сохраняются вместе с формой) */}
+        {id && (
+          <NextActionBlock orderId={Number(id)} canEdit={canEdit} />
+        )}
 
         <div className="flex items-center gap-3 justify-end">
           <button
