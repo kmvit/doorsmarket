@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
 
 const Workshop = () => {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState<WorkshopOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -134,9 +135,19 @@ const Workshop = () => {
                 {orders.map((o) => {
                   const isOverdue = o.next_action_at && new Date(o.next_action_at) < new Date()
                   return (
-                    <tr key={o.id} className="hover:bg-gray-50">
+                    <tr
+                      key={o.id}
+                      className="hover:bg-primary-50 cursor-pointer"
+                      onClick={() => navigate(`/orders/${o.id}`)}
+                    >
                       <td className="px-3 py-2">
-                        <Link to={`/orders/${o.id}`} className="text-primary-600 font-medium hover:underline">#{o.id}</Link>
+                        <Link
+                          to={`/orders/${o.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary-600 font-medium hover:underline"
+                        >
+                          #{o.id}
+                        </Link>
                       </td>
                       <td className="px-3 py-2 text-gray-600">{formatDate(o.created_at)}</td>
                       <td className="px-3 py-2">
@@ -169,7 +180,13 @@ const Workshop = () => {
                       </td>
                       <td className="px-3 py-2">
                         {o.contact_phone ? (
-                          <a href={`tel:${o.contact_phone}`} className="text-primary-600 hover:underline text-xs">{o.contact_phone}</a>
+                          <a
+                            href={`tel:${o.contact_phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-primary-600 hover:underline text-xs"
+                          >
+                            {o.contact_phone}
+                          </a>
                         ) : '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-600 text-xs">{o.kp_number || '—'}</td>
