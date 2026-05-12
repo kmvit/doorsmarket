@@ -9,14 +9,21 @@ interface Props {
 }
 
 // Список действий-переходов, доступных при закрытии напоминания
-const COMPLETE_ACTIONS: { label: string; status?: OrderStatus; promptNext?: boolean }[] = [
-  { label: 'Сделано', promptNext: true },
-  { label: 'Заказ оплачен', status: 'paid', promptNext: true },
-  { label: 'В производстве', status: 'in_production', promptNext: true },
-  { label: 'На складе', status: 'on_warehouse', promptNext: true },
-  { label: 'Отгружен', status: 'shipped', promptNext: true },
-  { label: 'Выполнен', status: 'completed' },
-  { label: 'Не актуален', status: 'cancelled' },
+type CompleteAction = {
+  label: string
+  status?: OrderStatus
+  promptNext?: boolean
+  color: string
+}
+
+const COMPLETE_ACTIONS: CompleteAction[] = [
+  { label: 'Сделано', promptNext: true, color: 'bg-green-600 hover:bg-green-700' },
+  { label: 'Оплачен', status: 'paid', promptNext: true, color: 'bg-emerald-600 hover:bg-emerald-700' },
+  { label: 'В производстве', status: 'in_production', promptNext: true, color: 'bg-orange-600 hover:bg-orange-700' },
+  { label: 'На складе', status: 'on_warehouse', promptNext: true, color: 'bg-cyan-600 hover:bg-cyan-700' },
+  { label: 'Отгружен', status: 'shipped', promptNext: true, color: 'bg-indigo-600 hover:bg-indigo-700' },
+  { label: 'Выполнен', status: 'completed', color: 'bg-green-700 hover:bg-green-800' },
+  { label: 'Не актуален', status: 'cancelled', color: 'bg-red-600 hover:bg-red-700' },
 ]
 
 const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
@@ -27,7 +34,6 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
   const [dueAt, setDueAt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
   const [nextPrompt, setNextPrompt] = useState<{ reminderId: number; status?: OrderStatus } | null>(null)
   const [promptText, setPromptText] = useState('')
   const [promptDueAt, setPromptDueAt] = useState('')
@@ -74,9 +80,8 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
   // Закрытие напоминания с опциональной сменой статуса; если promptNext — открыть форму нового
   const handleComplete = async (
     reminderId: number,
-    action: { label: string; status?: OrderStatus; promptNext?: boolean },
+    action: CompleteAction,
   ) => {
-    setOpenMenuId(null)
     if (action.promptNext) {
       setNextPrompt({ reminderId, status: action.status })
       setPromptText('')
@@ -124,7 +129,6 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
     const pad = (n: number) => String(n).padStart(2, '0')
     const localValue = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
     setEditDueAt(localValue)
-    setOpenMenuId(null)
   }
 
   const cancelEdit = () => {
@@ -236,49 +240,41 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
                 </div>
               ) : (
                 /* Обычное отображение */
-                <div className="flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-medium ${r.is_overdue ? 'text-red-700' : 'text-gray-900'} break-words`}>{r.action_text}</div>
-                    <div className={`text-xs ${r.is_overdue ? 'text-red-600' : 'text-gray-500'}`}>
-                      {formatDateTime(r.due_at)} {r.is_overdue && '· просрочено'}
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-medium ${r.is_overdue ? 'text-red-700' : 'text-gray-900'} break-words`}>{r.action_text}</div>
+                      <div className={`text-xs ${r.is_overdue ? 'text-red-600' : 'text-gray-500'}`}>
+                        {formatDateTime(r.due_at)} {r.is_overdue && '· просрочено'}
+                      </div>
                     </div>
+                    {canEdit && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => startEdit(r)} title="Редактировать (текст / перенести)" className="p-1.5 text-blue-600 hover:bg-blue-100 rounded">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => handleDelete(r.id)} title="Удалить" className="p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600 rounded">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {canEdit && (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <div className="relative">
+                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-200">
+                      {COMPLETE_ACTIONS.map((act) => (
                         <button
-                          onClick={() => setOpenMenuId(openMenuId === r.id ? null : r.id)}
-                          className="px-2 py-1 text-xs text-white bg-green-600 hover:bg-green-700 rounded"
+                          key={act.label}
+                          onClick={() => handleComplete(r.id, act)}
+                          title={act.status ? `→ ${ORDER_STATUS_DISPLAY[act.status]}` : 'Без смены статуса'}
+                          className={`px-2.5 py-1 text-xs font-medium text-white rounded ${act.color}`}
                         >
-                          ✓ Закрыть
+                          {act.label}
                         </button>
-                        {openMenuId === r.id && (
-                          <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px]">
-                            {COMPLETE_ACTIONS.map((act) => (
-                              <button
-                                key={act.label}
-                                onClick={() => handleComplete(r.id, act)}
-                                className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100"
-                              >
-                                {act.label}
-                                {act.status && (
-                                  <span className="ml-1 text-xs text-gray-400">→ {ORDER_STATUS_DISPLAY[act.status]}</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button onClick={() => startEdit(r)} title="Редактировать" className="p-1 text-blue-600 hover:bg-blue-100 rounded">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                      <button onClick={() => handleDelete(r.id)} title="Удалить" className="p-1 text-gray-400 hover:bg-red-100 hover:text-red-600 rounded">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      ))}
                     </div>
                   )}
                 </div>
