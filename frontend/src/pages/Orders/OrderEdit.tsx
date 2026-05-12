@@ -5,6 +5,7 @@ import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { Order, Salon, CreateOrderData, OrderStatus } from '../../types/orders'
 import OrderItemsEditor from './OrderItemsEditor'
+import OrderAddonsEditor from './OrderAddonsEditor'
 
 const OrderEdit = () => {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +30,7 @@ const OrderEdit = () => {
     comment: '',
     status: 'draft',
     items: [],
+    addons: [],
   })
 
   useEffect(() => {
@@ -65,16 +67,21 @@ const OrderEdit = () => {
             opening_type: item.opening_type,
             door_height: item.door_height,
             door_width: item.door_width,
+            recommended_opening_height: item.recommended_opening_height,
+            recommended_opening_width: item.recommended_opening_width,
             notes: item.notes,
             position: item.position,
-            addons: item.addons?.map((a) => ({
-              kind: a.kind,
-              name: a.name,
-              quantity: a.quantity,
-              price: a.price,
-              comment_face: a.comment_face,
-              comment_back: a.comment_back,
-            })) || [],
+          })),
+          addons: (orderData.addons || []).map((a) => ({
+            kind: a.kind,
+            name: a.name,
+            quantity: a.quantity,
+            size: a.size,
+            opening_type: a.opening_type,
+            price: a.price,
+            amount: a.amount,
+            comment: a.comment,
+            position: a.position,
           })),
         })
       } catch {
@@ -189,7 +196,7 @@ const OrderEdit = () => {
                 className={inputCls}
               >
                 <option value="draft">Черновик</option>
-                <option value="active">Активный</option>
+                <option value="active">Создан</option>
                 <option value="cancelled">Отменён</option>
               </select>
             </div>
@@ -300,10 +307,21 @@ const OrderEdit = () => {
 
         {/* Позиции */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Позиции</h2>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Позиции — двери и панели</h2>
           <OrderItemsEditor
             items={form.items || []}
             onChange={(items) => setField('items', items)}
+          />
+        </div>
+
+        {/* Сопутствующие позиции */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
+            Сопутствующие позиции — короба, наличники, добор, петли, услуги
+          </h2>
+          <OrderAddonsEditor
+            addons={form.addons || []}
+            onChange={(addons) => setField('addons', addons)}
           />
         </div>
 

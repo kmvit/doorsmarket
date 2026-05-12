@@ -26,11 +26,51 @@ import pdfplumber
 
 from projects.pdf_parser import (
     _extract_address,
-    _extract_client_name,
-    _extract_contact_phone,
+    _extract_client_name as _extract_client_name_legacy,
+    _extract_contact_phone as _extract_contact_phone_legacy,
     _extract_manager_name,
     _extract_order_number,
 )
+
+
+def _extract_contact_phone(text: str) -> str:
+    """
+    Телефон клиента ищем только в зоне «Покупатель … до Комментарий/Стоимость»,
+    чтобы не подхватывать телефон салона из строки «Подразделение г.X ... тел ...».
+    Если в этой зоне номера нет — возвращаем пусто (а не первый попавшийся).
+    """
+    # Зона: от «Покупатель» (либо «Телефоны») до «Комментарий»/«Стоимость»/«Модель полотна»
+    start_match = re.search(r'покупатель', text, re.IGNORECASE)
+    start = start_match.start() if start_match else 0
+    end_match = re.search(
+        r'комментарий|стоимость\s+товара|модель\s+полотна',
+        text[start:], re.IGNORECASE,
+    )
+    end = (start + end_match.start()) if end_match else len(text)
+    zone = text[start:end]
+    phone = _extract_contact_phone_legacy(zone)
+    return phone
+
+
+def _extract_client_name(text: str) -> str:
+    """
+    Локальная версия с поддержкой инициалов и точек ('Салихов М.И. ЖК УНО').
+    Сначала пробуем точный паттерн с точками, fallback — на legacy парсер.
+    """
+    patterns = [
+        # «Покупатель (Ф.И.О.) <ИМЯ_С_ИНИЦИАЛАМИ_И_АББРЕВИАТУРОЙ>» до следующего поля шапки
+        r'покупатель\s*\([^\)]*\)\s*([А-ЯЁA-Z][А-Яа-яёA-Za-z0-9\.\s\-«»"\']+?)\s*(?=Адрес|Телефон|Email|Подразделение|Менеджер|Комментарий)',
+        r'покупатель\s*[:\-]?\s*([А-ЯЁA-Z][А-Яа-яёA-Za-z0-9\.\s\-«»"\']+?)\s*(?=Адрес|Телефон|Email|Подразделение|Менеджер|Комментарий)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            name = m.group(1).strip().rstrip(',.;')
+            # Срезаем хвост, если он попал из соседнего поля
+            name = re.sub(r'\s+', ' ', name)
+            if 2 <= len(name) <= 200:
+                return name
+    return _extract_client_name_legacy(text)
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +78,18 @@ logger = logging.getLogger(__name__)
 # ---------- маркеры секций ----------
 
 SECTION_PATTERNS: List[Tuple[str, re.Pattern]] = [
-    ('doors', re.compile(r'Модель\s+полотна\s+Кол-во', re.IGNORECASE)),
-    ('box', re.compile(r'Дверной\s+короб\s+Кол-во', re.IGNORECASE)),
+    # Все паттерны привязаны к началу строки и требуют полного заголовка секции
+    # (включая хвост «Кол-во …» или «(модель/артикул)»), чтобы не матчиться
+    # на слова из описания позиций («петли», «короб» и т.п.).
+    ('doors', re.compile(r'^Модель\s+полотна\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('box', re.compile(r'^Дверной\s+короб\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
     ('platband', re.compile(r'^Наличник\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
     ('extension', re.compile(r'^Добор\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('hinges', re.compile(r'^Петли\b', re.IGNORECASE | re.MULTILINE)),
-    ('handle', re.compile(r'^Ручки', re.IGNORECASE | re.MULTILINE)),
-    ('mechanism', re.compile(r'^Механизмы', re.IGNORECASE | re.MULTILINE)),
+    ('hinges', re.compile(r'^Петли\s*\(\s*модель', re.IGNORECASE | re.MULTILINE)),
+    ('handle', re.compile(r'^Ручки\s*\+\s*накладки', re.IGNORECASE | re.MULTILINE)),
+    ('mechanism', re.compile(r'^Механизмы\s*\(\s*вид', re.IGNORECASE | re.MULTILINE)),
     ('glass', re.compile(r'^Стекло\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('extra', re.compile(r'^Доп\.\s*к\s*заказу', re.IGNORECASE | re.MULTILINE)),
+    ('extra', re.compile(r'^Доп\.\s*к\s*заказу\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
     ('service', re.compile(r'^Услуги\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
 ]
 
@@ -63,8 +106,8 @@ ADDON_KIND_BY_SECTION = {
 }
 
 END_MARKER = re.compile(
-    r'Стоимость\s+товара|Стоимость\s+стекла|Способ\s+оплаты',
-    re.IGNORECASE,
+    r'Стоимость\s+товара\s*:|Стоимость\s+стекла\s*:|^Способ\s+оплаты',
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # ---------- регулярки на размеры / открывания ----------
@@ -266,20 +309,48 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
     price = _to_decimal(m_tail.group(2))
     summ = _to_decimal(m_tail.group(3))
 
-    # Размер(ы) ищем в head
-    sizes = list(SIZE_RE.finditer(head))
+    # Размер(ы) ищем в head; отфильтровываем технические размеры в описании
+    # (например «(обкатка 4*15 мм)» — оба значения < 50, это не размер двери)
+    all_sizes = list(SIZE_RE.finditer(head))
+    sizes = [m for m in all_sizes if not (int(m.group(1)) < 50 and int(m.group(2)) < 50)]
     if not sizes:
+        # Fallback: формат «<desc> <qty> *» (панель без размера, доп. позиция)
+        m_qty_star = re.search(r'(\d{1,3})\s*\*\s*$', head)
+        if m_qty_star:
+            qty = int(m_qty_star.group(1))
+            description = head[:m_qty_star.start()].strip()
+            return {
+                'description': description,
+                'qty': qty,
+                'door_height': None,
+                'door_width': None,
+                'rec_opening_height': None,
+                'rec_opening_width': None,
+                'opening_type': '',
+                'price': price,
+                'sum': summ,
+            }
         return None
     first_size = sizes[0]
     door_h, door_w = int(first_size.group(1)), int(first_size.group(2))
 
-    # Если есть рек.проём — восстанавливаем обрезанные door-размеры
+    # Рек.проём — второй размер в строке (если есть)
+    rec_h, rec_w = None, None
     if len(sizes) >= 2:
         rec_h, rec_w = int(sizes[1].group(1)), int(sizes[1].group(2))
+        # Некоторые КП пишут рек.проём в формате ШхВ — переставляем местами,
+        # если высота явно меньше ширины (двери всегда выше, чем шире).
+        if rec_h < rec_w and rec_w > 1500:
+            rec_h, rec_w = rec_w, rec_h
+        # Восстанавливаем обрезанные door-размеры через рек.проём (door = проём -70/-100)
         if door_w < 100 and rec_w >= 200:
             door_w = rec_w - 100
         if door_h < 100 and rec_h >= 200:
             door_h = rec_h - 70
+
+    # Тот же swap для размера двери (на случай разнобоя)
+    if door_h is not None and door_w is not None and door_h < door_w and door_w > 1500:
+        door_h, door_w = door_w, door_h
 
     # qty — последнее число перед первым размером
     before_size = head[:first_size.start()].rstrip()
@@ -299,6 +370,8 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
         'qty': qty,
         'door_height': door_h,
         'door_width': door_w,
+        'rec_opening_height': rec_h,
+        'rec_opening_width': rec_w,
         'opening_type': opening_type,
         'price': price,
         'sum': summ,
@@ -359,61 +432,20 @@ def _parse_addon_row(joined_line: str) -> Optional[Dict[str, Any]]:
 # ---------- сборка результата ----------
 
 def _build_addon_dict(parsed_addon: Dict[str, Any], kind: str) -> Dict[str, Any]:
-    name = parsed_addon['description']
+    """Аддон-уровня заказа (не привязывается к проёму)."""
+    size = ''
     if parsed_addon.get('size_h') and parsed_addon.get('size_w'):
-        name = f"{name} ({parsed_addon['size_h']}×{parsed_addon['size_w']})"
+        size = f"{parsed_addon['size_h']}*{parsed_addon['size_w']}"
     return {
         'kind': kind,
-        'name': (name or '')[:500],
+        'name': (parsed_addon['description'] or '')[:500],
         'quantity': parsed_addon['qty'] or 1,
+        'size': size,
+        'opening_type': parsed_addon.get('opening_type', ''),
         'price': str(parsed_addon['price']) if parsed_addon['price'] is not None else None,
-        'comment_face': '',
-        'comment_back': '',
-        '_opening_type': parsed_addon.get('opening_type', ''),
+        'amount': str(parsed_addon['sum']) if parsed_addon.get('sum') is not None else None,
+        'comment': '',
     }
-
-
-def _smart_attach_addons(
-    door_items: List[Dict[str, Any]],
-    addons: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """
-    Умная привязка аддонов:
-      • аддоны с opening_type → пытаемся прицепить к двери того же open_type
-      • остальное → к первому OrderItem (общий список)
-    """
-    if not door_items:
-        # Нет дверей — создаём фейковый item для аддонов
-        door_items = [{
-            'opening_number': 1,
-            'room_name': '',
-            'model_name': 'Общие позиции',
-            'quantity': 1,
-            'price': None,
-            'amount': None,
-            'door_type': '',
-            'opening_type': '',
-            'door_height': None,
-            'door_width': None,
-            'addons': [],
-        }]
-
-    for item in door_items:
-        item.setdefault('addons', [])
-
-    for addon in addons:
-        op = addon.pop('_opening_type', '')
-        attached = False
-        if op:
-            # Ищем дверь того же open_type (преимущественно ту, у которой меньше всего аддонов того же kind)
-            candidates = [it for it in door_items if it.get('opening_type') == op]
-            if candidates:
-                target = min(candidates, key=lambda it: sum(1 for a in it['addons'] if a['kind'] == addon['kind']))
-                target['addons'].append(addon)
-                attached = True
-        if not attached:
-            door_items[0]['addons'].append(addon)
-    return door_items
 
 
 # ---------- public API ----------
@@ -430,6 +462,7 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
         'address': '',
         'manager_name': '',
         'items': [],
+        'addons': [],
     }
 
     try:
@@ -469,21 +502,33 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                 parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
                 # Полное описание = anchor description + continuation
                 full_desc = (parsed['description'] + ' ' + cont).strip()
-                door_items.append({
-                    'opening_number': len(door_items) + 1,
+                base = {
                     'room_name': _extract_room_from_description(full_desc),
                     'model_name': full_desc[:500],
-                    'quantity': parsed['qty'] or 1,
                     'price': str(parsed['price']) if parsed['price'] is not None else None,
-                    'amount': str(parsed['sum']) if parsed['sum'] is not None else None,
                     'door_type': _detect_door_type(full_desc),
                     'opening_type': parsed['opening_type'],
                     'door_height': parsed['door_height'],
                     'door_width': parsed['door_width'],
-                    'addons': [],
-                })
+                    'recommended_opening_height': parsed.get('rec_opening_height'),
+                    'recommended_opening_width': parsed.get('rec_opening_width'),
+                }
+                # Раскрываем количество в отдельные строки: qty=3 → 3 строки по qty=1
+                qty = max(1, int(parsed['qty'] or 1))
+                # amount на одну штуку = price; если qty=1, оставляем исходную сумму
+                per_unit_amount = (
+                    str(parsed['price']) if qty > 1 and parsed['price'] is not None
+                    else (str(parsed['sum']) if parsed['sum'] is not None else None)
+                )
+                for _ in range(qty):
+                    door_items.append({
+                        **base,
+                        'opening_number': len(door_items) + 1,
+                        'quantity': 1,
+                        'amount': per_unit_amount,
+                    })
 
-            # Аддоны (короба + наличники + добор + ...)
+            # Аддоны идут отдельным списком на уровне заказа
             all_addons: List[Dict[str, Any]] = []
             for sec_key, kind in ADDON_KIND_BY_SECTION.items():
                 section_text = sections.get(sec_key, '')
@@ -498,13 +543,12 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                         opening_text_part = anchor_fixed[m_size[-1].end():] if m_size else ''
                         opening_text_part += ' ' + cont
                         parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
-                    # Полное описание = anchor description + continuation (без хвостов размеров/чисел)
                     full_desc = (parsed['description'] + ' ' + cont).strip()
                     parsed['description'] = full_desc
                     all_addons.append(_build_addon_dict(parsed, kind))
 
-            # Умная привязка
-            result['items'] = _smart_attach_addons(door_items, all_addons)
+            result['items'] = door_items
+            result['addons'] = all_addons
 
             logger.info(
                 'parse_kp_pdf: клиент=%s, дверей=%d, аддонов=%d',

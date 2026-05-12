@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Salon, Order, OrderItem, OrderItemAddon, OrderAttachment,
+    Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder,
 )
 
@@ -13,10 +13,10 @@ class SalonAdmin(admin.ModelAdmin):
     list_editable = ('is_active',)
 
 
-class OrderItemAddonInline(admin.TabularInline):
-    model = OrderItemAddon
+class OrderAddonInline(admin.TabularInline):
+    model = OrderAddon
     extra = 0
-    fields = ('kind', 'name', 'quantity', 'price', 'comment_face', 'comment_back')
+    fields = ('position', 'kind', 'name', 'quantity', 'size', 'opening_type', 'price', 'amount', 'comment')
 
 
 class OrderItemInline(admin.TabularInline):
@@ -32,14 +32,20 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = ('status', 'salon__city', 'salon')
     search_fields = ('client_name', 'kp_number', 'address', 'contact_phone')
     raw_id_fields = ('manager',)
-    inlines = [OrderItemInline]
+    inlines = [OrderItemInline, OrderAddonInline]
     date_hierarchy = 'created_at'
 
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ('id', 'order', 'opening_number', 'room_name', 'model_name', 'quantity')
-    inlines = [OrderItemAddonInline]
+
+
+@admin.register(OrderAddon)
+class OrderAddonAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'kind', 'name', 'quantity', 'size', 'opening_type', 'price', 'amount')
+    list_filter = ('kind',)
+    search_fields = ('name', 'order__client_name')
 
 
 @admin.register(MeasurementRequest)

@@ -25,9 +25,14 @@ class Salon(models.Model):
 
 class OrderStatus(models.TextChoices):
     DRAFT = 'draft', 'Черновик'
-    ACTIVE = 'active', 'Активный'
+    ACTIVE = 'active', 'Создан'
     MEASUREMENT_REQUESTED = 'measurement_requested', 'Заявка на замер'
-    CANCELLED = 'cancelled', 'Отменён'
+    PAID = 'paid', 'Оплачен'
+    IN_PRODUCTION = 'in_production', 'В производстве'
+    ON_WAREHOUSE = 'on_warehouse', 'На складе'
+    SHIPPED = 'shipped', 'Отгружен'
+    COMPLETED = 'completed', 'Выполнен'
+    CANCELLED = 'cancelled', 'Не актуален'
 
 
 class ActivityKind(models.TextChoices):
@@ -151,6 +156,12 @@ class OrderItem(models.Model):
     door_width = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Ширина полотна, мм'
     )
+    recommended_opening_height = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Рекомендуемая высота проёма, мм'
+    )
+    recommended_opening_width = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Рекомендуемая ширина проёма, мм'
+    )
     notes = models.TextField(blank=True, verbose_name='Примечания')
     position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
 
@@ -175,22 +186,39 @@ class AddonKind(models.TextChoices):
     SERVICE = 'service', 'Услуга'
 
 
-class OrderItemAddon(models.Model):
-    item = models.ForeignKey(
-        OrderItem, on_delete=models.CASCADE, related_name='addons', verbose_name='Позиция'
+class OrderAddon(models.Model):
+    """
+    Сопутствующие позиции (короб, наличник, добор, петли, ручки, механизм,
+    стекло, доп. к заказу, услуги). Привязаны к заказу в целом — общим списком,
+    как они идут в КП. По ТЗ менеджер может удалять / добавлять / копировать.
+    """
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name='addons', verbose_name='Заказ'
     )
     kind = models.CharField(max_length=30, choices=AddonKind.choices, verbose_name='Вид')
     name = models.CharField(max_length=500, verbose_name='Наименование')
-    quantity = models.PositiveSmallIntegerField(default=1, verbose_name='Количество')
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1, verbose_name='Количество',
+        help_text='Поддерживаются дробные значения (наличников может быть 1.5)',
+    )
+    size = models.CharField(max_length=100, blank=True, verbose_name='Размер')
+    opening_type = models.CharField(
+        max_length=30, choices=OpeningType.choices, blank=True,
+        verbose_name='Открывание (для коробов)',
+    )
     price = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Цена'
     )
-    comment_face = models.TextField(blank=True, verbose_name='Комментарий лицо')
-    comment_back = models.TextField(blank=True, verbose_name='Комментарий торец')
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Сумма'
+    )
+    comment = models.TextField(blank=True, verbose_name='Комментарий')
+    position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
 
     class Meta:
-        verbose_name = 'Дополнение к позиции'
-        verbose_name_plural = 'Дополнения к позициям'
+        verbose_name = 'Сопутствующая позиция'
+        verbose_name_plural = 'Сопутствующие позиции'
+        ordering = ['position', 'id']
 
     def __str__(self):
         return f'{self.get_kind_display()} — {self.name}'

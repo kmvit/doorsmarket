@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from .models import (
-    Salon, Order, OrderItem, OrderItemAddon, OrderAttachment, ActivityKind,
+    Salon, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
 )
 
@@ -17,17 +17,21 @@ class SalonSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'city', 'city_name', 'address', 'phone', 'is_active']
 
 
-class OrderItemAddonSerializer(serializers.ModelSerializer):
+class OrderAddonSerializer(serializers.ModelSerializer):
     kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
 
     class Meta:
-        model = OrderItemAddon
-        fields = ['id', 'item', 'kind', 'kind_display', 'name', 'quantity', 'price', 'comment_face', 'comment_back']
+        model = OrderAddon
+        fields = [
+            'id', 'order', 'kind', 'kind_display', 'name', 'quantity',
+            'size', 'opening_type', 'opening_type_display',
+            'price', 'amount', 'comment', 'position',
+        ]
         read_only_fields = ['id']
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    addons = OrderItemAddonSerializer(many=True, read_only=True)
     door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
 
@@ -37,40 +41,34 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'id', 'order', 'opening_number', 'room_name', 'model_name',
             'quantity', 'price', 'amount', 'door_type', 'door_type_display',
             'opening_type', 'opening_type_display',
-            'door_height', 'door_width', 'notes', 'position', 'addons',
+            'door_height', 'door_width',
+            'recommended_opening_height', 'recommended_opening_width',
+            'notes', 'position',
         ]
         read_only_fields = ['id']
 
 
 class OrderItemWriteSerializer(serializers.ModelSerializer):
-    addons = OrderItemAddonSerializer(many=True, required=False)
-
     class Meta:
         model = OrderItem
         fields = [
             'id', 'opening_number', 'room_name', 'model_name',
             'quantity', 'price', 'amount', 'door_type', 'opening_type',
-            'door_height', 'door_width', 'notes', 'position', 'addons',
+            'door_height', 'door_width',
+            'recommended_opening_height', 'recommended_opening_width',
+            'notes', 'position',
         ]
         read_only_fields = ['id']
 
-    def create(self, validated_data):
-        addons_data = validated_data.pop('addons', [])
-        item = OrderItem.objects.create(**validated_data)
-        for addon_data in addons_data:
-            OrderItemAddon.objects.create(item=item, **addon_data)
-        return item
 
-    def update(self, instance, validated_data):
-        addons_data = validated_data.pop('addons', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        if addons_data is not None:
-            instance.addons.all().delete()
-            for addon_data in addons_data:
-                OrderItemAddon.objects.create(item=instance, **addon_data)
-        return instance
+class OrderAddonWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderAddon
+        fields = [
+            'id', 'kind', 'name', 'quantity', 'size', 'opening_type',
+            'price', 'amount', 'comment', 'position',
+        ]
+        read_only_fields = ['id']
 
 
 class OrderManagerSerializer(serializers.ModelSerializer):
@@ -105,6 +103,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     manager = OrderManagerSerializer(read_only=True)
     salon = SalonSerializer(read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
+    addons = OrderAddonSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     commercial_offer_url = serializers.SerializerMethodField()
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
@@ -116,7 +115,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'manager', 'salon',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'lift_available', 'stairs_available', 'floor_readiness', 'comment',
-            'status', 'status_display', 'commercial_offer_url', 'items',
+            'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'lift_impossible_warning',
         ]
@@ -137,37 +136,65 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemWriteSerializer(many=True, required=False)
+    addons = OrderAddonWriteSerializer(many=True, required=False)
+    next_action_text = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    next_action_due_at = serializers.DateTimeField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Order
         fields = [
             'salon', 'kp_number', 'kp_date', 'client_name', 'contact_phone',
             'address', 'lift_available', 'stairs_available', 'floor_readiness',
-            'comment', 'status', 'items',
+            'comment', 'status', 'items', 'addons',
+            'next_action_text', 'next_action_due_at',
         ]
+
+    def validate(self, attrs):
+        # При CREATE — «следующее действие» обязательно
+        if self.instance is None:
+            if not (attrs.get('next_action_text') or '').strip():
+                raise serializers.ValidationError({
+                    'next_action_text': 'Укажите следующее действие по заказу',
+                })
+            if not attrs.get('next_action_due_at'):
+                raise serializers.ValidationError({
+                    'next_action_due_at': 'Укажите срок следующего действия',
+                })
+        return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        addons_data = validated_data.pop('addons', [])
+        next_action_text = (validated_data.pop('next_action_text', '') or '').strip()
+        next_action_due = validated_data.pop('next_action_due_at', None)
         validated_data['manager'] = self.context['request'].user
         validated_data['last_activity_at'] = timezone.now()
         validated_data['last_activity_kind'] = ActivityKind.CREATED
         order = Order.objects.create(**validated_data)
         for idx, item_data in enumerate(items_data):
-            addons_data = item_data.pop('addons', [])
-            item = OrderItem.objects.create(order=order, position=idx, **item_data)
-            for addon_data in addons_data:
-                OrderItemAddon.objects.create(item=item, **addon_data)
+            OrderItem.objects.create(order=order, position=idx, **item_data)
+        for idx, addon_data in enumerate(addons_data):
+            addon_data.setdefault('position', idx)
+            OrderAddon.objects.create(order=order, **addon_data)
+        if next_action_text and next_action_due:
+            OrderActionReminder.objects.create(
+                order=order,
+                action_text=next_action_text[:500],
+                due_at=next_action_due,
+                created_by=self.context['request'].user,
+            )
         return order
 
     def update(self, instance, validated_data):
         items_data = validated_data.pop('items', None)
+        addons_data = validated_data.pop('addons', None)
         old_status = instance.status
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.last_activity_at = timezone.now()
         if 'status' in validated_data and validated_data['status'] != old_status:
             instance.last_activity_kind = ActivityKind.STATUS_CHANGED
-        elif items_data is not None:
+        elif items_data is not None or addons_data is not None:
             instance.last_activity_kind = ActivityKind.ITEMS_CHANGED
         else:
             instance.last_activity_kind = ActivityKind.UPDATED
@@ -175,10 +202,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if items_data is not None:
             instance.items.all().delete()
             for idx, item_data in enumerate(items_data):
-                addons_data = item_data.pop('addons', [])
-                item = OrderItem.objects.create(order=instance, position=idx, **item_data)
-                for addon_data in addons_data:
-                    OrderItemAddon.objects.create(item=item, **addon_data)
+                OrderItem.objects.create(order=instance, position=idx, **item_data)
+        if addons_data is not None:
+            instance.addons.all().delete()
+            for idx, addon_data in enumerate(addons_data):
+                addon_data.setdefault('position', idx)
+                OrderAddon.objects.create(order=instance, **addon_data)
         return instance
 
 

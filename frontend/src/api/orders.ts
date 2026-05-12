@@ -64,7 +64,14 @@ export const ordersAPI = {
     return response.data
   },
 
-  createFromParsed: async (data: ParsedKpData & { salon: number; comment?: string }): Promise<Order> => {
+  createFromParsed: async (
+    data: ParsedKpData & {
+      salon: number
+      comment?: string
+      next_action_text: string
+      next_action_due_at: string
+    },
+  ): Promise<Order> => {
     const response = await apiClient.post('/orders/create_from_parsed/', data)
     return response.data
   },
@@ -117,8 +124,15 @@ export const remindersAPI = {
     return response.data
   },
 
-  markDone: async (id: number): Promise<OrderActionReminder> => {
-    const response = await apiClient.post(`/action-reminders/${id}/mark_done/`)
+  markDone: async (
+    id: number,
+    options?: {
+      new_status?: string
+      next_action_text?: string
+      next_action_due_at?: string
+    },
+  ): Promise<OrderActionReminder & { next_reminder?: OrderActionReminder }> => {
+    const response = await apiClient.post(`/action-reminders/${id}/mark_done/`, options || {})
     return response.data
   },
 

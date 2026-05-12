@@ -1,7 +1,10 @@
 import { useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ordersAPI } from '../../api/orders'
-import { Salon, ParsedKpData, ParsedKpItem, ADDON_KIND_DISPLAY, AddonKind } from '../../types/orders'
+import {
+  Salon, ParsedKpData, ParsedKpItem, ParsedKpAddon,
+  ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY,
+} from '../../types/orders'
 
 interface Props {
   salons: Salon[]
@@ -17,7 +20,8 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
   const [error, setError] = useState<string | null>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const [expandedAddons, setExpandedAddons] = useState<Set<number>>(new Set())
+  const [nextActionText, setNextActionText] = useState('')
+  const [nextActionDueAt, setNextActionDueAt] = useState('')
 
   const handleFile = (f: File | null) => {
     setFile(f)
@@ -35,8 +39,8 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
     try {
       const data = await ordersAPI.parseKp(file)
       setParsed(data)
-      if (!data.items?.length) {
-        setError('Позиции в PDF не распознаны. Можно поправить вручную или создать заказ без позиций.')
+      if (!data.items?.length && !data.addons?.length) {
+        setError('Содержимое PDF не распознано. Попробуйте другой файл или создайте заказ вручную.')
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Не удалось распарсить PDF')
@@ -45,60 +49,73 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
     }
   }
 
+  // ---- items ----
   const updateItem = (idx: number, field: keyof ParsedKpItem, value: any) => {
     if (!parsed) return
     const items = [...parsed.items]
     items[idx] = { ...items[idx], [field]: value }
     setParsed({ ...parsed, items })
   }
-
-  const removeItem = (idx: number) => {
+  const removeItem = (idx: number) =>
+    parsed && setParsed({ ...parsed, items: parsed.items.filter((_, i) => i !== idx) })
+  const copyItem = (idx: number) => {
     if (!parsed) return
-    setParsed({ ...parsed, items: parsed.items.filter((_, i) => i !== idx) })
-  }
-
-  const removeAddon = (itemIdx: number, addonIdx: number) => {
-    if (!parsed) return
+    const copy = { ...parsed.items[idx] }
     const items = [...parsed.items]
-    const item = { ...items[itemIdx] }
-    item.addons = (item.addons || []).filter((_: any, i: number) => i !== addonIdx)
-    items[itemIdx] = item
+    items.splice(idx + 1, 0, copy)
     setParsed({ ...parsed, items })
   }
-
-  const moveAddon = (fromItemIdx: number, addonIdx: number, toItemIdx: number) => {
+  const addItem = () => {
     if (!parsed) return
-    if (fromItemIdx === toItemIdx) return
-    const items = [...parsed.items]
-    const fromItem = { ...items[fromItemIdx] }
-    const toItem = { ...items[toItemIdx] }
-    const addon = (fromItem.addons || [])[addonIdx]
-    if (!addon) return
-    fromItem.addons = (fromItem.addons || []).filter((_: any, i: number) => i !== addonIdx)
-    toItem.addons = [...(toItem.addons || []), addon]
-    items[fromItemIdx] = fromItem
-    items[toItemIdx] = toItem
-    setParsed({ ...parsed, items })
+    const max = parsed.items.reduce((m, it) => Math.max(m, it.opening_number || 0), 0)
+    setParsed({
+      ...parsed,
+      items: [...parsed.items, {
+        opening_number: max + 1, room_name: '', model_name: '', quantity: 1,
+        price: null, amount: null, door_type: '', opening_type: '',
+        door_height: null, door_width: null,
+        recommended_opening_height: null, recommended_opening_width: null,
+        notes: '',
+      }],
+    })
   }
 
-  const toggleExpanded = (idx: number) => {
-    const next = new Set(expandedAddons)
-    if (next.has(idx)) next.delete(idx)
-    else next.add(idx)
-    setExpandedAddons(next)
+  // ---- addons ----
+  const updateAddon = (idx: number, field: keyof ParsedKpAddon, value: any) => {
+    if (!parsed) return
+    const addons = [...parsed.addons]
+    addons[idx] = { ...addons[idx], [field]: value }
+    setParsed({ ...parsed, addons })
+  }
+  const removeAddon = (idx: number) =>
+    parsed && setParsed({ ...parsed, addons: parsed.addons.filter((_, i) => i !== idx) })
+  const copyAddon = (idx: number) => {
+    if (!parsed) return
+    const copy = { ...parsed.addons[idx] }
+    const addons = [...parsed.addons]
+    addons.splice(idx + 1, 0, copy)
+    setParsed({ ...parsed, addons })
+  }
+  const addAddon = (kind: AddonKind = 'extra') => {
+    if (!parsed) return
+    setParsed({
+      ...parsed,
+      addons: [...parsed.addons, {
+        kind, name: '', quantity: 1, size: '', opening_type: '',
+        price: null, amount: null, comment: '',
+      }],
+    })
   }
 
   const updateHeader = (field: keyof ParsedKpData, value: any) => {
-    if (!parsed) return
-    setParsed({ ...parsed, [field]: value })
+    parsed && setParsed({ ...parsed, [field]: value })
   }
 
   const handleCreate = async () => {
     if (!parsed) return
-    if (!salonId) {
-      setError('Выберите салон')
-      return
-    }
+    if (!salonId) { setError('Выберите салон'); return }
+    if (!nextActionText.trim()) { setError('Укажите следующее действие по заказу'); return }
+    if (!nextActionDueAt) { setError('Укажите срок следующего действия'); return }
     setIsCreating(true)
     setError(null)
     try {
@@ -106,20 +123,19 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
         ...parsed,
         salon: salonId,
         comment,
-      })
+        next_action_text: nextActionText.trim(),
+        next_action_due_at: new Date(nextActionDueAt).toISOString(),
+      } as any)
       navigate(`/orders/${order.id}`)
     } catch (err: any) {
       const detail = err.response?.data
-      if (typeof detail === 'object') {
-        setError(Object.values(detail).flat().join(', '))
-      } else {
-        setError(err.message || 'Ошибка создания')
-      }
+      setError(typeof detail === 'object' ? Object.values(detail).flat().join(', ') : (err.message || 'Ошибка создания'))
       setIsCreating(false)
     }
   }
 
   const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
+  const cellInput = 'w-full rounded border-gray-300 text-sm'
 
   return (
     <div className="space-y-4">
@@ -151,24 +167,17 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
         {file && <p className="text-xs text-gray-500 mt-2">Выбран: {file.name}</p>}
       </div>
 
-      {/* Шаг 2: превью + редактирование */}
       {parsed && (
         <>
+          {/* Шапка */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">2. Шапка (можно поправить)</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Салон *</label>
-                <select
-                  value={salonId}
-                  onChange={(e) => setSalonId(Number(e.target.value))}
-                  className={inputCls}
-                  required
-                >
+                <select value={salonId} onChange={(e) => setSalonId(Number(e.target.value))} className={inputCls} required>
                   <option value={0}>— Выберите салон —</option>
-                  {salons.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.city_name})</option>
-                  ))}
+                  {salons.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.city_name})</option>)}
                 </select>
               </div>
               <div>
@@ -192,16 +201,20 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                 <input type="text" value={parsed.address} onChange={(e) => updateHeader('address', e.target.value)} className={inputCls} />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий к заказу</label>
                 <textarea value={comment} onChange={(e) => setComment(e.target.value)} className={inputCls} rows={2} />
               </div>
             </div>
           </div>
 
+          {/* Позиции (двери) */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
-              3. Позиции (распознано: {parsed.items.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                3. Позиции — двери и панели ({parsed.items.length})
+              </h2>
+              <button type="button" onClick={addItem} className="text-sm text-primary-600 hover:underline">+ Добавить проём</button>
+            </div>
             {parsed.items.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4">Позиции не распознаны</p>
             ) : (
@@ -209,120 +222,186 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-2 py-2 text-left text-xs">№</th>
-                      <th className="px-2 py-2 text-left text-xs">Помещение</th>
-                      <th className="px-2 py-2 text-left text-xs">Модель</th>
-                      <th className="px-2 py-2 text-left text-xs w-16">Кол-во</th>
-                      <th className="px-2 py-2 text-right text-xs">Цена</th>
-                      <th className="px-2 py-2 text-right text-xs">Сумма</th>
-                      <th className="px-2 py-2 text-left text-xs w-16">Откр.</th>
-                      <th className="px-2 py-2 text-left text-xs w-16">Выс.</th>
-                      <th className="px-2 py-2 text-left text-xs w-16">Шир.</th>
-                      <th className="px-2 py-2 w-8"></th>
+                      <th className="px-2 py-2 text-left text-xs w-12">№</th>
+                      <th className="px-2 py-2 text-left text-xs w-32">Помещение</th>
+                      <th className="px-2 py-2 text-left text-xs min-w-[260px]">Модель</th>
+                      <th className="px-2 py-2 text-left text-xs w-16">Кол.</th>
+                      <th className="px-2 py-2 text-right text-xs w-20">Цена</th>
+                      <th className="px-2 py-2 text-right text-xs w-20">Сумма</th>
+                      <th className="px-2 py-2 text-left text-xs w-28">Тип двери</th>
+                      <th className="px-2 py-2 text-left text-xs w-24">Откр.</th>
+                      <th className="px-2 py-2 text-left text-xs w-16">Выс. полотна</th>
+                      <th className="px-2 py-2 text-left text-xs w-16">Шир. полотна</th>
+                      <th className="px-2 py-2 text-left text-xs w-16">Рек. выс. проёма</th>
+                      <th className="px-2 py-2 text-left text-xs w-16">Рек. шир. проёма</th>
+                      <th className="px-2 py-2 w-16"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {parsed.items.map((item, idx) => {
-                      const addonsCount = (item.addons || []).length
-                      const isExpanded = expandedAddons.has(idx)
-                      return (
+                    {parsed.items.map((item, idx) => (
                       <Fragment key={idx}>
                       <tr>
-                        <td className="px-2 py-1.5"><input type="number" value={item.opening_number} onChange={(e) => updateItem(idx, 'opening_number', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5"><input type="text" value={item.room_name} onChange={(e) => updateItem(idx, 'room_name', e.target.value)} className="w-full rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5">
-                          <input type="text" value={item.model_name} onChange={(e) => updateItem(idx, 'model_name', e.target.value)} className="w-full rounded border-gray-300 text-sm" />
-                          {addonsCount > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(idx)}
-                              className="mt-1 text-xs text-primary-600 hover:underline"
-                            >
-                              {isExpanded ? '▾' : '▸'} {addonsCount} {addonsCount === 1 ? 'аддон' : addonsCount < 5 ? 'аддона' : 'аддонов'}
-                            </button>
-                          )}
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.opening_number} onChange={(e) => updateItem(idx, 'opening_number', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={item.room_name} onChange={(e) => updateItem(idx, 'room_name', e.target.value)} className={cellInput} /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <textarea value={item.model_name} onChange={(e) => updateItem(idx, 'model_name', e.target.value)} rows={2} className="w-full min-w-[300px] rounded border-gray-300 text-sm leading-snug resize-y whitespace-pre-wrap break-words" />
                         </td>
-                        <td className="px-2 py-1.5"><input type="number" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5"><input type="text" value={item.price ?? ''} onChange={(e) => updateItem(idx, 'price', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
-                        <td className="px-2 py-1.5"><input type="text" value={item.amount ?? ''} onChange={(e) => updateItem(idx, 'amount', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
-                        <td className="px-2 py-1.5">
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={item.price ?? ''} onChange={(e) => updateItem(idx, 'price', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={item.amount ?? ''} onChange={(e) => updateItem(idx, 'amount', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <select value={item.door_type} onChange={(e) => updateItem(idx, 'door_type', e.target.value)} className="rounded border-gray-300 text-sm">
+                            <option value="">—</option>
+                            {Object.entries(DOOR_TYPE_DISPLAY).map(([k, label]) => (
+                              <option key={k} value={k}>{label}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5 align-top">
                           <select value={item.opening_type} onChange={(e) => updateItem(idx, 'opening_type', e.target.value)} className="rounded border-gray-300 text-sm">
                             <option value="">—</option>
                             <option value="A">A</option>
                             <option value="B">B</option>
-                            <option value="B_INVERSO">B Inverso</option>
+                            <option value="B_INVERSO">B Inv.</option>
                             <option value="C">C</option>
                             <option value="D">D</option>
-                            <option value="D_INVERSO">D Inverso</option>
+                            <option value="D_INVERSO">D Inv.</option>
                           </select>
                         </td>
-                        <td className="px-2 py-1.5"><input type="number" value={item.door_height ?? ''} onChange={(e) => updateItem(idx, 'door_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5"><input type="number" value={item.door_width ?? ''} onChange={(e) => updateItem(idx, 'door_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5">
-                          <button type="button" onClick={() => removeItem(idx)} className="text-gray-400 hover:text-red-500" title="Удалить">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.door_height ?? ''} onChange={(e) => updateItem(idx, 'door_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.door_width ?? ''} onChange={(e) => updateItem(idx, 'door_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.recommended_opening_height ?? ''} onChange={(e) => updateItem(idx, 'recommended_opening_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.recommended_opening_width ?? ''} onChange={(e) => updateItem(idx, 'recommended_opening_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => copyItem(idx)} className="text-gray-400 hover:text-primary-600" title="Копировать">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            </button>
+                            <button type="button" onClick={() => removeItem(idx)} className="text-gray-400 hover:text-red-500" title="Удалить">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                      {isExpanded && addonsCount > 0 && (
-                        <tr className="bg-gray-50">
-                          <td colSpan={10} className="px-3 py-2">
-                            <div className="text-xs text-gray-500 mb-1.5">Аддоны проёма #{item.opening_number}:</div>
-                            <div className="space-y-1">
-                              {(item.addons || []).map((addon: any, ai: number) => (
-                                <div key={ai} className="flex items-center gap-2 text-xs">
-                                  <span className="inline-flex px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium min-w-[80px]">
-                                    {ADDON_KIND_DISPLAY[addon.kind as AddonKind] || addon.kind}
-                                  </span>
-                                  <span className="flex-1 text-gray-700">{addon.name}</span>
-                                  <span className="text-gray-500">{addon.quantity} шт</span>
-                                  {addon.price && <span className="text-gray-500">×{addon.price}₽</span>}
-                                  {parsed.items.length > 1 && (
-                                    <select
-                                      value=""
-                                      onChange={(e) => {
-                                        if (e.target.value) {
-                                          moveAddon(idx, ai, Number(e.target.value))
-                                        }
-                                      }}
-                                      className="rounded border-gray-300 text-xs"
-                                      title="Перенести к другому проёму"
-                                    >
-                                      <option value="">→ перенести</option>
-                                      {parsed.items.map((it, i) => (
-                                        i !== idx && (
-                                          <option key={i} value={i}>
-                                            #{it.opening_number} {it.room_name || it.model_name?.slice(0, 30)}
-                                          </option>
-                                        )
-                                      ))}
-                                    </select>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => removeAddon(idx, ai)}
-                                    className="text-gray-400 hover:text-red-500"
-                                    title="Удалить"
-                                  >
-                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
+                      <tr className="bg-gray-50/50">
+                        <td colSpan={2} className="px-2 pb-2 text-xs text-right text-gray-500 align-top pt-1">Примечание по проёму:</td>
+                        <td colSpan={11} className="px-2 pb-2">
+                          <textarea
+                            value={item.notes ?? ''}
+                            onChange={(e) => updateItem(idx, 'notes' as keyof ParsedKpItem, e.target.value)}
+                            rows={1}
+                            placeholder="Комментарий по этой двери..."
+                            className="w-full rounded border-gray-200 text-xs leading-snug resize-y"
+                          />
+                        </td>
+                      </tr>
                       </Fragment>
-                      )
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
+          </div>
+
+          {/* Сопутствующие позиции (аддоны) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                4. Сопутствующие позиции — короба, наличники, добор, петли, услуги ({parsed.addons.length})
+              </h2>
+              <button type="button" onClick={() => addAddon('extra')} className="text-sm text-primary-600 hover:underline">+ Добавить</button>
+            </div>
+            {parsed.addons.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Сопутствующих позиций не распознано</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-2 text-left text-xs w-32">Тип</th>
+                      <th className="px-2 py-2 text-left text-xs min-w-[280px]">Наименование</th>
+                      <th className="px-2 py-2 text-left text-xs w-20">Кол.</th>
+                      <th className="px-2 py-2 text-left text-xs w-24">Размер</th>
+                      <th className="px-2 py-2 text-left text-xs w-20">Откр.</th>
+                      <th className="px-2 py-2 text-right text-xs w-20">Цена</th>
+                      <th className="px-2 py-2 text-right text-xs w-20">Сумма</th>
+                      <th className="px-2 py-2 w-16"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {parsed.addons.map((addon, idx) => (
+                      <tr key={idx}>
+                        <td className="px-2 py-1.5 align-top">
+                          <select value={addon.kind} onChange={(e) => updateAddon(idx, 'kind', e.target.value as AddonKind)} className="rounded border-gray-300 text-sm">
+                            {(Object.keys(ADDON_KIND_DISPLAY) as AddonKind[]).map((k) => (
+                              <option key={k} value={k}>{ADDON_KIND_DISPLAY[k]}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5 align-top">
+                          <textarea value={addon.name} onChange={(e) => updateAddon(idx, 'name', e.target.value)} rows={2} className="w-full min-w-[280px] rounded border-gray-300 text-sm leading-snug resize-y whitespace-pre-wrap break-words" />
+                        </td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={addon.quantity ?? ''} onChange={(e) => updateAddon(idx, 'quantity', e.target.value)} className="w-16 rounded border-gray-300 text-sm text-right" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={addon.size} onChange={(e) => updateAddon(idx, 'size', e.target.value)} className="w-24 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <select value={addon.opening_type} onChange={(e) => updateAddon(idx, 'opening_type', e.target.value as OpeningType)} className="rounded border-gray-300 text-sm">
+                            <option value="">—</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="B_INVERSO">B Inv.</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="D_INVERSO">D Inv.</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={addon.price ?? ''} onChange={(e) => updateAddon(idx, 'price', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="text" value={addon.amount ?? ''} onChange={(e) => updateAddon(idx, 'amount', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => copyAddon(idx)} className="text-gray-400 hover:text-primary-600" title="Копировать">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            </button>
+                            <button type="button" onClick={() => removeAddon(idx)} className="text-gray-400 hover:text-red-500" title="Удалить">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Следующее действие (обязательно) */}
+          <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-5">
+            <h2 className="text-sm font-semibold text-amber-800 uppercase tracking-wider mb-3">
+              5. Следующее действие * <span className="font-normal text-xs normal-case text-amber-700">— что и когда нужно сделать по заказу</span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-amber-900 mb-1">Что сделать *</label>
+                <input
+                  type="text"
+                  value={nextActionText}
+                  onChange={(e) => setNextActionText(e.target.value)}
+                  className={inputCls}
+                  placeholder="Например: Позвонить клиенту, уточнить детали"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-amber-900 mb-1">Когда (дата и время) *</label>
+                <input
+                  type="datetime-local"
+                  value={nextActionDueAt}
+                  onChange={(e) => setNextActionDueAt(e.target.value)}
+                  className={inputCls}
+                  required
+                />
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-end">

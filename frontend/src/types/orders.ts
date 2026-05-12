@@ -8,19 +8,32 @@ export interface Salon {
   is_active: boolean
 }
 
-export type OrderStatus = 'draft' | 'active' | 'measurement_requested' | 'cancelled'
+export type OrderStatus =
+  | 'draft' | 'active' | 'measurement_requested'
+  | 'paid' | 'in_production' | 'on_warehouse' | 'shipped' | 'completed'
+  | 'cancelled'
 
 export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   draft: 'Черновик',
-  active: 'Активный',
+  active: 'Создан',
   measurement_requested: 'Заявка на замер',
-  cancelled: 'Отменён',
+  paid: 'Оплачен',
+  in_production: 'В производстве',
+  on_warehouse: 'На складе',
+  shipped: 'Отгружен',
+  completed: 'Выполнен',
+  cancelled: 'Не актуален',
 }
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   draft: 'bg-gray-100 text-gray-700',
   active: 'bg-green-100 text-green-700',
   measurement_requested: 'bg-blue-100 text-blue-700',
+  paid: 'bg-emerald-100 text-emerald-700',
+  in_production: 'bg-orange-100 text-orange-700',
+  on_warehouse: 'bg-cyan-100 text-cyan-700',
+  shipped: 'bg-indigo-100 text-indigo-700',
+  completed: 'bg-green-200 text-green-800',
   cancelled: 'bg-red-100 text-red-700',
 }
 
@@ -83,16 +96,32 @@ export const ADDON_KIND_DISPLAY: Record<AddonKind, string> = {
   service: 'Услуга',
 }
 
-export interface OrderItemAddon {
+export interface OrderAddon {
   id: number
-  item: number
+  order: number
   kind: AddonKind
   kind_display: string
   name: string
-  quantity: number
-  price: number | null
-  comment_face: string
-  comment_back: string
+  quantity: number | string
+  size: string
+  opening_type: OpeningType | ''
+  opening_type_display: string
+  price: number | string | null
+  amount: number | string | null
+  comment: string
+  position: number
+}
+
+export interface CreateOrderAddonData {
+  kind: AddonKind
+  name: string
+  quantity?: number | string
+  size?: string
+  opening_type?: OpeningType | ''
+  price?: number | string | null
+  amount?: number | string | null
+  comment?: string
+  position?: number
 }
 
 export interface OrderItem {
@@ -110,9 +139,10 @@ export interface OrderItem {
   opening_type_display: string
   door_height: number | null
   door_width: number | null
+  recommended_opening_height: number | null
+  recommended_opening_width: number | null
   notes: string
   position: number
-  addons: OrderItemAddon[]
 }
 
 export interface OrderManager {
@@ -142,6 +172,7 @@ export interface Order {
   status_display: string
   commercial_offer_url: string | null
   items?: OrderItem[]
+  addons?: OrderAddon[]
   last_activity_at: string | null
   last_activity_kind: ActivityKind
   last_activity_kind_display: string
@@ -167,15 +198,6 @@ export interface OrderListItem {
   last_activity_kind_display: string
 }
 
-export interface CreateOrderItemAddonData {
-  kind: AddonKind
-  name: string
-  quantity: number
-  price?: number | null
-  comment_face?: string
-  comment_back?: string
-}
-
 export interface CreateOrderItemData {
   opening_number: number
   room_name?: string
@@ -187,9 +209,10 @@ export interface CreateOrderItemData {
   opening_type?: OpeningType
   door_height?: number | null
   door_width?: number | null
+  recommended_opening_height?: number | null
+  recommended_opening_width?: number | null
   notes?: string
   position?: number
-  addons?: CreateOrderItemAddonData[]
 }
 
 export interface CreateOrderData {
@@ -205,6 +228,7 @@ export interface CreateOrderData {
   comment?: string
   status?: OrderStatus
   items?: CreateOrderItemData[]
+  addons?: CreateOrderAddonData[]
 }
 
 export interface OrderFilters {
@@ -303,7 +327,20 @@ export interface ParsedKpItem {
   opening_type: string
   door_height: number | null
   door_width: number | null
-  addons: any[]
+  recommended_opening_height: number | null
+  recommended_opening_width: number | null
+  notes?: string
+}
+
+export interface ParsedKpAddon {
+  kind: AddonKind
+  name: string
+  quantity: string | number
+  size: string
+  opening_type: string
+  price: string | number | null
+  amount: string | number | null
+  comment: string
 }
 
 export interface ParsedKpData {
@@ -314,4 +351,5 @@ export interface ParsedKpData {
   address: string
   manager_name: string
   items: ParsedKpItem[]
+  addons: ParsedKpAddon[]
 }

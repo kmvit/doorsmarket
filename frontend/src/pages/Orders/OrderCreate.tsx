@@ -5,6 +5,7 @@ import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { Salon, CreateOrderData, OrderStatus } from '../../types/orders'
 import OrderItemsEditor from './OrderItemsEditor'
+import OrderAddonsEditor from './OrderAddonsEditor'
 import KpUploadTab from './KpUploadTab'
 
 type CreateTab = 'manual' | 'kp'
@@ -16,6 +17,8 @@ const OrderCreate = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<CreateTab>('manual')
+  const [nextActionText, setNextActionText] = useState('')
+  const [nextActionDueAt, setNextActionDueAt] = useState('')
 
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
@@ -28,8 +31,9 @@ const OrderCreate = () => {
     stairs_available: null,
     floor_readiness: '',
     comment: '',
-    status: 'draft',
+    status: 'active',
     items: [],
+    addons: [],
   })
 
   useEffect(() => {
@@ -59,10 +63,18 @@ const OrderCreate = () => {
       setError('Укажите имя клиента')
       return
     }
+    if (!nextActionText.trim() || !nextActionDueAt) {
+      setError('Укажите следующее действие и его срок')
+      return
+    }
     setIsSubmitting(true)
     setError(null)
     try {
-      const order = await ordersAPI.create(form)
+      const order = await ordersAPI.create({
+        ...form,
+        next_action_text: nextActionText.trim(),
+        next_action_due_at: new Date(nextActionDueAt).toISOString(),
+      } as any)
       navigate(`/orders/${order.id}`)
     } catch (err: any) {
       const detail = err.response?.data
@@ -139,7 +151,7 @@ const OrderCreate = () => {
                 className={inputCls}
               >
                 <option value="draft">Черновик</option>
-                <option value="active">Активный</option>
+                <option value="active">Создан</option>
               </select>
             </div>
             <div>
@@ -253,11 +265,52 @@ const OrderCreate = () => {
 
         {/* Позиции */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Позиции</h2>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Позиции — двери и панели</h2>
           <OrderItemsEditor
             items={form.items || []}
             onChange={(items) => setField('items', items)}
           />
+        </div>
+
+        {/* Сопутствующие позиции */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
+            Сопутствующие позиции
+          </h2>
+          <OrderAddonsEditor
+            addons={form.addons || []}
+            onChange={(addons) => setField('addons', addons)}
+          />
+        </div>
+
+        {/* Следующее действие (обязательно) */}
+        <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-5">
+          <h2 className="text-sm font-semibold text-amber-800 uppercase tracking-wider mb-3">
+            Следующее действие * <span className="font-normal text-xs normal-case text-amber-700">— что и когда нужно сделать по заказу</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-amber-900 mb-1">Что сделать *</label>
+              <input
+                type="text"
+                value={nextActionText}
+                onChange={(e) => setNextActionText(e.target.value)}
+                className={inputCls}
+                placeholder="Например: Позвонить клиенту, уточнить детали"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-amber-900 mb-1">Когда *</label>
+              <input
+                type="datetime-local"
+                value={nextActionDueAt}
+                onChange={(e) => setNextActionDueAt(e.target.value)}
+                className={inputCls}
+                required
+              />
+            </div>
+          </div>
         </div>
 
         {/* Кнопки */}

@@ -95,7 +95,7 @@ const OrderList = () => {
           >
             <option value="">Все статусы</option>
             <option value="draft">Черновик</option>
-            <option value="active">Активный</option>
+            <option value="active">Создан</option>
             <option value="cancelled">Отменён</option>
           </select>
         </div>

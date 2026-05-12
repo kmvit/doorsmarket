@@ -60,7 +60,7 @@ const Workshop = () => {
           <label className="block text-xs font-medium text-gray-600 mb-1">Поиск</label>
           <input
             type="text"
-            placeholder="Клиент, адрес, № КП, телефон, комментарий..."
+            placeholder="По любому полю: клиент, адрес, № КП, телефон, комментарий, ID, менеджер, действие…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border-gray-300 shadow-sm text-sm"
@@ -75,9 +75,14 @@ const Workshop = () => {
           >
             <option value="">Все</option>
             <option value="draft">Черновик</option>
-            <option value="active">Активный</option>
+            <option value="active">Создан</option>
             <option value="measurement_requested">Заявка на замер</option>
-            <option value="cancelled">Отменён</option>
+            <option value="paid">Оплачен</option>
+            <option value="in_production">В производстве</option>
+            <option value="on_warehouse">На складе</option>
+            <option value="shipped">Отгружен</option>
+            <option value="completed">Выполнен</option>
+            <option value="cancelled">Не актуален</option>
           </select>
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">

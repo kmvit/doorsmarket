@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
-import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind } from '../../types/orders'
 import NextActionBlock from './NextActionBlock'
 import MeasurementRequestForm from './MeasurementRequestForm'
 
@@ -343,7 +343,7 @@ const OrderDetail = () => {
             </dl>
           </div>
         )}
-        <NextActionBlock orderId={order.id} canEdit={canEdit} />
+        <NextActionBlock orderId={order.id} canEdit={canEdit} onStatusChanged={() => reloadOrder()} />
       </div>
 
       {/* Позиции */}
@@ -369,54 +369,100 @@ const OrderDetail = () => {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Проём</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">№</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Помещение</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Модель</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Размер (ВxШ)</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Кол-во</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Кол.</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Цена</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип двери</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Откр.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Выс. полотна</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Шир. полотна</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. выс. проёма</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. шир. проёма</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {order.items.map((item) => (
-                  <>
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium">{item.opening_number}</td>
-                      <td className="px-3 py-2 text-gray-600">{item.room_name || '—'}</td>
-                      <td className="px-3 py-2 text-gray-900 max-w-[200px]">{item.model_name || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">
-                        <div>{item.door_type ? DOOR_TYPE_DISPLAY[item.door_type] : '—'}</div>
-                        <div className="text-xs text-gray-400" title={item.opening_type ? OPENING_TYPE_DISPLAY[item.opening_type] : ''}>
-                          {item.opening_type ? OPENING_TYPE_SHORT[item.opening_type] : ''}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">
-                        {item.door_height && item.door_width ? `${item.door_height} × ${item.door_width}` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right">{item.quantity}</td>
-                      <td className="px-3 py-2 text-right">{item.price != null ? Number(item.price).toLocaleString('ru-RU') : '—'}</td>
-                      <td className="px-3 py-2 text-right font-medium">{item.amount != null ? Number(item.amount).toLocaleString('ru-RU') : '—'}</td>
+                  <Fragment key={item.id}>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-medium align-top">{item.opening_number}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top">{item.room_name || '—'}</td>
+                    <td className="px-3 py-2 text-gray-900 align-top whitespace-pre-wrap break-words max-w-[400px]">{item.model_name || '—'}</td>
+                    <td className="px-3 py-2 text-right align-top">{item.quantity}</td>
+                    <td className="px-3 py-2 text-right align-top">{item.price != null ? Number(item.price).toLocaleString('ru-RU') : '—'}</td>
+                    <td className="px-3 py-2 text-right font-medium align-top">{item.amount != null ? Number(item.amount).toLocaleString('ru-RU') : '—'}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top">{item.door_type ? DOOR_TYPE_DISPLAY[item.door_type] : '—'}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top" title={item.opening_type ? OPENING_TYPE_DISPLAY[item.opening_type] : ''}>
+                      {item.opening_type ? OPENING_TYPE_SHORT[item.opening_type] : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_height ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_width ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_height ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_width ?? '—'}</td>
+                  </tr>
+                  {item.notes && (
+                    <tr className="bg-amber-50/40">
+                      <td colSpan={2} className="px-3 py-1 text-xs text-right text-amber-700">Примечание:</td>
+                      <td colSpan={10} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap">{item.notes}</td>
                     </tr>
-                    {item.addons?.map((addon) => (
-                      <tr key={`addon-${addon.id}`} className="bg-gray-50 text-xs text-gray-500">
-                        <td />
-                        <td className="px-3 py-1" colSpan={2}>↳ {addon.kind_display}: {addon.name}</td>
-                        <td />
-                        <td />
-                        <td className="px-3 py-1 text-right">{addon.quantity}</td>
-                        <td className="px-3 py-1 text-right">{addon.price != null ? Number(addon.price).toLocaleString('ru-RU') : '—'}</td>
-                        <td />
-                      </tr>
-                    ))}
-                  </>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Сопутствующие позиции */}
+      {order.addons && order.addons.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+              Сопутствующие позиции ({order.addons.length})
+            </h2>
+            {canEdit && (
+              <Link to={`/orders/${order.id}/edit`} className="text-sm text-primary-600 hover:underline">
+                Редактировать
+              </Link>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Наименование</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Кол.</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Размер</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Откр.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Цена</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {order.addons.map((addon) => (
+                  <tr key={addon.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 align-top">
+                      <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">
+                        {ADDON_KIND_DISPLAY[addon.kind as AddonKind] || addon.kind_display || addon.kind}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-900 align-top whitespace-pre-wrap break-words max-w-[400px]">{addon.name || '—'}</td>
+                    <td className="px-3 py-2 text-right align-top">{addon.quantity}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top">{addon.size || '—'}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top">{addon.opening_type ? OPENING_TYPE_SHORT[addon.opening_type] : '—'}</td>
+                    <td className="px-3 py-2 text-right align-top">{addon.price != null ? Number(addon.price).toLocaleString('ru-RU') : '—'}</td>
+                    <td className="px-3 py-2 text-right font-medium align-top">{addon.amount != null ? Number(addon.amount).toLocaleString('ru-RU') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showMrModal && (
         <MeasurementRequestForm

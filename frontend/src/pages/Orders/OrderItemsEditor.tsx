@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { CreateOrderItemData, DoorType, OpeningType, OPENING_TYPE_DISPLAY } from '../../types/orders'
 
 interface Props {
@@ -16,8 +17,9 @@ const emptyItem = (): CreateOrderItemData => ({
   opening_type: '',
   door_height: null,
   door_width: null,
+  recommended_opening_height: null,
+  recommended_opening_width: null,
   notes: '',
-  addons: [],
 })
 
 const selectCls = 'rounded border-gray-300 text-sm w-full focus:border-primary-500 focus:ring-primary-500 py-1'
@@ -30,7 +32,7 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
   }
 
   const copyItem = (idx: number) => {
-    const copy = { ...items[idx], addons: [...(items[idx].addons || [])] }
+    const copy = { ...items[idx] }
     const newItems = [...items]
     newItems.splice(idx + 1, 0, copy)
     onChange(newItems)
@@ -84,8 +86,10 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">Модель</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-24">Тип двери</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-28">Открывание</th>
-              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Выс.</th>
-              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Шир.</th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Выс. полотна</th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Шир. полотна</th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Рек. выс. проёма</th>
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-16">Рек. шир. проёма</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-12">Кол.</th>
               <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 w-20">Цена</th>
               <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 w-20">Сумма</th>
@@ -94,7 +98,8 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {items.map((item, idx) => (
-              <tr key={idx} className="hover:bg-gray-50">
+              <Fragment key={idx}>
+              <tr className="hover:bg-gray-50">
                 <td className="px-2 py-1.5">
                   <input
                     type="number"
@@ -173,6 +178,26 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
                 <td className="px-2 py-1.5">
                   <input
                     type="number"
+                    min={0}
+                    value={item.recommended_opening_height ?? ''}
+                    onChange={(e) => updateItem(idx, 'recommended_opening_height', e.target.value ? Number(e.target.value) : null)}
+                    className={inputCls}
+                    placeholder="мм"
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    value={item.recommended_opening_width ?? ''}
+                    onChange={(e) => updateItem(idx, 'recommended_opening_width', e.target.value ? Number(e.target.value) : null)}
+                    className={inputCls}
+                    placeholder="мм"
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
                     min={1}
                     value={item.quantity || 1}
                     onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
@@ -224,6 +249,19 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
                   </div>
                 </td>
               </tr>
+              <tr className="bg-gray-50/50">
+                <td colSpan={2} className="px-2 pb-2 text-xs text-right text-gray-500 align-top pt-1">Примечание:</td>
+                <td colSpan={11} className="px-2 pb-2">
+                  <textarea
+                    value={item.notes ?? ''}
+                    onChange={(e) => updateItem(idx, 'notes', e.target.value)}
+                    rows={1}
+                    placeholder="Комментарий по этой двери..."
+                    className="w-full rounded border-gray-200 text-xs leading-snug resize-y"
+                  />
+                </td>
+              </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>

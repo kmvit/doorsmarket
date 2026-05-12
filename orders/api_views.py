@@ -8,7 +8,7 @@ from django.db.models import Q, Prefetch
 from django.utils import timezone
 
 from .models import (
-    Salon, Order, OrderItem, OrderItemAddon,
+    Salon, Order, OrderItem, OrderAddon,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
 )
 from .serializers import (
@@ -32,7 +32,7 @@ def get_orders_queryset_for_user(user):
     """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город, admin — всё."""
     qs = Order.objects.select_related(
         'manager', 'salon', 'salon__city'
-    ).prefetch_related('items__addons')
+    ).prefetch_related('items', 'addons')
     if user.role == 'admin':
         return qs
     if user.role in ('leader', 'service_manager'):
@@ -58,9 +58,15 @@ class SalonViewSet(viewsets.ReadOnlyModelViewSet):
         qs = Salon.objects.filter(is_active=True).select_related('city')
         if user.role == 'admin':
             return qs
+        # Менеджер видит только свой салон (тот, к которому он привязан)
+        if user.role == 'manager':
+            if hasattr(user, 'salon') and user.salon_id:
+                return qs.filter(id=user.salon_id)
+            return qs.none()
+        # СМ и руководитель — все салоны своего города
         if hasattr(user, 'city') and user.city:
             return qs.filter(city=user.city)
-        return qs
+        return qs.none()
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -127,14 +133,24 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def create_from_parsed(self, request):
-        """Создаёт заказ из распарсенных данных. Принимает тот же dict, что parse_kp вернул."""
+        """Создаёт заказ из распарсенных данных. Принимает dict от parse_kp + поля salon/comment."""
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         salon_id = data.pop('salon', None)
         if not salon_id:
             return Response({'detail': 'Не указан салон'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Обязательное «следующее действие»
+        next_action_text = (data.pop('next_action_text', None) or '').strip()
+        next_action_due = data.pop('next_action_due_at', None)
+        if not next_action_text or not next_action_due:
+            return Response(
+                {'detail': 'Укажите следующее действие по заказу и его срок (next_action_text + next_action_due_at)'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         items = data.pop('items', []) or []
-        # Маппим поля парсера на поля Order
+        addons = data.pop('addons', []) or []
+
         order_kwargs = {
             'salon_id': salon_id,
             'client_name': (data.get('client_name') or '').strip()[:255] or 'Не указан',
@@ -151,8 +167,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = Order.objects.create(**order_kwargs)
 
         for idx, item in enumerate(items):
-            addons = item.pop('addons', []) or []
-            order_item = OrderItem.objects.create(
+            OrderItem.objects.create(
                 order=order,
                 opening_number=int(item.get('opening_number') or (idx + 1)),
                 room_name=(item.get('room_name') or '')[:255],
@@ -164,19 +179,33 @@ class OrderViewSet(viewsets.ModelViewSet):
                 opening_type=item.get('opening_type') or '',
                 door_height=item.get('door_height') or None,
                 door_width=item.get('door_width') or None,
+                recommended_opening_height=item.get('recommended_opening_height') or None,
+                recommended_opening_width=item.get('recommended_opening_width') or None,
                 notes=(item.get('notes') or ''),
                 position=idx,
             )
-            for addon in addons:
-                OrderItemAddon.objects.create(
-                    item=order_item,
-                    kind=addon.get('kind') or 'extra',
-                    name=(addon.get('name') or '')[:500],
-                    quantity=int(addon.get('quantity') or 1),
-                    price=addon.get('price') or None,
-                    comment_face=addon.get('comment_face') or '',
-                    comment_back=addon.get('comment_back') or '',
-                )
+
+        for idx, addon in enumerate(addons):
+            OrderAddon.objects.create(
+                order=order,
+                kind=addon.get('kind') or 'extra',
+                name=(addon.get('name') or '')[:500],
+                quantity=addon.get('quantity') or 1,
+                size=(addon.get('size') or '')[:100],
+                opening_type=addon.get('opening_type') or '',
+                price=addon.get('price') or None,
+                amount=addon.get('amount') or None,
+                comment=(addon.get('comment') or ''),
+                position=idx,
+            )
+
+        # Создаём обязательное «следующее действие»
+        OrderActionReminder.objects.create(
+            order=order,
+            action_text=next_action_text[:500],
+            due_at=next_action_due,
+            created_by=request.user,
+        )
 
         serializer = OrderDetailSerializer(order, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -224,7 +253,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         order_pk = self.kwargs.get('order_pk')
-        return OrderItem.objects.filter(order_id=order_pk).prefetch_related('addons')
+        return OrderItem.objects.filter(order_id=order_pk)
 
     def perform_create(self, serializer):
         order_pk = self.kwargs.get('order_pk')
@@ -260,11 +289,42 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
+        """
+        Закрывает напоминание. Опционально меняет статус заказа.
+        Передаём `new_status` (один из OrderStatus) — будет применён к заказу
+        и создаст новое напоминание-«заглушка», если заказчик хочет следующее действие.
+        Также можно передать `next_action_text` + `next_action_due_at` для авто-создания
+        следующего напоминания.
+        """
         reminder = self.get_object()
         reminder.done = True
         reminder.done_at = timezone.now()
         reminder.save(update_fields=['done', 'done_at'])
-        return Response(OrderActionReminderSerializer(reminder).data)
+
+        new_status = request.data.get('new_status')
+        order = reminder.order
+        if new_status and new_status in dict(OrderStatus.choices):
+            old_status = order.status
+            order.status = new_status
+            order.touch_activity(ActivityKind.STATUS_CHANGED, save=False)
+            order.save(update_fields=['status', 'last_activity_at', 'last_activity_kind'])
+
+        # Авто-создание следующего напоминания
+        next_text = request.data.get('next_action_text')
+        next_due = request.data.get('next_action_due_at')
+        next_reminder = None
+        if next_text and next_due:
+            next_reminder = OrderActionReminder.objects.create(
+                order=order,
+                action_text=str(next_text)[:500],
+                due_at=next_due,
+                created_by=request.user,
+            )
+
+        result = OrderActionReminderSerializer(reminder).data
+        if next_reminder:
+            result['next_reminder'] = OrderActionReminderSerializer(next_reminder).data
+        return Response(result)
 
     @action(detail=True, methods=['post'])
     def reschedule(self, request, pk=None):
@@ -285,9 +345,14 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = WorkshopOrderSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'salon']
-    search_fields = ['kp_number', 'client_name', 'address', 'contact_phone', 'comment']
-    ordering_fields = ['created_at', 'last_activity_at', 'status', 'client_name']
+    filterset_fields = ['status', 'salon', 'manager']
+    # Поиск по любому из полей таблицы (как в рекламациях)
+    search_fields = [
+        'id', 'kp_number', 'client_name', 'address', 'contact_phone',
+        'comment', 'salon__name', 'manager__first_name', 'manager__last_name',
+        'manager__username', 'action_reminders__action_text',
+    ]
+    ordering_fields = ['created_at', 'last_activity_at', 'status', 'client_name', 'kp_number']
     ordering = ['-last_activity_at']
 
     def get_queryset(self):
