@@ -298,8 +298,10 @@ def _fix_split_size(anchor: str, continuation: str) -> str:
 def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
     """
     Парсит склеенную строку секции 'Модель полотна'.
-    Формат: <desc> <qty> <H*W> [<H_proem*W_proem>] [<opening>] <price> <sum>
-    Если у двери есть рек.проём — восстанавливаем обрезанные размеры (door = проём - 70/-100).
+    Поддерживает форматы:
+      • <desc> <qty> <H*W> [<H_proem*W_proem>] [<opening>] <price> <sum>   — стандарт
+      • <desc> <qty> <H>* [<opening>] <price> <sum>                         — только высота (Liana)
+      • <desc> <qty> * <H>*<W> <price> <sum>                                — стеновая панель
     """
     # Снимаем последние 2 числа — price и sum
     m_tail = re.search(r'^(.*?)\s+(\d{2,8})\s+(\d{2,8})\s*$', joined_line)
@@ -309,11 +311,53 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
     price = _to_decimal(m_tail.group(2))
     summ = _to_decimal(m_tail.group(3))
 
+    # ---- Стратегия А: panel-style "<qty> * <H>*<W>" в самом конце head ----
+    # (только если перед паттерном нет ещё одной звёздочки от размера)
+    m_panel = re.search(r'(\d{1,3})\s*\*\s*(\d+)\s*\*\s*(\d+)\s*$', head)
+    if m_panel:
+        qty = int(m_panel.group(1))
+        door_h = int(m_panel.group(2))
+        door_w = int(m_panel.group(3))
+        description = head[:m_panel.start()].strip()
+        return {
+            'description': description,
+            'qty': qty,
+            'door_height': door_h,
+            'door_width': door_w,
+            'rec_opening_height': None,
+            'rec_opening_width': None,
+            'opening_type': '',
+            'price': price,
+            'sum': summ,
+        }
+
     # Размер(ы) ищем в head; отфильтровываем технические размеры в описании
     # (например «(обкатка 4*15 мм)» — оба значения < 50, это не размер двери)
     all_sizes = list(SIZE_RE.finditer(head))
     sizes = [m for m in all_sizes if not (int(m.group(1)) < 50 and int(m.group(2)) < 50)]
     if not sizes:
+        # ---- Стратегия B: «<qty> <H>*» (только высота, без ширины) ----
+        # Высота 3-4 цифры со звёздочкой, после неё — нецифра или конец
+        m_height_only = re.search(r'(\d{3,4})\s*\*(?=\s*\D|\s*$)', head)
+        if m_height_only:
+            door_h = int(m_height_only.group(1))
+            before = head[:m_height_only.start()].rstrip()
+            m_qty = re.search(r'(\d{1,3})\s*$', before)
+            if m_qty:
+                qty = int(m_qty.group(1))
+                description = before[:m_qty.start()].strip()
+                opening_text = head[m_height_only.end():].strip()
+                return {
+                    'description': description,
+                    'qty': qty,
+                    'door_height': door_h,
+                    'door_width': None,
+                    'rec_opening_height': None,
+                    'rec_opening_width': None,
+                    'opening_type': _normalize_opening_token(opening_text),
+                    'price': price,
+                    'sum': summ,
+                }
         # Fallback: формат «<desc> <qty> *» (панель без размера, доп. позиция)
         m_qty_star = re.search(r'(\d{1,3})\s*\*\s*$', head)
         if m_qty_star:
