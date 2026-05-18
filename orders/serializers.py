@@ -4,9 +4,78 @@ from django.utils import timezone
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
+    Measurement, MeasurementOpening, MeasurementAttachment,
 )
 
 User = get_user_model()
+
+
+def infer_attachment_type(filename: str) -> str:
+    ext = (filename or '').lower().rsplit('.', 1)[-1]
+    if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'):
+        return 'photo'
+    if ext in ('mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'):
+        return 'video'
+    return 'document'
+
+
+def format_file_size(size_bytes):
+    if not size_bytes:
+        return ''
+    if size_bytes < 1024:
+        return f'{size_bytes} B'
+    if size_bytes < 1024 * 1024:
+        return f'{size_bytes / 1024:.1f} KB'
+    return f'{size_bytes / (1024 * 1024):.1f} MB'
+
+
+class OrderAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+    attachment_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderAttachment
+        fields = [
+            'id', 'order', 'order_item', 'file', 'file_url',
+            'file_size', 'attachment_type', 'name', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'file_url', 'file_size', 'attachment_type']
+        extra_kwargs = {'file': {'write_only': True}}
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+    def get_file_size(self, obj):
+        try:
+            return format_file_size(obj.file.size)
+        except (OSError, ValueError):
+            return ''
+
+    def get_attachment_type(self, obj):
+        return infer_attachment_type(obj.name or obj.file.name)
+
+    def validate(self, attrs):
+        order = attrs.get('order')
+        order_item = attrs.get('order_item')
+        if not order and not order_item:
+            raise serializers.ValidationError('Укажите заказ или позицию (проём).')
+        if order_item and not order:
+            attrs['order'] = order_item.order
+        elif order and order_item and order_item.order_id != order.id:
+            raise serializers.ValidationError('Позиция не принадлежит указанному заказу.')
+        return attrs
+
+    def create(self, validated_data):
+        file = validated_data.get('file')
+        if file and not validated_data.get('name'):
+            validated_data['name'] = file.name
+        return super().create(validated_data)
 
 
 class SalonSerializer(serializers.ModelSerializer):
@@ -34,6 +103,7 @@ class OrderAddonSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
+    attachments = OrderAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = OrderItem
@@ -43,7 +113,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'opening_type', 'opening_type_display',
             'door_height', 'door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'notes', 'position',
+            'notes', 'position', 'attachments',
         ]
         read_only_fields = ['id']
 
@@ -104,6 +174,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     salon = SalonSerializer(read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
     addons = OrderAddonSerializer(many=True, read_only=True)
+    attachments = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     commercial_offer_url = serializers.SerializerMethodField()
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
@@ -116,9 +187,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'lift_available', 'stairs_available', 'floor_readiness', 'comment',
             'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
+            'attachments',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'lift_impossible_warning',
         ]
+
+    def get_attachments(self, obj):
+        qs = obj.attachments.filter(order_item__isnull=True)
+        return OrderAttachmentSerializer(qs, many=True, context=self.context).data
 
     def get_lift_impossible_warning(self, obj):
         """Если подъем невозможен ни на лифте, ни по лестнице — выводим предупреждение."""
@@ -298,3 +374,192 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
 
     def get_last_comment(self, obj):
         return obj.comment or ''
+
+
+# ==================== Phase 3: Замер ====================
+
+class MeasurementAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MeasurementAttachment
+        fields = ['id', 'measurement', 'opening', 'file', 'file_url', 'name', 'created_at']
+        read_only_fields = ['id', 'created_at', 'file_url']
+        extra_kwargs = {'file': {'write_only': True}}
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+        return None
+
+
+class MeasurementOpeningSerializer(serializers.ModelSerializer):
+    change_target_display = serializers.CharField(source='get_change_target_display', read_only=True)
+    opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
+    attachments = MeasurementAttachmentSerializer(many=True, read_only=True)
+    inverso_warning = serializers.SerializerMethodField()
+    recommendation_text = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MeasurementOpening
+        fields = [
+            'id', 'measurement', 'order_item', 'opening_number', 'room_name',
+            'actual_height', 'actual_width', 'actual_depth',
+            'door_height_by_order', 'door_width_by_order',
+            'recommended_door_height', 'recommended_door_width',
+            'recommended_opening_height', 'recommended_opening_width',
+            'change_target', 'change_target_display',
+            'new_door_height', 'new_door_width',
+            'opening_type', 'opening_type_display',
+            'addon_width',
+            'face_trim_qty', 'face_trim_comment',
+            'back_trim_qty', 'back_trim_comment',
+            'extra_hardware', 'threshold', 'notes',
+            'attachments', 'inverso_warning', 'recommendation_text',
+        ]
+        read_only_fields = ['id', 'measurement']
+
+    def get_inverso_warning(self, obj):
+        from .recommendations import validate_inverso_warning, inverso_warning_text
+        return inverso_warning_text() if validate_inverso_warning(obj.opening_type) else None
+
+    def get_recommendation_text(self, obj):
+        from .recommendations import build_recommendation_text
+        return build_recommendation_text(
+            obj.actual_height, obj.actual_width,
+            obj.door_height_by_order, obj.door_width_by_order,
+        )
+
+
+class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
+    """Для PUT/PATCH массивом проёмов через MeasurementSerializer."""
+    class Meta:
+        model = MeasurementOpening
+        fields = [
+            'id', 'order_item', 'opening_number', 'room_name',
+            'actual_height', 'actual_width', 'actual_depth',
+            'door_height_by_order', 'door_width_by_order',
+            'recommended_door_height', 'recommended_door_width',
+            'recommended_opening_height', 'recommended_opening_width',
+            'change_target', 'new_door_height', 'new_door_width',
+            'opening_type', 'addon_width',
+            'face_trim_qty', 'face_trim_comment',
+            'back_trim_qty', 'back_trim_comment',
+            'extra_hardware', 'threshold', 'notes',
+        ]
+
+
+class MeasurementSerializer(serializers.ModelSerializer):
+    """Полный сериализатор замера для CRUD."""
+    openings = MeasurementOpeningSerializer(many=True, read_only=True)
+    attachments = MeasurementAttachmentSerializer(many=True, read_only=True)
+    service_manager_name = serializers.SerializerMethodField()
+    order_id = serializers.IntegerField(source='request.order_id', read_only=True)
+    client_name = serializers.CharField(source='request.order.client_name', read_only=True)
+    address = serializers.CharField(source='request.order.address', read_only=True)
+    contact_name = serializers.CharField(source='request.contact_name', read_only=True)
+    contact_position = serializers.CharField(source='request.contact_position', read_only=True)
+    contact_phone = serializers.CharField(source='request.contact_phone', read_only=True)
+    opening_plan_url = serializers.SerializerMethodField()
+    signature_photo_url = serializers.SerializerMethodField()
+    lift_required = serializers.SerializerMethodField()
+    lift_impossible_warning = serializers.SerializerMethodField()
+    order_status = serializers.CharField(source='request.order.status', read_only=True)
+    order_attachments = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Measurement
+        fields = [
+            'id', 'request', 'order_id', 'service_manager', 'service_manager_name',
+            'measurement_date', 'signature_photo', 'signature_photo_url',
+            'client_access_token', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'created_at', 'updated_at',
+            'openings', 'attachments', 'order_attachments',
+            'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
+            'opening_plan_url', 'lift_required', 'lift_impossible_warning', 'order_status',
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'is_done', 'done_at',
+            'is_processed', 'processed_at', 'client_access_token',
+            'service_manager',
+        ]
+        extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}
+
+    def get_service_manager_name(self, obj):
+        u = obj.service_manager
+        if not u:
+            return None
+        return f'{u.first_name} {u.last_name}'.strip() or u.username
+
+    def get_opening_plan_url(self, obj):
+        request = self.context.get('request')
+        plan = obj.request.opening_plan if obj.request else None
+        if plan and request:
+            return request.build_absolute_uri(plan.url)
+        return None
+
+    def get_signature_photo_url(self, obj):
+        request = self.context.get('request')
+        if obj.signature_photo and request:
+            return request.build_absolute_uri(obj.signature_photo.url)
+        return None
+
+    def get_lift_required(self, obj):
+        from .recommendations import validate_lift_required
+        ops = list(obj.openings.values('actual_height', 'door_height_by_order'))
+        return validate_lift_required(ops)
+
+    def get_lift_impossible_warning(self, obj):
+        from .recommendations import lift_impossible_warning
+        order = obj.request.order if obj.request else None
+        if not order:
+            return None
+        return lift_impossible_warning(order.lift_available, order.stairs_available)
+
+    def get_order_attachments(self, obj):
+        order = obj.request.order if obj.request else None
+        if not order:
+            return []
+        atts = order.attachments.select_related('order_item').all()
+        return OrderAttachmentSerializer(atts, many=True, context=self.context).data
+
+
+class MeasurementListSerializer(serializers.ModelSerializer):
+    """Краткий сериализатор для списка замеров."""
+    order_id = serializers.IntegerField(source='request.order_id', read_only=True)
+    client_name = serializers.CharField(source='request.order.client_name', read_only=True)
+    address = serializers.CharField(source='request.order.address', read_only=True)
+    contact_name = serializers.CharField(source='request.contact_name', read_only=True)
+    contact_position = serializers.CharField(source='request.contact_position', read_only=True)
+    contact_phone = serializers.CharField(source='request.contact_phone', read_only=True)
+    desired_date = serializers.DateField(source='request.desired_date', read_only=True)
+    payer_display = serializers.CharField(source='request.get_payer_display', read_only=True)
+    service_manager_name = serializers.SerializerMethodField()
+    order_status = serializers.CharField(source='request.order.status', read_only=True)
+    order_status_display = serializers.CharField(source='request.order.get_status_display', read_only=True)
+    manager_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Measurement
+        fields = [
+            'id', 'order_id', 'client_name', 'address',
+            'contact_name', 'contact_position', 'contact_phone',
+            'desired_date', 'payer_display',
+            'measurement_date', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'service_manager', 'service_manager_name',
+            'order_status', 'order_status_display', 'manager_name', 'created_at',
+        ]
+
+    def get_service_manager_name(self, obj):
+        u = obj.service_manager
+        if not u:
+            return None
+        return f'{u.first_name} {u.last_name}'.strip() or u.username
+
+    def get_manager_name(self, obj):
+        m = obj.request.order.manager if obj.request else None
+        if not m:
+            return None
+        return f'{m.first_name} {m.last_name}'.strip() or m.username

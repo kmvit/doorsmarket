@@ -5,6 +5,10 @@ import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind } from '../../types/orders'
 import NextActionBlock from './NextActionBlock'
 import MeasurementRequestForm from './MeasurementRequestForm'
+import { measurementsAPI } from '../../api/measurements'
+import { Measurement } from '../../types/measurements'
+import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
+import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -16,8 +20,31 @@ const OrderDetail = () => {
   const [isDeleting, setIsDeleting] = useState(false)
   const [measurementRequest, setMeasurementRequest] = useState<MeasurementRequest | null>(null)
   const [showMrModal, setShowMrModal] = useState(false)
+  const [measurement, setMeasurement] = useState<Measurement | null>(null)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
+  const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
+
+  const loadMeasurement = async (mr: MeasurementRequest | null) => {
+    if (!mr) {
+      setMeasurement(null)
+      return
+    }
+    try {
+      // Найдём замер этого заказа через список (фильтруем по order_id)
+      const list = await measurementsAPI.list({})
+      const found = list.find((x) => x.order_id === Number(id))
+      if (found) {
+        const full = await measurementsAPI.getById(found.id)
+        setMeasurement(full)
+      } else {
+        setMeasurement(null)
+      }
+    } catch {
+      setMeasurement(null)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +56,7 @@ const OrderDetail = () => {
         ])
         setOrder(data)
         setMeasurementRequest(mr)
+        await loadMeasurement(mr)
       } catch (err: any) {
         setError('Заказ не найден или нет доступа')
       } finally {
@@ -42,7 +70,19 @@ const OrderDetail = () => {
     try {
       const data = await ordersAPI.getById(Number(id))
       setOrder(data)
+      await loadMeasurement(measurementRequest)
     } catch {}
+  }
+
+  const handleMarkProcessed = async () => {
+    if (!measurement) return
+    if (!window.confirm('Отметить замер как обработанный?')) return
+    try {
+      await measurementsAPI.markProcessed(measurement.id)
+      await reloadOrder()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Не удалось отметить как обработанный')
+    }
   }
 
   const handleDelete = async () => {
@@ -290,6 +330,22 @@ const OrderDetail = () => {
         </div>
       </div>
 
+      {/* Документы и фото/видео по заказу (лист «Заказ» в ТЗ) */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">
+          Документы и фото / видео
+        </h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Вложения по всему заказу. По проёмам — в таблице позиций ниже.
+        </p>
+        <OrderAttachmentsBlock
+          orderId={order.id}
+          attachments={order.attachments || []}
+          canEdit={canUploadAttachments}
+          onUpdate={reloadOrder}
+        />
+      </div>
+
       {/* Заявка на замер (если создана) + Следующее действие */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {measurementRequest && (
@@ -345,6 +401,76 @@ const OrderDetail = () => {
         )}
         <NextActionBlock orderId={order.id} canEdit={canEdit} onStatusChanged={() => reloadOrder()} />
       </div>
+
+      {/* Замер */}
+      {measurementRequest && (
+        <div className="bg-white rounded-xl shadow-sm border border-cyan-200 ring-1 ring-cyan-100 p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-cyan-700 uppercase tracking-wider">Замер</h2>
+            <div className="flex items-center gap-2">
+              {measurement ? (
+                <Link
+                  to={`/measurements/${measurement.id}`}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg"
+                >
+                  Открыть замер →
+                </Link>
+              ) : (
+                ['service_manager', 'admin', 'leader'].includes(user?.role || '') && (
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                  >
+                    Назначить дату замера
+                  </button>
+                )
+              )}
+              {measurement && measurement.is_done && !measurement.is_processed && canEdit && (
+                <button
+                  onClick={handleMarkProcessed}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg"
+                >
+                  ✓ Замер обработан
+                </button>
+              )}
+            </div>
+          </div>
+          {measurement ? (
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Дата замера</dt>
+                <dd className="font-medium text-gray-900">
+                  {measurement.measurement_date
+                    ? new Date(measurement.measurement_date).toLocaleString('ru-RU')
+                    : 'не назначена'}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Сервис-менеджер</dt>
+                <dd className="text-gray-900">{measurement.service_manager_name || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Проёмы</dt>
+                <dd className="text-gray-900">{measurement.openings.length} шт</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Статус</dt>
+                <dd>
+                  {measurement.is_processed
+                    ? <span className="text-emerald-700 font-medium">✓ обработан</span>
+                    : measurement.is_done
+                      ? <span className="text-green-700 font-medium">✓ выполнен</span>
+                      : measurement.measurement_date
+                        ? <span className="text-cyan-700">запланирован</span>
+                        : <span className="text-amber-700">ожидает назначения</span>}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-sm text-gray-500">Замер ещё не создан. Когда СМ назначит дату, замер появится здесь.</p>
+          )}
+        </div>
+      )}
 
       {/* Позиции */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -408,6 +534,18 @@ const OrderDetail = () => {
                       <td colSpan={10} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap">{item.notes}</td>
                     </tr>
                   )}
+                  <tr className="bg-gray-50/80">
+                    <td colSpan={12} className="px-3 py-2">
+                      <OrderAttachmentsBlock
+                        orderId={order.id}
+                        attachments={item.attachments || []}
+                        canEdit={canUploadAttachments}
+                        orderItemId={item.id}
+                        title={`Проём #${item.opening_number}${item.room_name ? ` — ${item.room_name}` : ''}: документы, фото/видео`}
+                        onUpdate={reloadOrder}
+                      />
+                    </td>
+                  </tr>
                   </Fragment>
                 ))}
               </tbody>
@@ -474,6 +612,19 @@ const OrderDetail = () => {
           onSaved={(mr) => {
             setMeasurementRequest(mr)
             reloadOrder()
+          }}
+        />
+      )}
+
+      {showScheduleModal && measurementRequest && (
+        <ScheduleMeasurementModal
+          requestId={measurementRequest.id}
+          contactName={measurementRequest.contact_name}
+          onClose={() => setShowScheduleModal(false)}
+          onScheduled={(mid) => {
+            setShowScheduleModal(false)
+            reloadOrder()
+            navigate(`/measurements/${mid}`)
           }}
         />
       )}

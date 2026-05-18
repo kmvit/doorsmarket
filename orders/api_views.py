@@ -8,8 +8,9 @@ from django.db.models import Q, Prefetch
 from django.utils import timezone
 
 from .models import (
-    Salon, Order, OrderItem, OrderAddon,
+    Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
+    Measurement, MeasurementOpening, MeasurementAttachment,
 )
 from .serializers import (
     SalonSerializer,
@@ -17,11 +18,22 @@ from .serializers import (
     OrderDetailSerializer,
     OrderCreateSerializer,
     OrderItemWriteSerializer,
+    OrderAttachmentSerializer,
     MeasurementRequestSerializer,
     OrderActionReminderSerializer,
     WorkshopOrderSerializer,
+    MeasurementSerializer,
+    MeasurementListSerializer,
+    MeasurementOpeningSerializer,
+    MeasurementOpeningWriteSerializer,
+    MeasurementAttachmentSerializer,
 )
 from .pdf_parser import parse_kp_pdf
+from .recommendations import (
+    calculate_door_recommendation,
+    calculate_opening_recommendation,
+    validate_lift_required,
+)
 
 
 class IsAuthenticated(permissions.IsAuthenticated):
@@ -32,7 +44,15 @@ def get_orders_queryset_for_user(user):
     """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город, admin — всё."""
     qs = Order.objects.select_related(
         'manager', 'salon', 'salon__city'
-    ).prefetch_related('items', 'addons')
+    ).prefetch_related(
+        'items',
+        'items__attachments',
+        'addons',
+        Prefetch(
+            'attachments',
+            queryset=OrderAttachment.objects.filter(order_item__isnull=True),
+        ),
+    )
     if user.role == 'admin':
         return qs
     if user.role in ('leader', 'service_manager'):
@@ -392,3 +412,258 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+# ==================== Phase 3: Замер ====================
+
+def get_measurements_queryset_for_user(user):
+    """ACL для замеров — те же правила, что и для заказов."""
+    accessible_orders = get_orders_queryset_for_user(user).values_list('id', flat=True)
+    return Measurement.objects.filter(
+        request__order_id__in=list(accessible_orders)
+    ).select_related(
+        'request', 'request__order', 'request__order__manager',
+        'request__order__salon', 'service_manager',
+    ).prefetch_related(
+        'openings',
+        'openings__attachments',
+        'attachments',
+        'request__order__attachments',
+        'request__order__attachments__order_item',
+    )
+
+
+class MeasurementViewSet(viewsets.ModelViewSet):
+    """
+    CRUD замеров. Доступен СМ (свой город), менеджеру (свой салон), admin/leader.
+    """
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['is_done', 'is_processed', 'service_manager']
+    search_fields = [
+        'id', 'request__order__id', 'request__order__client_name',
+        'request__order__address', 'request__order__kp_number',
+        'request__contact_name', 'request__contact_phone',
+    ]
+    ordering_fields = ['created_at', 'measurement_date', 'done_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = get_measurements_queryset_for_user(self.request.user)
+        # Folder-фильтры из ТЗ:
+        folder = self.request.query_params.get('folder')
+        if folder == 'unscheduled':
+            # Ожидают назначения — measurement_date пуст
+            qs = qs.filter(measurement_date__isnull=True, is_done=False)
+        elif folder == 'scheduled':
+            # Запланированные — есть дата, не выполнен
+            qs = qs.filter(measurement_date__isnull=False, is_done=False)
+        elif folder == 'today':
+            today = timezone.localdate()
+            qs = qs.filter(measurement_date__date=today, is_done=False)
+        elif folder == 'done':
+            qs = qs.filter(is_done=True)
+        elif folder == 'mine':
+            qs = qs.filter(service_manager=self.request.user)
+        return qs
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return MeasurementListSerializer
+        return MeasurementSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+    # ---- Создание замера из заявки (СМ берёт заявку в работу) ----
+    @action(detail=False, methods=['post'])
+    def create_from_request(self, request):
+        """
+        Создаёт пустой замер из MeasurementRequest. Если уже есть — возвращает существующий.
+        Тело: {request_id: int, measurement_date: ISO-datetime (optional)}
+        Также копирует проёмы из OrderItem.
+        """
+        request_id = request.data.get('request_id')
+        if not request_id:
+            return Response({'detail': 'Не указан request_id'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            mr = MeasurementRequest.objects.select_related('order').get(pk=request_id)
+        except MeasurementRequest.DoesNotExist:
+            return Response({'detail': 'Заявка не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+        # ACL: только СМ/admin/leader того же города или менеджер заказа
+        accessible = get_orders_queryset_for_user(request.user).filter(id=mr.order_id).exists()
+        if not accessible:
+            return Response({'detail': 'Нет доступа'}, status=status.HTTP_403_FORBIDDEN)
+
+        m = Measurement.objects.filter(request=mr).first()
+        is_create = m is None
+        if is_create:
+            m = Measurement.objects.create(
+                request=mr,
+                service_manager=request.user,
+                measurement_date=request.data.get('measurement_date') or None,
+            )
+            # Копируем проёмы из OrderItem
+            for item in mr.order.items.all():
+                MeasurementOpening.objects.create(
+                    measurement=m,
+                    order_item=item,
+                    opening_number=item.opening_number,
+                    room_name=item.room_name,
+                    door_height_by_order=item.door_height,
+                    door_width_by_order=item.door_width,
+                    opening_type=item.opening_type or '',
+                )
+
+        # Если назначили дату при создании — статус scheduled
+        if m.measurement_date and mr.order.status == OrderStatus.MEASUREMENT_REQUESTED:
+            mr.order.status = OrderStatus.MEASUREMENT_SCHEDULED
+            mr.order.touch_activity(ActivityKind.MEASUREMENT_SCHEDULED, save=False)
+            mr.order.save()
+
+        return Response(
+            MeasurementSerializer(m, context={'request': request}).data,
+            status=status.HTTP_201_CREATED if is_create else status.HTTP_200_OK,
+        )
+
+    # ---- Назначить дату/время замера ----
+    @action(detail=True, methods=['post'])
+    def schedule(self, request, pk=None):
+        m = self.get_object()
+        date = request.data.get('measurement_date')
+        if not date:
+            return Response({'detail': 'Не указана дата'}, status=status.HTTP_400_BAD_REQUEST)
+        m.measurement_date = date
+        m.save(update_fields=['measurement_date', 'updated_at'])
+        order = m.request.order
+        if order.status in (OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED):
+            order.status = OrderStatus.MEASUREMENT_SCHEDULED
+            order.touch_activity(ActivityKind.MEASUREMENT_SCHEDULED, save=False)
+            order.save()
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- Отметить выполненным (СМ) ----
+    @action(detail=True, methods=['post'])
+    def mark_done(self, request, pk=None):
+        m = self.get_object()
+        # Валидация: opening_plan обязателен
+        if not (m.request.opening_plan or m.attachments.exists()):
+            return Response(
+                {'detail': 'Перед закрытием замера приложите план открывания.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m.is_done = True
+        m.done_at = timezone.now()
+        m.save(update_fields=['is_done', 'done_at', 'updated_at'])
+        order = m.request.order
+        order.status = OrderStatus.MEASUREMENT_DONE
+        order.touch_activity(ActivityKind.MEASUREMENT_DONE, save=False)
+        order.save()
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- Менеджер: «обработан» ----
+    @action(detail=True, methods=['post'])
+    def mark_processed(self, request, pk=None):
+        m = self.get_object()
+        if not m.is_done:
+            return Response(
+                {'detail': 'Сначала замер должен быть выполнен СМ.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m.is_processed = True
+        m.processed_at = timezone.now()
+        m.save(update_fields=['is_processed', 'processed_at', 'updated_at'])
+        order = m.request.order
+        order.status = OrderStatus.MEASUREMENT_PROCESSED
+        order.touch_activity(ActivityKind.MEASUREMENT_PROCESSED, save=False)
+        order.save()
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+
+class MeasurementOpeningViewSet(viewsets.ModelViewSet):
+    """CRUD проёмов замера. Авто-расчёт рекомендаций при сохранении."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = MeasurementOpeningSerializer
+
+    def get_queryset(self):
+        accessible_measurements = get_measurements_queryset_for_user(self.request.user).values_list('id', flat=True)
+        qs = MeasurementOpening.objects.filter(measurement_id__in=list(accessible_measurements))
+        m_id = self.request.query_params.get('measurement')
+        if m_id:
+            qs = qs.filter(measurement_id=m_id)
+        return qs.prefetch_related('attachments')
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        self._recalc_recommendations(instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        self._recalc_recommendations(instance)
+
+    def _recalc_recommendations(self, op: MeasurementOpening):
+        """Авто-расчёт рекомендуемых размеров двери и проёма."""
+        if op.actual_height or op.actual_width:
+            rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
+            op.recommended_door_height = rec_dh
+            op.recommended_door_width = rec_dw
+        if op.door_height_by_order or op.door_width_by_order:
+            rec_oh, rec_ow = calculate_opening_recommendation(op.door_height_by_order, op.door_width_by_order)
+            op.recommended_opening_height = rec_oh
+            op.recommended_opening_width = rec_ow
+        op.save(update_fields=[
+            'recommended_door_height', 'recommended_door_width',
+            'recommended_opening_height', 'recommended_opening_width',
+        ])
+
+
+class MeasurementAttachmentViewSet(viewsets.ModelViewSet):
+    """Загрузка / удаление вложений замера."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = MeasurementAttachmentSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        accessible_measurements = get_measurements_queryset_for_user(self.request.user).values_list('id', flat=True)
+        return MeasurementAttachment.objects.filter(measurement_id__in=list(accessible_measurements))
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+
+class OrderAttachmentViewSet(viewsets.ModelViewSet):
+    """Загрузка / удаление вложений заказа (по заказу или по проёму)."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = OrderAttachmentSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        accessible_orders = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
+        qs = OrderAttachment.objects.filter(
+            Q(order_id__in=list(accessible_orders))
+            | Q(order_item__order_id__in=list(accessible_orders))
+        )
+        order_id = self.request.query_params.get('order')
+        if order_id:
+            qs = qs.filter(Q(order_id=order_id) | Q(order_item__order_id=order_id))
+        order_item_id = self.request.query_params.get('order_item')
+        if order_item_id:
+            qs = qs.filter(order_item_id=order_item_id)
+        return qs.select_related('order', 'order_item')
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        order = instance.order or (instance.order_item.order if instance.order_item_id else None)
+        if order:
+            order.touch_activity(ActivityKind.FILE_ATTACHED)

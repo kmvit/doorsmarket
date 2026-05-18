@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.conf import settings
 
@@ -27,6 +28,9 @@ class OrderStatus(models.TextChoices):
     DRAFT = 'draft', 'Черновик'
     ACTIVE = 'active', 'Создан'
     MEASUREMENT_REQUESTED = 'measurement_requested', 'Заявка на замер'
+    MEASUREMENT_SCHEDULED = 'measurement_scheduled', 'Замер запланирован'
+    MEASUREMENT_DONE = 'measurement_done', 'Замер выполнен'
+    MEASUREMENT_PROCESSED = 'measurement_processed', 'Замер обработан'
     PAID = 'paid', 'Оплачен'
     IN_PRODUCTION = 'in_production', 'В производстве'
     ON_WAREHOUSE = 'on_warehouse', 'На складе'
@@ -338,3 +342,176 @@ class OrderActionReminder(models.Model):
 
     def __str__(self):
         return f'{self.action_text} (до {self.due_at})'
+
+
+# ==================== Phase 3: Замер ====================
+
+class ChangeTarget(models.TextChoices):
+    """При замере: что меняем — дверь, проём или оба."""
+    DOOR = 'door', 'Меняем дверь'
+    OPENING = 'opening', 'Меняем проём'
+    BOTH = 'both', 'Меняем дверь и проём'
+
+
+class Measurement(models.Model):
+    """
+    Замер (один на заявку). Создаётся СМ при назначении даты.
+    Привязан к MeasurementRequest 1:1.
+    """
+    request = models.OneToOneField(
+        MeasurementRequest,
+        on_delete=models.CASCADE,
+        related_name='measurement',
+        verbose_name='Заявка на замер',
+    )
+    service_manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='measurements',
+        verbose_name='Сервис-менеджер',
+    )
+    measurement_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Дата и время замера',
+    )
+    signature_photo = models.FileField(
+        upload_to='orders/signatures/',
+        null=True,
+        blank=True,
+        verbose_name='Фото подписанного бланка',
+    )
+    client_access_token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        verbose_name='Публичный токен для PDF',
+        help_text='Используется в публичной ссылке на PDF без авторизации',
+    )
+    is_done = models.BooleanField(default=False, verbose_name='Замер выполнен')
+    done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
+    is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
+    processed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата обработки')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Замер'
+        verbose_name_plural = 'Замеры'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Замер по заказу #{self.request.order_id}'
+
+    @property
+    def order(self):
+        return self.request.order
+
+
+class MeasurementOpening(models.Model):
+    """
+    Замерные данные по одному проёму. Привязан к Measurement и опционально
+    к OrderItem (с какой именно дверью соответствует).
+    """
+    measurement = models.ForeignKey(
+        Measurement,
+        on_delete=models.CASCADE,
+        related_name='openings',
+        verbose_name='Замер',
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='measurement_openings',
+        verbose_name='Позиция заказа',
+    )
+    opening_number = models.PositiveSmallIntegerField(verbose_name='Номер проёма')
+    room_name = models.CharField(max_length=255, blank=True, verbose_name='Помещение')
+
+    # Фактические размеры проёма (вводит СМ)
+    actual_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая высота, мм')
+    actual_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая ширина, мм')
+    actual_depth = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая глубина, мм')
+
+    # Размер двери по Заказу (копируется)
+    door_height_by_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='Высота двери по Заказу')
+    door_width_by_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='Ширина двери по Заказу')
+
+    # Авто-рекомендации (рассчитываются на сервере и клиенте)
+    recommended_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота двери')
+    recommended_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина двери')
+    recommended_opening_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота проёма')
+    recommended_opening_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина проёма')
+
+    # Решение СМ: что меняем
+    change_target = models.CharField(
+        max_length=20,
+        choices=ChangeTarget.choices,
+        blank=True,
+        verbose_name='Что меняем',
+    )
+    new_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Новая высота двери')
+    new_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Новая ширина двери')
+
+    # Открывание (может переопределять КП-открывание)
+    opening_type = models.CharField(
+        max_length=30,
+        choices=OpeningType.choices,
+        blank=True,
+        verbose_name='Открывание',
+    )
+    addon_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Ширина добора, мм')
+
+    # Наличники — поддерживаем дробные значения (по Excel «число, в т.ч. дробное»)
+    face_trim_qty = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Наличник лицевой, кол-во',
+    )
+    face_trim_comment = models.TextField(blank=True, verbose_name='Комментарий лицевой')
+    back_trim_qty = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Наличник оборотный, кол-во',
+    )
+    back_trim_comment = models.TextField(blank=True, verbose_name='Комментарий оборотный')
+
+    extra_hardware = models.TextField(blank=True, verbose_name='Доп. фурнитура')
+    threshold = models.TextField(blank=True, verbose_name='Порог')
+    notes = models.TextField(blank=True, verbose_name='Примечания / рекомендации')
+
+    class Meta:
+        verbose_name = 'Проём (замер)'
+        verbose_name_plural = 'Проёмы (замер)'
+        ordering = ['opening_number']
+
+    def __str__(self):
+        return f'Проём #{self.opening_number} замера #{self.measurement_id}'
+
+
+class MeasurementAttachment(models.Model):
+    """Фото/документы по замеру в целом или по конкретному проёму."""
+    measurement = models.ForeignKey(
+        Measurement,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name='Замер',
+    )
+    opening = models.ForeignKey(
+        MeasurementOpening,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='attachments',
+        verbose_name='Проём',
+    )
+    file = models.FileField(upload_to='orders/measurements/', verbose_name='Файл')
+    name = models.CharField(max_length=255, blank=True, verbose_name='Имя файла')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Вложение замера'
+        verbose_name_plural = 'Вложения замера'
+
+    def __str__(self):
+        return self.name or self.file.name

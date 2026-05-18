@@ -3,7 +3,7 @@ import {
   Order, OrderListItem, CreateOrderData, OrderFilters,
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
-  WorkshopOrder, ParsedKpData,
+  WorkshopOrder, ParsedKpData, OrderAttachment,
 } from '../types/orders'
 
 export const ordersAPI = {
@@ -51,6 +51,27 @@ export const ordersAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data
+  },
+
+  uploadAttachment: async (
+    orderId: number,
+    file: File,
+    orderItemId?: number | null,
+  ): Promise<OrderAttachment> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('order', String(orderId))
+    if (orderItemId) {
+      formData.append('order_item', String(orderItemId))
+    }
+    const response = await apiClient.post('/order-attachments/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  deleteAttachment: async (attachmentId: number): Promise<void> => {
+    await apiClient.delete(`/order-attachments/${attachmentId}/`)
   },
 
   // ===== Phase 2 =====

@@ -124,6 +124,19 @@ export interface CreateOrderAddonData {
   position?: number
 }
 
+export type OrderAttachmentType = 'photo' | 'video' | 'document'
+
+export interface OrderAttachment {
+  id: number
+  order: number | null
+  order_item: number | null
+  file_url: string | null
+  file_size: string
+  attachment_type: OrderAttachmentType
+  name: string
+  created_at: string
+}
+
 export interface OrderItem {
   id: number
   order: number
@@ -143,6 +156,7 @@ export interface OrderItem {
   recommended_opening_width: number | null
   notes: string
   position: number
+  attachments?: OrderAttachment[]
 }
 
 export interface OrderManager {
@@ -173,6 +187,7 @@ export interface Order {
   commercial_offer_url: string | null
   items?: OrderItem[]
   addons?: OrderAddon[]
+  attachments?: OrderAttachment[]
   last_activity_at: string | null
   last_activity_kind: ActivityKind
   last_activity_kind_display: string

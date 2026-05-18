@@ -21,6 +21,8 @@ import OrderDetail from './pages/Orders/OrderDetail'
 import OrderCreate from './pages/Orders/OrderCreate'
 import OrderEdit from './pages/Orders/OrderEdit'
 import Workshop from './pages/Orders/Workshop'
+import MeasurementList from './pages/Measurements/MeasurementList'
+import MeasurementForm from './pages/Measurements/MeasurementForm'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
 
@@ -230,6 +232,26 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Workshop />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/measurements"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <MeasurementList />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/measurements/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <MeasurementForm />
                     </Layout>
                   </ProtectedRoute>
                 }

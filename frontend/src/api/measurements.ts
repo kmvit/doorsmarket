@@ -1,0 +1,140 @@
+import apiClient from './client'
+import {
+  Measurement, MeasurementListItem, MeasurementFolder,
+  MeasurementOpening, MeasurementAttachment,
+} from '../types/measurements'
+
+export const measurementsAPI = {
+  list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number }): Promise<MeasurementListItem[]> => {
+    const queryParams: Record<string, any> = {}
+    if (params?.folder) queryParams.folder = params.folder
+    if (params?.search) queryParams.search = params.search
+    if (params?.service_manager) queryParams.service_manager = params.service_manager
+    const response = await apiClient.get('/measurements/', { params: queryParams })
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
+  getById: async (id: number): Promise<Measurement> => {
+    const response = await apiClient.get(`/measurements/${id}/`)
+    return response.data
+  },
+
+  createFromRequest: async (requestId: number, measurementDate?: string | null): Promise<Measurement> => {
+    const response = await apiClient.post('/measurements/create_from_request/', {
+      request_id: requestId,
+      measurement_date: measurementDate,
+    })
+    return response.data
+  },
+
+  schedule: async (id: number, measurementDate: string): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/schedule/`, {
+      measurement_date: measurementDate,
+    })
+    return response.data
+  },
+
+  markDone: async (id: number): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/mark_done/`)
+    return response.data
+  },
+
+  markProcessed: async (id: number): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/mark_processed/`)
+    return response.data
+  },
+
+  uploadSignature: async (id: number, file: File): Promise<Measurement> => {
+    const fd = new FormData()
+    fd.append('signature_photo', file)
+    const response = await apiClient.patch(`/measurements/${id}/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+}
+
+export const measurementOpeningsAPI = {
+  list: async (measurementId: number): Promise<MeasurementOpening[]> => {
+    const response = await apiClient.get('/measurement-openings/', { params: { measurement: measurementId } })
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
+  update: async (id: number, data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
+    const response = await apiClient.patch(`/measurement-openings/${id}/`, data)
+    return response.data
+  },
+
+  create: async (data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
+    const response = await apiClient.post('/measurement-openings/', data)
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiClient.delete(`/measurement-openings/${id}/`)
+  },
+}
+
+export const measurementAttachmentsAPI = {
+  upload: async (measurementId: number, file: File, openingId?: number | null): Promise<MeasurementAttachment> => {
+    const fd = new FormData()
+    fd.append('measurement', String(measurementId))
+    if (openingId) fd.append('opening', String(openingId))
+    fd.append('file', file)
+    fd.append('name', file.name)
+    const response = await apiClient.post('/measurement-attachments/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiClient.delete(`/measurement-attachments/${id}/`)
+  },
+}
+
+// Утилиты для расчёта рекомендаций на клиенте (без обращения к серверу)
+export const calculateDoorRecommendation = (
+  openingH: number | null,
+  openingW: number | null,
+): { h: number | null; w: number | null } => ({
+  h: openingH ? Math.max(0, openingH - 70) : null,
+  w: openingW ? Math.max(0, openingW - 100) : null,
+})
+
+export const calculateOpeningRecommendation = (
+  doorH: number | null,
+  doorW: number | null,
+): { h: number | null; w: number | null } => ({
+  h: doorH ? doorH + 70 : null,
+  w: doorW ? doorW + 100 : null,
+})
+
+export const buildRecommendationText = (
+  openingH: number | null,
+  openingW: number | null,
+  doorH: number | null,
+  doorW: number | null,
+): string => {
+  const parts: string[] = []
+  if (openingH != null && doorH != null) {
+    const d = openingH - doorH
+    if (d < 60) parts.push(`Высота проёма (${openingH} мм) недостаточна. Увеличьте проём до ${doorH + 70} (дверь +70) или уменьшите дверь до ${openingH - 70} (проём −70).`)
+    else if (d > 80) parts.push(`Высота проёма (${openingH} мм) избыточна. Уменьшите проём до ${doorH + 70} (дверь +70) или увеличьте дверь до ${openingH - 70} (проём −70).`)
+  }
+  if (openingW != null && doorW != null) {
+    const d = openingW - doorW
+    if (d < 90) parts.push(`Ширина проёма (${openingW} мм) недостаточна. Увеличьте проём до ${doorW + 100} (дверь +100) или уменьшите дверь до ${openingW - 100} (проём −100).`)
+    else if (d > 105) parts.push(`Ширина проёма (${openingW} мм) избыточна. Уменьшите проём до ${doorW + 100} (дверь +100) или увеличьте дверь до ${openingW - 100} (проём −100).`)
+  }
+  return parts.join(' ')
+}
+
+export const isInverso = (openingType: string): boolean =>
+  openingType === 'B_INVERSO' || openingType === 'D_INVERSO'
+
+export const validateLiftRequired = (openings: { actual_height: number | null; door_height_by_order: number | null }[]): boolean =>
+  openings.some((o) => {
+    const h = o.actual_height || o.door_height_by_order
+    return h != null && Number(h) > 2300
+  })

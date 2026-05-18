@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder,
+    Measurement, MeasurementOpening, MeasurementAttachment,
 )
 
 
@@ -63,3 +64,32 @@ class OrderActionReminderAdmin(admin.ModelAdmin):
     search_fields = ('action_text', 'order__client_name')
     raw_id_fields = ('order', 'created_by')
     date_hierarchy = 'due_at'
+
+
+class MeasurementOpeningInline(admin.TabularInline):
+    model = MeasurementOpening
+    extra = 0
+    fields = ('opening_number', 'room_name', 'actual_height', 'actual_width', 'actual_depth', 'opening_type', 'change_target')
+
+
+class MeasurementAttachmentInline(admin.TabularInline):
+    model = MeasurementAttachment
+    extra = 0
+    fields = ('opening', 'file', 'name')
+
+
+@admin.register(Measurement)
+class MeasurementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'request', 'service_manager', 'measurement_date', 'is_done', 'is_processed', 'created_at')
+    list_filter = ('is_done', 'is_processed')
+    search_fields = ('request__order__client_name', 'request__contact_name', 'request__contact_phone')
+    raw_id_fields = ('request', 'service_manager')
+    date_hierarchy = 'measurement_date'
+    inlines = [MeasurementOpeningInline, MeasurementAttachmentInline]
+
+
+@admin.register(MeasurementOpening)
+class MeasurementOpeningAdmin(admin.ModelAdmin):
+    list_display = ('id', 'measurement', 'opening_number', 'room_name', 'opening_type', 'change_target')
+    list_filter = ('opening_type', 'change_target')
+    raw_id_fields = ('measurement', 'order_item')
