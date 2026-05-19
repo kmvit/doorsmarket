@@ -507,6 +507,12 @@ const OrderDetail = () => {
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Шир. полотна</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. выс. проёма</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. шир. проёма</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. выс.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. шир.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. глуб.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. дверь</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. проём</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-cyan-600 uppercase">Откр. (замер)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -527,15 +533,36 @@ const OrderDetail = () => {
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_width ?? '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_height ?? '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_width ?? '—'}</td>
+                    {/* Колонки 13–18 из Замера */}
+                    <td className="px-3 py-2 text-right text-cyan-800 align-top">{item.measurement_data?.actual_height ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-cyan-800 align-top">{item.measurement_data?.actual_width ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-cyan-800 align-top">{item.measurement_data?.actual_depth ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-cyan-800 align-top text-xs">
+                      {item.measurement_data?.recommended_door_height != null && item.measurement_data?.recommended_door_width != null
+                        ? `${item.measurement_data.recommended_door_height}×${item.measurement_data.recommended_door_width}`
+                        : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-cyan-800 align-top text-xs">
+                      {item.measurement_data?.recommended_opening_height != null && item.measurement_data?.recommended_opening_width != null
+                        ? `${item.measurement_data.recommended_opening_height}×${item.measurement_data.recommended_opening_width}`
+                        : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-cyan-800 align-top text-xs">
+                      {item.measurement_data?.opening_type ? OPENING_TYPE_SHORT[item.measurement_data.opening_type as OpeningType] ?? item.measurement_data.opening_type : '—'}
+                    </td>
                   </tr>
-                  {item.notes && (
+                  {(item.notes || item.measurement_data?.notes || item.measurement_data?.recommendation_text) && (
                     <tr className="bg-amber-50/40">
-                      <td colSpan={2} className="px-3 py-1 text-xs text-right text-amber-700">Примечание:</td>
-                      <td colSpan={10} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap">{item.notes}</td>
+                      <td colSpan={2} className="px-3 py-1 text-xs text-right text-amber-700">Примечания:</td>
+                      <td colSpan={16} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap space-y-0.5">
+                        {item.notes && <div>{item.notes}</div>}
+                        {item.measurement_data?.notes && <div className="text-cyan-800">Замер: {item.measurement_data.notes}</div>}
+                        {item.measurement_data?.recommendation_text && <div className="text-orange-700">💡 {item.measurement_data.recommendation_text}</div>}
+                      </td>
                     </tr>
                   )}
                   <tr className="bg-gray-50/80">
-                    <td colSpan={12} className="px-3 py-2">
+                    <td colSpan={18} className="px-3 py-2">
                       <OrderAttachmentsBlock
                         orderId={order.id}
                         attachments={item.attachments || []}

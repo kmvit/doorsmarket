@@ -47,12 +47,27 @@ const MeasurementForm = () => {
 
   useEffect(() => { load() }, [id])
 
-  // Локальное обновление одного проёма + дебаунсная отправка через onBlur
   const updateOpeningLocal = (openingId: number, field: keyof MeasurementOpening, value: any) => {
     if (!m) return
     setM({
       ...m,
-      openings: m.openings.map((o) => (o.id === openingId ? { ...o, [field]: value } : o)),
+      openings: m.openings.map((o) => {
+        if (o.id !== openingId) return o
+        const next = { ...o, [field]: value }
+        // Рек. размер двери = фактический проём − 70/100
+        const h = next.actual_height ? Number(next.actual_height) : null
+        const w = next.actual_width ? Number(next.actual_width) : null
+        next.recommended_door_height = h ? h - 70 : null
+        next.recommended_door_width = w ? w - 100 : null
+        // Рек. размер проёма = эффективная дверь + 70/100
+        // Если меняем дверь — используем новые размеры, иначе из заказа
+        const doorChanged = next.change_target === 'door' || next.change_target === 'both'
+        const effDoorH = (doorChanged && next.new_door_height) ? Number(next.new_door_height) : next.door_height_by_order
+        const effDoorW = (doorChanged && next.new_door_width) ? Number(next.new_door_width) : next.door_width_by_order
+        next.recommended_opening_height = effDoorH ? effDoorH + 70 : null
+        next.recommended_opening_width = effDoorW ? effDoorW + 100 : null
+        return next
+      }),
     })
   }
 
@@ -77,9 +92,9 @@ const MeasurementForm = () => {
         notes: op.notes,
         room_name: op.room_name,
       }
-      await measurementOpeningsAPI.update(op.id, payload)
-      // Перезагружаем замер чтобы получить пересчитанные рекомендации
-      await load()
+      const updated = await measurementOpeningsAPI.update(op.id, payload)
+      // Обновляем только этот проём из ответа сервера — без спиннера и скролла
+      setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? updated : o) } : prev)
     } catch {
       alert('Не удалось сохранить проём')
     } finally {
@@ -93,7 +108,9 @@ const MeasurementForm = () => {
     if (!file) return
     try {
       await measurementAttachmentsAPI.upload(m.id, file, openingId)
-      await load()
+      // Тихая перезагрузка без спиннера — нужна чтобы обновить список вложений
+      const data = await measurementsAPI.getById(m.id)
+      setM(data)
     } catch {
       alert('Не удалось загрузить файл')
     } finally {
@@ -105,8 +122,8 @@ const MeasurementForm = () => {
     if (!m) return
     setActionError(null)
     try {
-      await measurementsAPI.markDone(m.id)
-      await load()
+      const updated = await measurementsAPI.markDone(m.id)
+      setM(updated)
     } catch (err: any) {
       setActionError(err.response?.data?.detail || 'Не удалось закрыть замер')
     }
@@ -116,8 +133,8 @@ const MeasurementForm = () => {
     if (!m) return
     setActionError(null)
     try {
-      await measurementsAPI.markProcessed(m.id)
-      await load()
+      const updated = await measurementsAPI.markProcessed(m.id)
+      setM(updated)
     } catch (err: any) {
       setActionError(err.response?.data?.detail || 'Не удалось отметить как обработанный')
     }
@@ -381,12 +398,19 @@ const MeasurementForm = () => {
               </div>
             </div>
 
-            {/* Текст рекомендации */}
-            {(op.recommendation_text || buildRecommendationText(op.actual_height, op.actual_width, op.door_height_by_order, op.door_width_by_order)) && (
-              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-                💡 {op.recommendation_text || buildRecommendationText(op.actual_height, op.actual_width, op.door_height_by_order, op.door_width_by_order)}
-              </div>
-            )}
+            {/* Текст рекомендации — использует новый размер двери если выбрано "меняем дверь" */}
+            {(() => {
+              const doorChanged = op.change_target === 'door' || op.change_target === 'both'
+              const effDoorH = (doorChanged && op.new_door_height) ? op.new_door_height : op.door_height_by_order
+              const effDoorW = (doorChanged && op.new_door_width) ? op.new_door_width : op.door_width_by_order
+              const text = buildRecommendationText(op.actual_height, op.actual_width, effDoorH, effDoorW)
+              if (!text) return null
+              return (
+                <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+                  💡 {text}
+                </div>
+              )
+            })()}
 
             {/* Меняем дверь / проём / оба */}
             <div className="mb-3">

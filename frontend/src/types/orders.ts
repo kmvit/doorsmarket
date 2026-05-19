@@ -137,6 +137,19 @@ export interface OrderAttachment {
   created_at: string
 }
 
+export interface MeasurementData {
+  actual_height: number | null
+  actual_width: number | null
+  actual_depth: number | null
+  recommended_door_height: number | null
+  recommended_door_width: number | null
+  recommended_opening_height: number | null
+  recommended_opening_width: number | null
+  opening_type: string
+  notes: string
+  recommendation_text: string
+}
+
 export interface OrderItem {
   id: number
   order: number
@@ -157,6 +170,7 @@ export interface OrderItem {
   notes: string
   position: number
   attachments?: OrderAttachment[]
+  measurement_data: MeasurementData | null
 }
 
 export interface OrderManager {

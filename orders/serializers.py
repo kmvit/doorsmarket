@@ -104,6 +104,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
     attachments = OrderAttachmentSerializer(many=True, read_only=True)
+    measurement_data = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
@@ -113,9 +114,33 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'opening_type', 'opening_type_display',
             'door_height', 'door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'notes', 'position', 'attachments',
+            'notes', 'position', 'attachments', 'measurement_data',
         ]
         read_only_fields = ['id']
+
+    def get_measurement_data(self, obj):
+        op = obj.measurement_openings.first()
+        if not op:
+            return None
+        from .recommendations import build_recommendation_text
+        door_changed = op.change_target in ('door', 'both')
+        eff_door_h = op.new_door_height if (door_changed and op.new_door_height) else op.door_height_by_order
+        eff_door_w = op.new_door_width if (door_changed and op.new_door_width) else op.door_width_by_order
+        return {
+            'actual_height': op.actual_height,
+            'actual_width': op.actual_width,
+            'actual_depth': op.actual_depth,
+            'recommended_door_height': op.recommended_door_height,
+            'recommended_door_width': op.recommended_door_width,
+            'recommended_opening_height': op.recommended_opening_height,
+            'recommended_opening_width': op.recommended_opening_width,
+            'opening_type': op.opening_type,
+            'notes': op.notes,
+            'recommendation_text': build_recommendation_text(
+                op.actual_height, op.actual_width,
+                eff_door_h, eff_door_w,
+            ),
+        }
 
 
 class OrderItemWriteSerializer(serializers.ModelSerializer):
@@ -427,9 +452,12 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
 
     def get_recommendation_text(self, obj):
         from .recommendations import build_recommendation_text
+        door_changed = obj.change_target in ('door', 'both')
+        eff_door_h = obj.new_door_height if (door_changed and obj.new_door_height) else obj.door_height_by_order
+        eff_door_w = obj.new_door_width if (door_changed and obj.new_door_width) else obj.door_width_by_order
         return build_recommendation_text(
             obj.actual_height, obj.actual_width,
-            obj.door_height_by_order, obj.door_width_by_order,
+            eff_door_h, eff_door_w,
         )
 
 

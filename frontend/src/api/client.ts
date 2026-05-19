@@ -239,12 +239,6 @@ apiClient.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${access}`
         }
         
-        // Для уведомлений НЕ сбрасываем флаг retry, чтобы предотвратить бесконечный цикл
-        // Если запрос снова вернет 401, мы просто вернем ошибку
-        if (!isNotificationRequest) {
-          delete originalRequest._retry
-        }
-        
         return apiClient(originalRequest)
       } catch (refreshError: any) {
         console.error('Token refresh failed:', refreshError)
