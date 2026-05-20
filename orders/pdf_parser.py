@@ -78,19 +78,18 @@ logger = logging.getLogger(__name__)
 # ---------- маркеры секций ----------
 
 SECTION_PATTERNS: List[Tuple[str, re.Pattern]] = [
-    # Все паттерны привязаны к началу строки и требуют полного заголовка секции
-    # (включая хвост «Кол-во …» или «(модель/артикул)»), чтобы не матчиться
-    # на слова из описания позиций («петли», «короб» и т.п.).
-    ('doors', re.compile(r'^Модель\s+полотна\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('box', re.compile(r'^Дверной\s+короб\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('platband', re.compile(r'^Наличник\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('extension', re.compile(r'^Добор\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('hinges', re.compile(r'^Петли\s*\(\s*модель', re.IGNORECASE | re.MULTILINE)),
-    ('handle', re.compile(r'^Ручки\s*\+\s*накладки', re.IGNORECASE | re.MULTILINE)),
-    ('mechanism', re.compile(r'^Механизмы\s*\(\s*вид', re.IGNORECASE | re.MULTILINE)),
-    ('glass', re.compile(r'^Стекло\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('extra', re.compile(r'^Доп\.\s*к\s*заказу\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
-    ('service', re.compile(r'^Услуги\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    # Все паттерны привязаны к началу строки и требуют полного заголовка секции.
+    # Допускаем опциональный префикс «№ » (некоторые КП нумеруют заголовки колонок).
+    ('doors', re.compile(r'^(?:№\s+)?Модель\s+полотна\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('box', re.compile(r'^(?:№\s+)?Дверной\s+короб\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('platband', re.compile(r'^(?:№\s+)?Наличник\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('extension', re.compile(r'^(?:№\s+)?Добор\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('hinges', re.compile(r'^(?:№\s+)?Петли\s*\(\s*модель', re.IGNORECASE | re.MULTILINE)),
+    ('handle', re.compile(r'^(?:№\s+)?Ручки\s*\+\s*накладки', re.IGNORECASE | re.MULTILINE)),
+    ('mechanism', re.compile(r'^(?:№\s+)?Механизмы\s*\(\s*вид', re.IGNORECASE | re.MULTILINE)),
+    ('glass', re.compile(r'^(?:№\s+)?Стекло\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('extra', re.compile(r'^(?:№\s+)?Доп\.\s*к\s*заказу\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
+    ('service', re.compile(r'^(?:№\s+)?Услуги\s+Кол-во', re.IGNORECASE | re.MULTILINE)),
 ]
 
 ADDON_KIND_BY_SECTION = {
@@ -358,7 +357,7 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
                     'price': price,
                     'sum': summ,
                 }
-        # Fallback: формат «<desc> <qty> *» (панель без размера, доп. позиция)
+        # Fallback A: «<desc> <qty> *» (панель без размера, * в самом конце)
         m_qty_star = re.search(r'(\d{1,3})\s*\*\s*$', head)
         if m_qty_star:
             qty = int(m_qty_star.group(1))
@@ -371,6 +370,24 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
                 'rec_opening_height': None,
                 'rec_opening_width': None,
                 'opening_type': '',
+                'price': price,
+                'sum': summ,
+            }
+        # Fallback B: «<desc> <qty> * <opening_text>» (нет размера, после `*` идёт текст
+        # открывания/комментария, потом price/sum). Пример: «3 * Схема 3-4 63790 191370».
+        m_qty_star_text = re.search(r'(\d{1,3})\s*\*\s+(\S.*?)\s*$', head)
+        if m_qty_star_text:
+            qty = int(m_qty_star_text.group(1))
+            description = head[:m_qty_star_text.start()].strip()
+            opening_text = m_qty_star_text.group(2)
+            return {
+                'description': description,
+                'qty': qty,
+                'door_height': None,
+                'door_width': None,
+                'rec_opening_height': None,
+                'rec_opening_width': None,
+                'opening_type': _normalize_opening_token(opening_text),
                 'price': price,
                 'sum': summ,
             }
@@ -546,6 +563,8 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                 parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
                 # Полное описание = anchor description + continuation
                 full_desc = (parsed['description'] + ' ' + cont).strip()
+                # Срезаем номер позиции из КП («1 ...», «2 ...») если он в самом начале
+                full_desc = re.sub(r'^\d{1,3}\s+', '', full_desc).strip()
                 base = {
                     'room_name': _extract_room_from_description(full_desc),
                     'model_name': full_desc[:500],
@@ -588,6 +607,7 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                         opening_text_part += ' ' + cont
                         parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
                     full_desc = (parsed['description'] + ' ' + cont).strip()
+                    full_desc = re.sub(r'^\d{1,3}\s+', '', full_desc).strip()
                     parsed['description'] = full_desc
                     all_addons.append(_build_addon_dict(parsed, kind))
 
