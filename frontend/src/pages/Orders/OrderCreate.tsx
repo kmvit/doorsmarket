@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
@@ -19,6 +19,8 @@ const OrderCreate = () => {
   const [tab, setTab] = useState<CreateTab>('manual')
   const [nextActionText, setNextActionText] = useState('')
   const [nextActionDueAt, setNextActionDueAt] = useState('')
+  const [nextActionError, setNextActionError] = useState(false)
+  const nextActionRef = useRef<HTMLDivElement>(null)
 
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
@@ -64,9 +66,11 @@ const OrderCreate = () => {
       return
     }
     if (!nextActionText.trim() || !nextActionDueAt) {
-      setError('Укажите следующее действие и его срок')
+      setNextActionError(true)
+      nextActionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
+    setNextActionError(false)
     setIsSubmitting(true)
     setError(null)
     try {
@@ -284,30 +288,37 @@ const OrderCreate = () => {
         </div>
 
         {/* Следующее действие (обязательно) */}
-        <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-5">
-          <h2 className="text-sm font-semibold text-amber-800 uppercase tracking-wider mb-3">
-            Следующее действие * <span className="font-normal text-xs normal-case text-amber-700">— что и когда нужно сделать по заказу</span>
+        <div
+          ref={nextActionRef}
+          className={`rounded-xl shadow-sm p-5 ${nextActionError ? 'bg-red-50 border-2 border-red-400' : 'bg-amber-50 border border-amber-200'}`}
+        >
+          <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${nextActionError ? 'text-red-700' : 'text-amber-800'}`}>
+            Следующее действие *{' '}
+            <span className="font-normal text-xs normal-case">— что и когда нужно сделать по заказу</span>
           </h2>
+          {nextActionError && (
+            <div className="mb-3 text-sm font-medium text-red-600">
+              ⚠️ Заполните поля ниже — без следующего действия заказ не сохранится
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-amber-900 mb-1">Что сделать *</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700">Что сделать *</label>
               <input
                 type="text"
                 value={nextActionText}
-                onChange={(e) => setNextActionText(e.target.value)}
-                className={inputCls}
+                onChange={(e) => { setNextActionText(e.target.value); if (e.target.value.trim()) setNextActionError(false) }}
+                className={`${inputCls} ${nextActionError && !nextActionText.trim() ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                 placeholder="Например: Позвонить клиенту, уточнить детали"
-                required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-amber-900 mb-1">Когда *</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700">Когда *</label>
               <input
                 type="datetime-local"
                 value={nextActionDueAt}
-                onChange={(e) => setNextActionDueAt(e.target.value)}
-                className={inputCls}
-                required
+                onChange={(e) => { setNextActionDueAt(e.target.value); if (e.target.value) setNextActionError(false) }}
+                className={`${inputCls} ${nextActionError && !nextActionDueAt ? 'border-red-400 ring-1 ring-red-400' : ''}`}
               />
             </div>
           </div>

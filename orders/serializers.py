@@ -303,6 +303,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if items_data is not None:
             instance.items.all().delete()
             for idx, item_data in enumerate(items_data):
+                item_data.pop('position', None)
                 OrderItem.objects.create(order=instance, position=idx, **item_data)
         if addons_data is not None:
             instance.addons.all().delete()

@@ -75,7 +75,6 @@ const ScheduleMeasurementModal = ({
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="block w-full rounded-lg border-gray-300 text-sm"
-            required
             autoFocus
           />
         </div>
