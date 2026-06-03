@@ -5,10 +5,11 @@ import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock from './NextActionBlock'
 import MeasurementRequestForm from './MeasurementRequestForm'
-import { measurementsAPI } from '../../api/measurements'
+import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
 import { Measurement } from '../../types/measurements'
 import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
+import MeasurementLinkSection from './MeasurementLinkSection'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -82,6 +83,27 @@ const OrderDetail = () => {
       await reloadOrder()
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Не удалось отметить как обработанный')
+    }
+  }
+
+  const handleAdjustDoor = async (itemId: number, recDoorH: number | null, recDoorW: number | null) => {
+    if (!recDoorH && !recDoorW) {
+      alert('Нет данных рекомендованной двери в замере')
+      return
+    }
+    if (!window.confirm(
+      `Установить размер двери ${recDoorH ?? '—'}×${recDoorW ?? '—'} (из замера)? Рек. проём пересчитается.`,
+    )) return
+    try {
+      await ordersAPI.updateItem(itemId, {
+        door_height: recDoorH,
+        door_width: recDoorW,
+        recommended_opening_height: recDoorH ? recDoorH + 70 : null,
+        recommended_opening_width: recDoorW ? recDoorW + 100 : null,
+      })
+      await reloadOrder()
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Не удалось изменить размер двери')
     }
   }
 
@@ -472,6 +494,15 @@ const OrderDetail = () => {
         </div>
       )}
 
+      {/* Связка позиций КП с проёмами замера (доступна после is_done) */}
+      {measurement && measurement.is_done && (
+        <MeasurementLinkSection
+          order={order}
+          measurement={measurement}
+          onApplied={reloadOrder}
+        />
+      )}
+
       {/* Позиции */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         <div className="flex items-center justify-between mb-4">
@@ -513,6 +544,7 @@ const OrderDetail = () => {
                   <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. дверь</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. проём</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-cyan-600 uppercase">Откр. (замер)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-orange-600 uppercase min-w-[260px]">Рекомендация по проёму</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -550,19 +582,52 @@ const OrderDetail = () => {
                     <td className="px-3 py-2 text-cyan-800 align-top text-xs">
                       {item.measurement_data?.opening_type ? OPENING_TYPE_SHORT[item.measurement_data.opening_type as OpeningType] ?? item.measurement_data.opening_type : '—'}
                     </td>
+                    <td className="px-3 py-2 align-top text-xs">
+                      {(() => {
+                        const md = item.measurement_data
+                        if (!md) return <span className="text-gray-400">—</span>
+                        const text = md.recommendation_text
+                          || buildRecommendationText(md.actual_height, md.actual_width, item.door_height, item.door_width)
+                        const canAdjust = canEdit && md.recommended_door_height && md.recommended_door_width
+                          && (md.recommended_door_height !== item.door_height || md.recommended_door_width !== item.door_width)
+                        return (
+                          <div className="space-y-1.5">
+                            {text ? (
+                              <div className="text-orange-700">💡 {text}</div>
+                            ) : (
+                              <div className="text-gray-400">Проём в норме</div>
+                            )}
+                            {text && canEdit && (
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="inline-block px-2 py-0.5 text-[11px] rounded bg-amber-100 text-amber-800">
+                                  Доработать проём
+                                </span>
+                                {canAdjust && (
+                                  <button
+                                    onClick={() => handleAdjustDoor(item.id, md.recommended_door_height, md.recommended_door_width)}
+                                    className="px-2 py-0.5 text-[11px] rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                  >
+                                    Изменить размер двери → {md.recommended_door_height}×{md.recommended_door_width}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </td>
                   </tr>
-                  {(item.notes || item.measurement_data?.notes || item.measurement_data?.recommendation_text) && (
+                  {(item.notes || item.measurement_data?.notes) && (
                     <tr className="bg-amber-50/40">
                       <td colSpan={2} className="px-3 py-1 text-xs text-right text-amber-700">Примечания:</td>
-                      <td colSpan={16} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap space-y-0.5">
+                      <td colSpan={17} className="px-3 py-1 text-xs text-amber-900 whitespace-pre-wrap space-y-0.5">
                         {item.notes && <div>{item.notes}</div>}
                         {item.measurement_data?.notes && <div className="text-cyan-800">Замер: {item.measurement_data.notes}</div>}
-                        {item.measurement_data?.recommendation_text && <div className="text-orange-700">💡 {item.measurement_data.recommendation_text}</div>}
                       </td>
                     </tr>
                   )}
                   <tr className="bg-gray-50/80">
-                    <td colSpan={18} className="px-3 py-2">
+                    <td colSpan={19} className="px-3 py-2">
                       <OrderAttachmentsBlock
                         orderId={order.id}
                         attachments={item.attachments || []}

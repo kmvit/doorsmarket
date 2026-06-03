@@ -73,6 +73,20 @@ export const measurementOpeningsAPI = {
   delete: async (id: number): Promise<void> => {
     await apiClient.delete(`/measurement-openings/${id}/`)
   },
+
+  linkToOrderItem: async (openingId: number, orderItemId: number | null): Promise<MeasurementOpening> => {
+    const response = await apiClient.post(`/measurement-openings/${openingId}/link/`, {
+      order_item_id: orderItemId,
+    })
+    return response.data
+  },
+
+  batchLink: async (
+    links: { measurement_opening_id: number; order_item_id: number | null }[],
+  ): Promise<MeasurementOpening[]> => {
+    const response = await apiClient.post('/measurement-openings/batch_link/', { links })
+    return response.data
+  },
 }
 
 export const measurementAttachmentsAPI = {
@@ -110,6 +124,22 @@ export const calculateOpeningRecommendation = (
   w: doorW ? doorW + 100 : null,
 })
 
+// Рек. проём с учётом «желаемого размера двери»: если desired задан — от него,
+// иначе — от рекомендованной двери.
+export const calculateOpeningRecommendationWithDesired = (
+  desiredH: number | null,
+  desiredW: number | null,
+  recDoorH: number | null,
+  recDoorW: number | null,
+): { h: number | null; w: number | null } => {
+  const h = desiredH || recDoorH
+  const w = desiredW || recDoorW
+  return {
+    h: h ? h + 70 : null,
+    w: w ? w + 100 : null,
+  }
+}
+
 export const buildRecommendationText = (
   openingH: number | null,
   openingW: number | null,
@@ -133,8 +163,14 @@ export const buildRecommendationText = (
 export const isInverso = (openingType: string): boolean =>
   openingType === 'B_INVERSO' || openingType === 'D_INVERSO'
 
-export const validateLiftRequired = (openings: { actual_height: number | null; door_height_by_order: number | null }[]): boolean =>
+export const validateLiftRequired = (
+  openings: {
+    actual_height: number | null
+    desired_door_height?: number | null
+    recommended_door_height?: number | null
+  }[],
+): boolean =>
   openings.some((o) => {
-    const h = o.actual_height || o.door_height_by_order
+    const h = o.actual_height || o.desired_door_height || o.recommended_door_height
     return h != null && Number(h) > 2300
   })

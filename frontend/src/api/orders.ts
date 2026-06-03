@@ -121,6 +121,26 @@ export const ordersAPI = {
     const response = await apiClient.post(`/orders/${orderId}/measurement-request/`, data)
     return response.data
   },
+
+  applyMeasurementToItems: async (orderId: number): Promise<Order> => {
+    const response = await apiClient.post(`/orders/${orderId}/apply_measurement_to_items/`)
+    return response.data
+  },
+
+  updateItem: async (
+    itemId: number,
+    data: Partial<{
+      door_height: number | null
+      door_width: number | null
+      opening_type: string
+      door_type: string
+      recommended_opening_height: number | null
+      recommended_opening_width: number | null
+    }>,
+  ): Promise<any> => {
+    const response = await apiClient.patch(`/order-items/${itemId}/`, data)
+    return response.data
+  },
 }
 
 export const remindersAPI = {

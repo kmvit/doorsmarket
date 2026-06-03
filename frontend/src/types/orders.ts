@@ -138,6 +138,10 @@ export interface OrderAttachment {
 }
 
 export interface MeasurementData {
+  opening_id: number
+  opening_number: number
+  room_name: string
+  door_type: string
   actual_height: number | null
   actual_width: number | null
   actual_depth: number | null
@@ -145,6 +149,8 @@ export interface MeasurementData {
   recommended_door_width: number | null
   recommended_opening_height: number | null
   recommended_opening_width: number | null
+  desired_door_height: number | null
+  desired_door_width: number | null
   opening_type: string
   notes: string
   recommendation_text: string

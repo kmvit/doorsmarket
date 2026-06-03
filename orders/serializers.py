@@ -104,6 +104,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
     attachments = OrderAttachmentSerializer(many=True, read_only=True)
+    measurement_data = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
@@ -113,9 +114,42 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'opening_type', 'opening_type_display',
             'door_height', 'door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'notes', 'position', 'attachments',
+            'notes', 'position', 'attachments', 'measurement_data',
         ]
         read_only_fields = ['id']
+
+    def get_measurement_data(self, obj):
+        """
+        Снимок из связанного MeasurementOpening (если менеджер привязал замер).
+        Используется в OrderDetail для столбцов «из Замера» и столбца «Рекомендации».
+        Берём самый свежий связанный проём — на случай нескольких замеров по заказу.
+        """
+        op = obj.measurement_openings.order_by('-id').first()
+        if op is None:
+            return None
+        from .recommendations import build_recommendation_text
+        door_h = op.desired_door_height or op.recommended_door_height
+        door_w = op.desired_door_width or op.recommended_door_width
+        return {
+            'opening_id': op.id,
+            'opening_number': op.opening_number,
+            'room_name': op.room_name,
+            'door_type': op.door_type,
+            'actual_height': op.actual_height,
+            'actual_width': op.actual_width,
+            'actual_depth': op.actual_depth,
+            'recommended_door_height': op.recommended_door_height,
+            'recommended_door_width': op.recommended_door_width,
+            'recommended_opening_height': op.recommended_opening_height,
+            'recommended_opening_width': op.recommended_opening_width,
+            'desired_door_height': op.desired_door_height,
+            'desired_door_width': op.desired_door_width,
+            'opening_type': op.opening_type,
+            'notes': op.notes,
+            'recommendation_text': build_recommendation_text(
+                op.actual_height, op.actual_width, door_h, door_w,
+            ),
+        }
 
 
 class OrderItemWriteSerializer(serializers.ModelSerializer):
@@ -396,22 +430,23 @@ class MeasurementAttachmentSerializer(serializers.ModelSerializer):
 
 
 class MeasurementOpeningSerializer(serializers.ModelSerializer):
-    change_target_display = serializers.CharField(source='get_change_target_display', read_only=True)
+    door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
     attachments = MeasurementAttachmentSerializer(many=True, read_only=True)
     inverso_warning = serializers.SerializerMethodField()
     recommendation_text = serializers.SerializerMethodField()
+    # Необязателен при создании — если не передан, бэкенд проставит max(opening_number)+1
+    opening_number = serializers.IntegerField(required=False)
 
     class Meta:
         model = MeasurementOpening
         fields = [
             'id', 'measurement', 'order_item', 'opening_number', 'room_name',
+            'door_type', 'door_type_display',
             'actual_height', 'actual_width', 'actual_depth',
-            'door_height_by_order', 'door_width_by_order',
             'recommended_door_height', 'recommended_door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'change_target', 'change_target_display',
-            'new_door_height', 'new_door_width',
+            'desired_door_height', 'desired_door_width',
             'opening_type', 'opening_type_display',
             'addon_width',
             'face_trim_qty', 'face_trim_comment',
@@ -419,7 +454,7 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'extra_hardware', 'threshold', 'notes',
             'attachments', 'inverso_warning', 'recommendation_text',
         ]
-        read_only_fields = ['id', 'measurement']
+        read_only_fields = ['id']
 
     def get_inverso_warning(self, obj):
         from .recommendations import validate_inverso_warning, inverso_warning_text
@@ -427,9 +462,10 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
 
     def get_recommendation_text(self, obj):
         from .recommendations import build_recommendation_text
+        door_h = obj.desired_door_height or obj.recommended_door_height
+        door_w = obj.desired_door_width or obj.recommended_door_width
         return build_recommendation_text(
-            obj.actual_height, obj.actual_width,
-            obj.door_height_by_order, obj.door_width_by_order,
+            obj.actual_height, obj.actual_width, door_h, door_w,
         )
 
 
@@ -439,11 +475,11 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
         model = MeasurementOpening
         fields = [
             'id', 'order_item', 'opening_number', 'room_name',
+            'door_type',
             'actual_height', 'actual_width', 'actual_depth',
-            'door_height_by_order', 'door_width_by_order',
             'recommended_door_height', 'recommended_door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'change_target', 'new_door_height', 'new_door_width',
+            'desired_door_height', 'desired_door_width',
             'opening_type', 'addon_width',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
@@ -508,7 +544,9 @@ class MeasurementSerializer(serializers.ModelSerializer):
 
     def get_lift_required(self, obj):
         from .recommendations import validate_lift_required
-        ops = list(obj.openings.values('actual_height', 'door_height_by_order'))
+        ops = list(obj.openings.values(
+            'actual_height', 'desired_door_height', 'recommended_door_height',
+        ))
         return validate_lift_required(ops)
 
     def get_lift_impossible_warning(self, obj):

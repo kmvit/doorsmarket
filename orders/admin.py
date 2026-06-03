@@ -69,7 +69,7 @@ class OrderActionReminderAdmin(admin.ModelAdmin):
 class MeasurementOpeningInline(admin.TabularInline):
     model = MeasurementOpening
     extra = 0
-    fields = ('opening_number', 'room_name', 'actual_height', 'actual_width', 'actual_depth', 'opening_type', 'change_target')
+    fields = ('opening_number', 'room_name', 'door_type', 'actual_height', 'actual_width', 'actual_depth', 'opening_type', 'desired_door_height', 'desired_door_width')
 
 
 class MeasurementAttachmentInline(admin.TabularInline):
@@ -90,6 +90,6 @@ class MeasurementAdmin(admin.ModelAdmin):
 
 @admin.register(MeasurementOpening)
 class MeasurementOpeningAdmin(admin.ModelAdmin):
-    list_display = ('id', 'measurement', 'opening_number', 'room_name', 'opening_type', 'change_target')
-    list_filter = ('opening_type', 'change_target')
+    list_display = ('id', 'measurement', 'opening_number', 'room_name', 'door_type', 'opening_type')
+    list_filter = ('opening_type', 'door_type')
     raw_id_fields = ('measurement', 'order_item')

@@ -346,12 +346,6 @@ class OrderActionReminder(models.Model):
 
 # ==================== Phase 3: Замер ====================
 
-class ChangeTarget(models.TextChoices):
-    """При замере: что меняем — дверь, проём или оба."""
-    DOOR = 'door', 'Меняем дверь'
-    OPENING = 'opening', 'Меняем проём'
-    BOTH = 'both', 'Меняем дверь и проём'
-
 
 class Measurement(models.Model):
     """
@@ -430,14 +424,15 @@ class MeasurementOpening(models.Model):
     opening_number = models.PositiveSmallIntegerField(verbose_name='Номер проёма')
     room_name = models.CharField(max_length=255, blank=True, verbose_name='Помещение')
 
+    # Тип двери (выбирает СМ — раньше копировался из заказа)
+    door_type = models.CharField(
+        max_length=30, choices=DoorType.choices, blank=True, verbose_name='Тип двери',
+    )
+
     # Фактические размеры проёма (вводит СМ)
     actual_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая высота, мм')
     actual_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая ширина, мм')
     actual_depth = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая глубина, мм')
-
-    # Размер двери по Заказу (копируется)
-    door_height_by_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='Высота двери по Заказу')
-    door_width_by_order = models.PositiveIntegerField(null=True, blank=True, verbose_name='Ширина двери по Заказу')
 
     # Авто-рекомендации (рассчитываются на сервере и клиенте)
     recommended_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота двери')
@@ -445,15 +440,9 @@ class MeasurementOpening(models.Model):
     recommended_opening_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота проёма')
     recommended_opening_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина проёма')
 
-    # Решение СМ: что меняем
-    change_target = models.CharField(
-        max_length=20,
-        choices=ChangeTarget.choices,
-        blank=True,
-        verbose_name='Что меняем',
-    )
-    new_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Новая высота двери')
-    new_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Новая ширина двери')
+    # Желаемый размер двери (вводит СМ — заменяет старую логику change_target+new_door_*)
+    desired_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Желаемая высота двери')
+    desired_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Желаемая ширина двери')
 
     # Открывание (может переопределять КП-открывание)
     opening_type = models.CharField(

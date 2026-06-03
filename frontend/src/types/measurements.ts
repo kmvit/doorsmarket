@@ -1,12 +1,4 @@
-import { OpeningType, OrderAttachment, OrderStatus } from './orders'
-
-export type ChangeTarget = 'door' | 'opening' | 'both' | ''
-
-export const CHANGE_TARGET_DISPLAY: Record<string, string> = {
-  door: 'Меняем дверь',
-  opening: 'Меняем проём',
-  both: 'Меняем дверь и проём',
-}
+import { DoorType, OpeningType, OrderAttachment, OrderStatus } from './orders'
 
 export interface MeasurementAttachment {
   id: number
@@ -24,22 +16,20 @@ export interface MeasurementOpening {
   opening_number: number
   room_name: string
 
+  door_type: DoorType
+  door_type_display: string
+
   actual_height: number | null
   actual_width: number | null
   actual_depth: number | null
-
-  door_height_by_order: number | null
-  door_width_by_order: number | null
 
   recommended_door_height: number | null
   recommended_door_width: number | null
   recommended_opening_height: number | null
   recommended_opening_width: number | null
 
-  change_target: ChangeTarget
-  change_target_display: string
-  new_door_height: number | null
-  new_door_width: number | null
+  desired_door_height: number | null
+  desired_door_width: number | null
 
   opening_type: OpeningType
   opening_type_display: string

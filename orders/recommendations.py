@@ -41,6 +41,21 @@ def calculate_opening_recommendation(
     return rec_h, rec_w
 
 
+def calculate_opening_recommendation_with_desired(
+    desired_h: Optional[int],
+    desired_w: Optional[int],
+    rec_door_h: Optional[int],
+    rec_door_w: Optional[int],
+) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Рек. проём с учётом желаемого размера двери.
+    Если СМ ввёл «желаемый размер двери» — считаем от него; иначе — от рассчитанной рек. двери.
+    """
+    h_source = desired_h or rec_door_h
+    w_source = desired_w or rec_door_w
+    return calculate_opening_recommendation(h_source, w_source)
+
+
 # --- Текстовые рекомендации (Лист 7 ТЗ) ---
 
 def build_recommendation_text(
@@ -100,7 +115,11 @@ def validate_lift_required(openings: List[Dict[str, Any]]) -> bool:
     Возвращает True, если требуется указание лифта.
     """
     for op in openings:
-        h = op.get('actual_height') or op.get('door_height_by_order')
+        h = (
+            op.get('actual_height')
+            or op.get('desired_door_height')
+            or op.get('recommended_door_height')
+        )
         if h and int(h) > 2300:
             return True
     return False

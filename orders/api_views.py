@@ -32,6 +32,7 @@ from .pdf_parser import parse_kp_pdf
 from .recommendations import (
     calculate_door_recommendation,
     calculate_opening_recommendation,
+    calculate_opening_recommendation_with_desired,
     validate_lift_required,
 )
 
@@ -266,18 +267,85 @@ class OrderViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if is_create else status.HTTP_200_OK,
         )
 
+    # ---------- Phase 3.5: применить связанный замер к позициям заказа ----------
+    @action(detail=True, methods=['post'], url_path='apply_measurement_to_items')
+    def apply_measurement_to_items(self, request, pk=None):
+        """
+        POST /orders/{id}/apply_measurement_to_items/
+        Берёт привязанные MeasurementOpening (через order_item FK) и переносит данные
+        в OrderItem: тип двери, открывание, высоту, ширину (= желаемая ?? рек.дверь ?? текущая)
+        и рекомендованный размер проёма.
+        """
+        order = self.get_object()
+        mr = MeasurementRequest.objects.filter(order=order).first()
+        if not mr or not hasattr(mr, 'measurement'):
+            return Response(
+                {'detail': 'Замер по заказу не создан'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m = mr.measurement
+        linked_openings = list(
+            m.openings.filter(order_item__order_id=order.id).select_related('order_item')
+        )
+        if not linked_openings:
+            return Response(
+                {'detail': 'Нет связанных позиций — сначала сохраните связки'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for op in linked_openings:
+            item = op.order_item
+            if op.door_type:
+                item.door_type = op.door_type
+            if op.opening_type:
+                item.opening_type = op.opening_type
+            new_h = op.desired_door_height or op.recommended_door_height
+            new_w = op.desired_door_width or op.recommended_door_width
+            if new_h:
+                item.door_height = new_h
+            if new_w:
+                item.door_width = new_w
+            if op.recommended_opening_height:
+                item.recommended_opening_height = op.recommended_opening_height
+            if op.recommended_opening_width:
+                item.recommended_opening_width = op.recommended_opening_width
+            item.save(update_fields=[
+                'door_type', 'opening_type', 'door_height', 'door_width',
+                'recommended_opening_height', 'recommended_opening_width',
+            ])
+
+        order.touch_activity(ActivityKind.ITEMS_CHANGED)
+        return Response(
+            OrderDetailSerializer(order, context={'request': request}).data,
+        )
+
 
 class OrderItemViewSet(viewsets.ModelViewSet):
+    """
+    CRUD позиций заказа (`/order-items/`). Используется для точечных правок
+    одной позиции (PATCH), напр. inline-кнопки «Изменить размер двери» в OrderDetail.
+    """
     permission_classes = [IsAuthenticated]
     serializer_class = OrderItemWriteSerializer
+    http_method_names = ['get', 'patch', 'put', 'delete', 'head', 'options']
 
     def get_queryset(self):
-        order_pk = self.kwargs.get('order_pk')
-        return OrderItem.objects.filter(order_id=order_pk)
+        accessible_orders = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
+        qs = OrderItem.objects.filter(order_id__in=list(accessible_orders))
+        order_id = self.request.query_params.get('order')
+        if order_id:
+            qs = qs.filter(order_id=order_id)
+        return qs
 
-    def perform_create(self, serializer):
-        order_pk = self.kwargs.get('order_pk')
-        serializer.save(order_id=order_pk)
+    def perform_update(self, serializer):
+        item = serializer.save()
+        # Авто-пересчёт рек. проёма от двери
+        if item.door_height and not item.recommended_opening_height:
+            item.recommended_opening_height = item.door_height + 70
+        if item.door_width and not item.recommended_opening_width:
+            item.recommended_opening_width = item.door_width + 100
+        item.save(update_fields=['recommended_opening_height', 'recommended_opening_width'])
+        item.order.touch_activity(ActivityKind.ITEMS_CHANGED)
 
 
 class OrderActionReminderViewSet(viewsets.ModelViewSet):
@@ -483,7 +551,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         """
         Создаёт пустой замер из MeasurementRequest. Если уже есть — возвращает существующий.
         Тело: {request_id: int, measurement_date: ISO-datetime (optional)}
-        Также копирует проёмы из OrderItem.
+        Замер создаётся без проёмов — СМ добавляет их вручную.
         """
         request_id = request.data.get('request_id')
         if not request_id:
@@ -506,17 +574,6 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 service_manager=request.user,
                 measurement_date=request.data.get('measurement_date') or None,
             )
-            # Копируем проёмы из OrderItem
-            for item in mr.order.items.all():
-                MeasurementOpening.objects.create(
-                    measurement=m,
-                    order_item=item,
-                    opening_number=item.opening_number,
-                    room_name=item.room_name,
-                    door_height_by_order=item.door_height,
-                    door_width_by_order=item.door_width,
-                    opening_type=item.opening_type or '',
-                )
 
         # Если назначили дату при создании — статус scheduled
         if m.measurement_date and mr.order.status == OrderStatus.MEASUREMENT_REQUESTED:
@@ -597,6 +654,21 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         return qs.prefetch_related('attachments')
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+        validated = serializer.validated_data
+        measurement = validated.get('measurement')
+        if not measurement:
+            raise ValidationError({'measurement': 'Не указан замер'})
+        # ACL: замер должен быть доступен пользователю
+        accessible = get_measurements_queryset_for_user(self.request.user).filter(id=measurement.id).exists()
+        if not accessible:
+            raise PermissionDenied('Нет доступа к этому замеру')
+        # Если СМ нажал «+ Добавить проём» без указания номера — берём max+1 по замеру
+        if not validated.get('opening_number'):
+            last = MeasurementOpening.objects.filter(
+                measurement=measurement
+            ).order_by('-opening_number').first()
+            serializer.validated_data['opening_number'] = (last.opening_number + 1) if last else 1
         instance = serializer.save()
         self._recalc_recommendations(instance)
 
@@ -605,19 +677,100 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         self._recalc_recommendations(instance)
 
     def _recalc_recommendations(self, op: MeasurementOpening):
-        """Авто-расчёт рекомендуемых размеров двери и проёма."""
+        """
+        Авто-расчёт рекомендуемых размеров двери и проёма.
+        - Рек. дверь  = факт. проём - 70/-100
+        - Рек. проём = желаемая (или рек.) дверь + 70/+100
+        """
         if op.actual_height or op.actual_width:
             rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
             op.recommended_door_height = rec_dh
             op.recommended_door_width = rec_dw
-        if op.door_height_by_order or op.door_width_by_order:
-            rec_oh, rec_ow = calculate_opening_recommendation(op.door_height_by_order, op.door_width_by_order)
-            op.recommended_opening_height = rec_oh
-            op.recommended_opening_width = rec_ow
+        rec_oh, rec_ow = calculate_opening_recommendation_with_desired(
+            op.desired_door_height, op.desired_door_width,
+            op.recommended_door_height, op.recommended_door_width,
+        )
+        op.recommended_opening_height = rec_oh
+        op.recommended_opening_width = rec_ow
         op.save(update_fields=[
             'recommended_door_height', 'recommended_door_width',
             'recommended_opening_height', 'recommended_opening_width',
         ])
+
+    # ---- Связка проёма замера с позицией заказа (менеджер) ----
+    @action(detail=True, methods=['post'], url_path='link')
+    def link_to_order_item(self, request, pk=None):
+        """
+        POST /measurement-openings/{id}/link/
+        Body: {order_item_id: int | null}
+        Привязывает / отвязывает проём замера к позиции КП.
+        """
+        op = self.get_object()
+        order_item_id = request.data.get('order_item_id')
+        if order_item_id is None:
+            op.order_item = None
+            op.save(update_fields=['order_item'])
+            return Response(MeasurementOpeningSerializer(op, context={'request': request}).data)
+
+        try:
+            item = OrderItem.objects.select_related('order').get(pk=order_item_id)
+        except OrderItem.DoesNotExist:
+            return Response({'detail': 'Позиция заказа не найдена'}, status=status.HTTP_404_NOT_FOUND)
+        if item.order_id != op.measurement.request.order_id:
+            return Response(
+                {'detail': 'Позиция принадлежит другому заказу'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        op.order_item = item
+        op.save(update_fields=['order_item'])
+        return Response(MeasurementOpeningSerializer(op, context={'request': request}).data)
+
+    # ---- Батч-сохранение связок (кнопка «Сохранить связки» в OrderDetail) ----
+    @action(detail=False, methods=['post'], url_path='batch_link')
+    def batch_link(self, request):
+        """
+        POST /measurement-openings/batch_link/
+        Body: {links: [{measurement_opening_id, order_item_id | null}, ...]}
+        Транзакционно сохраняет связки. Все openings должны принадлежать одному заказу.
+        """
+        from django.db import transaction
+        links = request.data.get('links') or []
+        if not isinstance(links, list) or not links:
+            return Response({'detail': 'Пустой список связок'}, status=status.HTTP_400_BAD_REQUEST)
+
+        opening_ids = [l.get('measurement_opening_id') for l in links if l.get('measurement_opening_id')]
+        accessible_qs = self.get_queryset().filter(id__in=opening_ids)
+        accessible_map = {op.id: op for op in accessible_qs.select_related('measurement__request')}
+        if len(accessible_map) != len(set(opening_ids)):
+            return Response({'detail': 'Нет доступа к некоторым проёмам'}, status=status.HTTP_403_FORBIDDEN)
+
+        order_ids = {op.measurement.request.order_id for op in accessible_map.values()}
+        if len(order_ids) > 1:
+            return Response(
+                {'detail': 'Проёмы принадлежат разным заказам'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        target_order_id = next(iter(order_ids))
+
+        item_ids = [l.get('order_item_id') for l in links if l.get('order_item_id')]
+        items_map = {i.id: i for i in OrderItem.objects.filter(id__in=item_ids, order_id=target_order_id)}
+        if len(items_map) != len(set(item_ids)):
+            return Response(
+                {'detail': 'Некоторые позиции не принадлежат этому заказу'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            for link in links:
+                op = accessible_map[link['measurement_opening_id']]
+                item_id = link.get('order_item_id')
+                op.order_item_id = item_id if item_id else None
+                op.save(update_fields=['order_item'])
+
+        refreshed = MeasurementOpening.objects.filter(id__in=accessible_map.keys()).prefetch_related('attachments')
+        return Response(
+            MeasurementOpeningSerializer(refreshed, many=True, context={'request': request}).data,
+        )
 
 
 class MeasurementAttachmentViewSet(viewsets.ModelViewSet):
