@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react'
+import { useState, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ordersAPI } from '../../api/orders'
 import {
@@ -22,6 +22,8 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
   const [isCreating, setIsCreating] = useState(false)
   const [nextActionText, setNextActionText] = useState('')
   const [nextActionDueAt, setNextActionDueAt] = useState('')
+  const [nextActionError, setNextActionError] = useState(false)
+  const nextActionRef = useRef<HTMLDivElement>(null)
 
   const handleFile = (f: File | null) => {
     setFile(f)
@@ -114,8 +116,12 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
   const handleCreate = async () => {
     if (!parsed) return
     if (!salonId) { setError('Выберите салон'); return }
-    if (!nextActionText.trim()) { setError('Укажите следующее действие по заказу'); return }
-    if (!nextActionDueAt) { setError('Укажите срок следующего действия'); return }
+    if (!nextActionText.trim() || !nextActionDueAt) {
+      setNextActionError(true)
+      nextActionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    setNextActionError(false)
     setIsCreating(true)
     setError(null)
     try {
@@ -375,18 +381,26 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
           </div>
 
           {/* Следующее действие (обязательно) */}
-          <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-5">
-            <h2 className="text-sm font-semibold text-amber-800 uppercase tracking-wider mb-3">
-              5. Следующее действие * <span className="font-normal text-xs normal-case text-amber-700">— что и когда нужно сделать по заказу</span>
+          <div
+            ref={nextActionRef}
+            className={`rounded-xl shadow-sm p-5 ${nextActionError ? 'bg-red-50 border-2 border-red-400' : 'bg-amber-50 border border-amber-200'}`}
+          >
+            <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${nextActionError ? 'text-red-700' : 'text-amber-800'}`}>
+              5. Следующее действие * <span className="font-normal text-xs normal-case">— что и когда нужно сделать по заказу</span>
             </h2>
+            {nextActionError && (
+              <div className="mb-3 text-sm font-medium text-red-700">
+                Заполните «следующее действие» и срок — без этого заказ не создать.
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-amber-900 mb-1">Что сделать *</label>
                 <input
                   type="text"
                   value={nextActionText}
-                  onChange={(e) => setNextActionText(e.target.value)}
-                  className={inputCls}
+                  onChange={(e) => { setNextActionText(e.target.value); if (nextActionError) setNextActionError(false) }}
+                  className={`${inputCls} ${nextActionError && !nextActionText.trim() ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                   placeholder="Например: Позвонить клиенту, уточнить детали"
                   required
                 />
@@ -396,8 +410,8 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                 <input
                   type="datetime-local"
                   value={nextActionDueAt}
-                  onChange={(e) => setNextActionDueAt(e.target.value)}
-                  className={inputCls}
+                  onChange={(e) => { setNextActionDueAt(e.target.value); if (nextActionError) setNextActionError(false) }}
+                  className={`${inputCls} ${nextActionError && !nextActionDueAt ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                   required
                 />
               </div>
