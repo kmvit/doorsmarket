@@ -1,4 +1,5 @@
 import { CreateOrderAddonData, AddonKind, OpeningType, ADDON_KIND_DISPLAY } from '../../types/orders'
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 
 interface Props {
   addons: CreateOrderAddonData[]
@@ -112,11 +113,10 @@ const OrderAddonsEditor = ({ addons, onChange }: Props) => {
             </div>
             <div className="md:col-span-2">
               <label className={labelCls}>Наименование</label>
-              <textarea
+              <AutoResizeTextarea
                 value={addon.name}
                 onChange={(e) => updateAddon(idx, 'name', e.target.value)}
-                rows={2}
-                className={`${fieldCls} resize-y leading-snug`}
+                className={fieldCls}
                 placeholder="Например: Короб STANDARD PRO 80мм"
               />
             </div>
@@ -184,11 +184,11 @@ const OrderAddonsEditor = ({ addons, onChange }: Props) => {
           {/* Комментарий */}
           <div>
             <label className={labelCls}>Комментарий</label>
-            <input
-              type="text"
+            <AutoResizeTextarea
               value={addon.comment ?? ''}
               onChange={(e) => updateAddon(idx, 'comment', e.target.value)}
               className={fieldCls}
+              placeholder="Комментарий по позиции..."
             />
           </div>
         </div>

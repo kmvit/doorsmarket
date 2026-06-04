@@ -1,4 +1,5 @@
 import { CreateOrderItemData, DoorType, OpeningType, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 
 interface Props {
   items: CreateOrderItemData[]
@@ -167,14 +168,13 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
             </div>
           </div>
 
-          {/* Модель — большая textarea */}
+          {/* Модель — авто-растущая textarea */}
           <div className="mb-3">
             <label className={labelCls}>Модель / Наименование</label>
-            <textarea
+            <AutoResizeTextarea
               value={item.model_name}
               onChange={(e) => updateItem(idx, 'model_name', e.target.value)}
-              rows={2}
-              className={`${fieldCls} resize-y leading-snug`}
+              className={fieldCls}
               placeholder="Полное название модели полотна"
             />
           </div>
@@ -260,11 +260,10 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
           {/* Примечание */}
           <div>
             <label className={labelCls}>Примечание</label>
-            <textarea
+            <AutoResizeTextarea
               value={item.notes ?? ''}
               onChange={(e) => updateItem(idx, 'notes', e.target.value)}
-              rows={2}
-              className={`${fieldCls} resize-y leading-snug`}
+              className={fieldCls}
               placeholder="Комментарий по этой двери..."
             />
           </div>

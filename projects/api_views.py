@@ -362,9 +362,34 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             list(request.FILES.keys()),
             len(request.FILES.getlist('attachments')),
         )
+
+        # Запоминаем тип рекламации ДО сохранения, чтобы отследить смену маршрута
+        old_complaint_type = instance.complaint_type
+
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         complaint = serializer.save()
+
+        # Если СМ (или admin) при редактировании сменил тип рекламации (маршрут) —
+        # запускаем соответствующий сценарий: смену статуса и уведомления получателю.
+        # Без этого рекламация после смены типа "висит" со старым статусом и никому
+        # не приходит уведомление (например, при переводе с factory_rejected на manager).
+        type_changed = (
+            'complaint_type' in request.data
+            and complaint.complaint_type
+            and complaint.complaint_type != old_complaint_type
+        )
+        if type_changed and request.user.role in ('service_manager', 'admin'):
+            try:
+                if complaint.complaint_type == ComplaintType.MANAGER:
+                    complaint.set_type_manager()
+                elif complaint.complaint_type == ComplaintType.INSTALLER:
+                    complaint.set_type_installer(installer=complaint.installer_assigned)
+                elif complaint.complaint_type == ComplaintType.FACTORY:
+                    complaint.set_type_factory()
+                    complaint.send_factory_email_notification()
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Обрабатываем новые вложения (файлы)
         files = request.FILES.getlist('attachments')
