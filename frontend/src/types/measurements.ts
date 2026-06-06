@@ -78,6 +78,9 @@ export interface Measurement {
   lift_required: boolean
   lift_impossible_warning: string | null
   order_status: OrderStatus
+  lift_available: boolean | null
+  stairs_available: boolean | null
+  floor_readiness: string
 }
 
 export interface MeasurementListItem {

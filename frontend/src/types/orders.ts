@@ -10,6 +10,7 @@ export interface Salon {
 
 export type OrderStatus =
   | 'draft' | 'active' | 'measurement_requested'
+  | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
   | 'paid' | 'in_production' | 'on_warehouse' | 'shipped' | 'completed'
   | 'cancelled'
 
@@ -17,6 +18,9 @@ export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   draft: 'Черновик',
   active: 'Создан',
   measurement_requested: 'Заявка на замер',
+  measurement_scheduled: 'Замер запланирован',
+  measurement_done: 'Замер выполнен',
+  measurement_processed: 'Замер обработан',
   paid: 'Оплачен',
   in_production: 'В производстве',
   on_warehouse: 'На складе',
@@ -29,6 +33,9 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   draft: 'bg-gray-100 text-gray-700',
   active: 'bg-green-100 text-green-700',
   measurement_requested: 'bg-blue-100 text-blue-700',
+  measurement_scheduled: 'bg-cyan-100 text-cyan-700',
+  measurement_done: 'bg-teal-100 text-teal-700',
+  measurement_processed: 'bg-emerald-100 text-emerald-700',
   paid: 'bg-emerald-100 text-emerald-700',
   in_production: 'bg-orange-100 text-orange-700',
   on_warehouse: 'bg-cyan-100 text-cyan-700',

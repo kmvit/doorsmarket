@@ -504,6 +504,10 @@ class MeasurementSerializer(serializers.ModelSerializer):
     lift_impossible_warning = serializers.SerializerMethodField()
     order_status = serializers.CharField(source='request.order.status', read_only=True)
     order_attachments = serializers.SerializerMethodField()
+    # Условия объекта (хранятся в заказе, заполняет СМ при замере)
+    lift_available = serializers.BooleanField(source='request.order.lift_available', read_only=True, allow_null=True)
+    stairs_available = serializers.BooleanField(source='request.order.stairs_available', read_only=True, allow_null=True)
+    floor_readiness = serializers.CharField(source='request.order.floor_readiness', read_only=True, allow_blank=True)
 
     class Meta:
         model = Measurement
@@ -515,6 +519,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
             'opening_plan_url', 'lift_required', 'lift_impossible_warning', 'order_status',
+            'lift_available', 'stairs_available', 'floor_readiness',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',

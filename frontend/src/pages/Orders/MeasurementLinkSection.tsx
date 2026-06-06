@@ -8,9 +8,10 @@ interface Props {
   order: Order
   measurement: Measurement
   onApplied: () => void
+  onLinksSaved?: () => void
 }
 
-const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
+const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }: Props) => {
   const items = order.items || []
   const openings = measurement.openings || []
 
@@ -20,6 +21,7 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
   const [isApplying, setIsApplying] = useState(false)
   const [savedOnce, setSavedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   // Инициализация: связки берём с серверной стороны (op.order_item)
   useEffect(() => {
@@ -31,10 +33,10 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
       }
     }
     setLinks(initial)
-    // savedOnce включаем сразу, если на сервере уже есть привязки ко всем позициям
-    const allLinkedFromServer =
-      items.length > 0 && items.every((i) => initial[i.id] != null)
-    setSavedOnce(allLinkedFromServer)
+    // savedOnce включаем сразу, если на сервере уже есть хотя бы одна привязка —
+    // тогда при возврате на страницу кнопка «Заполнить из Замера» сразу доступна.
+    const anyLinkedFromServer = items.some((i) => initial[i.id] != null)
+    setSavedOnce(anyLinkedFromServer)
   }, [order.id, measurement.id])
 
   const openingById = useMemo(() => {
@@ -43,10 +45,12 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
     return m
   }, [openings])
 
-  const allLinked = items.length > 0 && items.every((i) => links[i.id] != null)
+  const linkedCount = items.filter((i) => links[i.id] != null).length
+  const hasAnyLink = linkedCount > 0
 
   const handleSaveLinks = async () => {
     setError(null)
+    setSuccessMsg(null)
     setIsSavingLinks(true)
     try {
       const payload = Object.entries(links).map(([itemId, openingId]) => ({
@@ -72,6 +76,8 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
 
       await measurementOpeningsAPI.batchLink(payload)
       setSavedOnce(true)
+      setSuccessMsg(`Связки сохранены (${linkedCount}). Теперь нажмите «Заполнить из Замера», чтобы перенести размеры в позиции заказа.`)
+      onLinksSaved?.()
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Не удалось сохранить связки')
     } finally {
@@ -82,8 +88,11 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
   const handleApply = async () => {
     setError(null)
     setIsApplying(true)
+    setError(null)
+    setSuccessMsg(null)
     try {
       await ordersAPI.applyMeasurementToItems(order.id)
+      setSuccessMsg('Размеры и рекомендации из замера перенесены в позиции заказа.')
       onApplied()
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Не удалось применить замер')
@@ -108,13 +117,13 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
           >
             {isSavingLinks ? 'Сохранение...' : 'Сохранить связки'}
           </button>
-          {savedOnce && allLinked && (
+          {savedOnce && hasAnyLink && (
             <button
               onClick={handleApply}
               disabled={isApplying}
               className="px-3 py-1.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 rounded-xl"
             >
-              {isApplying ? 'Применяю...' : 'Заполнить из Замера'}
+              {isApplying ? 'Применяю...' : 'Заполнить размеры дверей и рекомендации по Замеру'}
             </button>
           )}
         </div>
@@ -129,6 +138,11 @@ const MeasurementLinkSection = ({ order, measurement, onApplied }: Props) => {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-3 text-sm">
           {error}
+        </div>
+      )}
+      {successMsg && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg mb-3 text-sm">
+          ✓ {successMsg}
         </div>
       )}
 

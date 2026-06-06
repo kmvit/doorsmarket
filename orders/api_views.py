@@ -277,6 +277,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         и рекомендованный размер проёма.
         """
         order = self.get_object()
+        # Связки и применение замера — только менеджер/admin. СМ только делает замер.
+        if request.user.role not in ('manager', 'admin'):
+            return Response(
+                {'detail': 'Обрабатывать замер (связывать проёмы) может только менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         mr = MeasurementRequest.objects.filter(order=order).first()
         if not mr or not hasattr(mr, 'measurement'):
             return Response(
@@ -602,6 +608,26 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             order.save()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
+    # ---- СМ заполняет условия объекта (лифт/лестница/готовность пола) ----
+    @action(detail=True, methods=['post'], url_path='set_site_conditions')
+    def set_site_conditions(self, request, pk=None):
+        """
+        POST /measurements/{id}/set_site_conditions/
+        Body: {lift_available: bool|null, stairs_available: bool|null, floor_readiness: str}
+        СМ во время замера заполняет условия подъёма/готовности пола (поля заказа).
+        """
+        m = self.get_object()
+        order = m.request.order
+        data = request.data
+        if 'lift_available' in data:
+            order.lift_available = data.get('lift_available')
+        if 'stairs_available' in data:
+            order.stairs_available = data.get('stairs_available')
+        if 'floor_readiness' in data:
+            order.floor_readiness = data.get('floor_readiness') or ''
+        order.save(update_fields=['lift_available', 'stairs_available', 'floor_readiness', 'updated_at'])
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
     # ---- Отметить выполненным (СМ) ----
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
@@ -705,6 +731,11 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         Body: {order_item_id: int | null}
         Привязывает / отвязывает проём замера к позиции КП.
         """
+        if request.user.role not in ('manager', 'admin'):
+            return Response(
+                {'detail': 'Связывать проёмы может только менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         op = self.get_object()
         order_item_id = request.data.get('order_item_id')
         if order_item_id is None:
@@ -734,6 +765,11 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         Транзакционно сохраняет связки. Все openings должны принадлежать одному заказу.
         """
         from django.db import transaction
+        if request.user.role not in ('manager', 'admin'):
+            return Response(
+                {'detail': 'Связывать проёмы может только менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         links = request.data.get('links') or []
         if not isinstance(links, list) or not links:
             return Response({'detail': 'Пустой список связок'}, status=status.HTTP_400_BAD_REQUEST)

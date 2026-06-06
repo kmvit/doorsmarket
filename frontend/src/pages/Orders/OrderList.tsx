@@ -96,7 +96,16 @@ const OrderList = () => {
             <option value="">Все статусы</option>
             <option value="draft">Черновик</option>
             <option value="active">Создан</option>
-            <option value="cancelled">Отменён</option>
+            <option value="measurement_requested">Заявка на замер</option>
+            <option value="measurement_scheduled">Замер запланирован</option>
+            <option value="measurement_done">Замер выполнен</option>
+            <option value="measurement_processed">Замер обработан</option>
+            <option value="paid">Оплачен</option>
+            <option value="in_production">В производстве</option>
+            <option value="on_warehouse">На складе</option>
+            <option value="shipped">Отгружен</option>
+            <option value="completed">Выполнен</option>
+            <option value="cancelled">Не актуален</option>
           </select>
         </div>
         {salons.length > 0 && (

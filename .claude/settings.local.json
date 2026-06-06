@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python manage.py migrate users 0004_city_warehouse_notification_email)",
       "Bash(npx tsc *)",
-      "Bash(awk '/^def / {print NR\": \"$0}' /Users/home/PycharmProjects/marketingdoors/projects/pdf_parser.py)"
+      "Bash(awk '/^def / {print NR\": \"$0}' /Users/home/PycharmProjects/marketingdoors/projects/pdf_parser.py)",
+      "Bash(npm run *)"
     ]
   }
 }

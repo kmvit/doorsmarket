@@ -10,6 +10,7 @@ import { Measurement } from '../../types/measurements'
 import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import MeasurementLinkSection from './MeasurementLinkSection'
+import FileViewer from '../../components/common/FileViewer'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -23,6 +24,7 @@ const OrderDetail = () => {
   const [showMrModal, setShowMrModal] = useState(false)
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
   const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
@@ -366,6 +368,41 @@ const OrderDetail = () => {
           canEdit={canUploadAttachments}
           onUpdate={reloadOrder}
         />
+
+        {/* Документы и фото из замера (загружены СМ) */}
+        {measurement && measurement.attachments && measurement.attachments.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-semibold text-cyan-700 uppercase tracking-wider mb-2">
+              Документы из замера ({measurement.attachments.length})
+            </h3>
+            <ul className="flex flex-wrap gap-2">
+              {measurement.attachments.map((a) => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => a.file_url && setViewerFile({ url: a.file_url, name: a.name || 'Файл из замера' })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    {a.name || 'файл'}
+                    {a.opening != null && <span className="text-cyan-500">(проём)</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {measurement.opening_plan_url && (
+              <button
+                type="button"
+                onClick={() => setViewerFile({ url: measurement.opening_plan_url!, name: 'План открывания' })}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100"
+              >
+                План открывания
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Заявка на замер (если создана) + Следующее действие */}
@@ -494,12 +531,13 @@ const OrderDetail = () => {
         </div>
       )}
 
-      {/* Связка позиций КП с проёмами замера (доступна после is_done) */}
-      {measurement && measurement.is_done && (
+      {/* Связка позиций КП с проёмами замера — только менеджер/admin (СМ не имеет прав) */}
+      {measurement && measurement.is_done && canEdit && (
         <MeasurementLinkSection
           order={order}
           measurement={measurement}
           onApplied={reloadOrder}
+          onLinksSaved={() => loadMeasurement(measurementRequest)}
         />
       )}
 
@@ -718,6 +756,14 @@ const OrderDetail = () => {
             reloadOrder()
             navigate(`/measurements/${mid}`)
           }}
+        />
+      )}
+
+      {viewerFile && (
+        <FileViewer
+          fileUrl={viewerFile.url}
+          fileName={viewerFile.name}
+          onClose={() => setViewerFile(null)}
         />
       )}
     </div>

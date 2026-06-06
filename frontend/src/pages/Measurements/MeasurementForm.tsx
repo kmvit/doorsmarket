@@ -13,6 +13,7 @@ import { Measurement, MeasurementOpening } from '../../types/measurements'
 import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
+import FileViewer from '../../components/common/FileViewer'
 
 const fieldCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
@@ -26,6 +27,8 @@ const MeasurementForm = () => {
   const [savingOpeningId, setSavingOpeningId] = useState<number | null>(null)
   const [showSchedule, setShowSchedule] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
+  const [savingConditions, setSavingConditions] = useState(false)
 
   const canEditOpenings = !m?.is_done && (
     user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
@@ -183,6 +186,21 @@ const MeasurementForm = () => {
     }
   }
 
+  const saveConditions = async (patch: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string }) => {
+    if (!m) return
+    // Оптимистично обновляем локально
+    setM({ ...m, ...patch } as Measurement)
+    setSavingConditions(true)
+    try {
+      const updated = await measurementsAPI.setSiteConditions(m.id, patch)
+      setM(updated)
+    } catch (err: any) {
+      setActionError(err.response?.data?.detail || 'Не удалось сохранить условия объекта')
+    } finally {
+      setSavingConditions(false)
+    }
+  }
+
   const handleMarkProcessed = async () => {
     if (!m) return
     setActionError(null)
@@ -327,7 +345,13 @@ const MeasurementForm = () => {
             <div>
               <span className="text-gray-500">План открывания: </span>
               {m.opening_plan_url ? (
-                <a href={m.opening_plan_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">Открыть</a>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile({ url: m.opening_plan_url!, name: 'План открывания' })}
+                  className="text-primary-600 hover:underline"
+                >
+                  Открыть
+                </button>
               ) : (
                 <span className="text-amber-700">Не приложен — нужно вложить до закрытия замера</span>
               )}
@@ -337,7 +361,13 @@ const MeasurementForm = () => {
               <ul className="mt-1 space-y-0.5">
                 {m.attachments.filter((a) => !a.opening).map((a) => (
                   <li key={a.id} className="text-xs">
-                    <a href={a.file_url || '#'} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">{a.name || 'файл'}</a>
+                    <button
+                      type="button"
+                      onClick={() => a.file_url && setViewerFile({ url: a.file_url, name: a.name || 'Файл' })}
+                      className="text-primary-600 hover:underline text-left"
+                    >
+                      {a.name || 'файл'}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -355,11 +385,72 @@ const MeasurementForm = () => {
             {m.signature_photo_url && (
               <div>
                 <span className="text-gray-500">Подпись клиента: </span>
-                <a href={m.signature_photo_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">Открыть</a>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile({ url: m.signature_photo_url!, name: 'Подпись клиента' })}
+                  className="text-primary-600 hover:underline"
+                >
+                  Открыть
+                </button>
               </div>
             )}
           </div>
         </div>
+      </div>
+
+      {/* Условия объекта — заполняет СМ */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Условия объекта</h2>
+          {savingConditions && <span className="text-xs text-gray-400">сохранение...</span>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={labelCls}>
+              Возможен подъём на лифте?
+              {liftRequired && <span className="text-red-600"> * (высота &gt; 2300)</span>}
+            </label>
+            <select
+              value={m.lift_available === null || m.lift_available === undefined ? '' : String(m.lift_available)}
+              onChange={(e) => saveConditions({ lift_available: e.target.value === '' ? null : e.target.value === 'true' })}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+            >
+              <option value="">— не указано —</option>
+              <option value="true">Да</option>
+              <option value="false">Нет</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Возможен подъём по лестнице?</label>
+            <select
+              value={m.stairs_available === null || m.stairs_available === undefined ? '' : String(m.stairs_available)}
+              onChange={(e) => saveConditions({ stairs_available: e.target.value === '' ? null : e.target.value === 'true' })}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+            >
+              <option value="">— не указано —</option>
+              <option value="true">Да</option>
+              <option value="false">Нет</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Готовность пола</label>
+            <input
+              type="text"
+              defaultValue={m.floor_readiness || ''}
+              onBlur={(e) => { if (e.target.value !== (m.floor_readiness || '')) saveConditions({ floor_readiness: e.target.value }) }}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+              placeholder="Например: готов / черновой / стяжка"
+            />
+          </div>
+        </div>
+        {m.lift_impossible_warning && (
+          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm font-medium">
+            ⚠️ {m.lift_impossible_warning}
+          </div>
+        )}
       </div>
 
       {/* Проёмы */}
@@ -701,7 +792,13 @@ const MeasurementForm = () => {
               <ul className="space-y-0.5">
                 {op.attachments.map((a) => (
                   <li key={a.id} className="text-xs">
-                    <a href={a.file_url || '#'} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">{a.name || 'файл'}</a>
+                    <button
+                      type="button"
+                      onClick={() => a.file_url && setViewerFile({ url: a.file_url, name: a.name || 'Файл' })}
+                      className="text-primary-600 hover:underline text-left"
+                    >
+                      {a.name || 'файл'}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -718,6 +815,28 @@ const MeasurementForm = () => {
             </div>
           </div>
         ))}
+
+        {/* Дублирующие кнопки снизу — чтобы не прокручивать вверх после длинного списка */}
+        {m.openings.length > 0 && (canEditOpenings || canMarkDone) && (
+          <div className="flex flex-wrap justify-center items-center gap-3 pt-2">
+            {canEditOpenings && (
+              <button
+                onClick={addOpening}
+                className="px-4 py-2 text-sm font-medium text-primary-600 border border-primary-300 hover:bg-primary-50 rounded-xl"
+              >
+                + Добавить проём
+              </button>
+            )}
+            {canMarkDone && (
+              <button
+                onClick={handleMarkDone}
+                className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl"
+              >
+                ✓ Замер выполнен
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {showSchedule && (
@@ -730,6 +849,14 @@ const MeasurementForm = () => {
             setShowSchedule(false)
             load()
           }}
+        />
+      )}
+
+      {viewerFile && (
+        <FileViewer
+          fileUrl={viewerFile.url}
+          fileName={viewerFile.name}
+          onClose={() => setViewerFile(null)}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import {
   Salon, ParsedKpData, ParsedKpItem, ParsedKpAddon,
   ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY,
 } from '../../types/orders'
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 
 interface Props {
   salons: Salon[]
@@ -292,12 +293,12 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                       <tr className="bg-gray-50/50">
                         <td colSpan={2} className="px-2 pb-2 text-xs text-right text-gray-500 align-top pt-1">Примечание по проёму:</td>
                         <td colSpan={11} className="px-2 pb-2">
-                          <textarea
+                          <AutoResizeTextarea
                             value={item.notes ?? ''}
                             onChange={(e) => updateItem(idx, 'notes' as keyof ParsedKpItem, e.target.value)}
-                            rows={1}
+                            minRows={1}
                             placeholder="Комментарий по этой двери..."
-                            className="w-full rounded border-gray-200 text-xs leading-snug resize-y"
+                            className="w-full rounded border-gray-200 text-xs"
                           />
                         </td>
                       </tr>

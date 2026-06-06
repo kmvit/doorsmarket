@@ -44,6 +44,14 @@ export const measurementsAPI = {
     return response.data
   },
 
+  setSiteConditions: async (
+    id: number,
+    data: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string },
+  ): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/set_site_conditions/`, data)
+    return response.data
+  },
+
   uploadSignature: async (id: number, file: File): Promise<Measurement> => {
     const fd = new FormData()
     fd.append('signature_photo', file)
