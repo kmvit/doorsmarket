@@ -209,7 +209,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий к заказу</label>
-                <textarea value={comment} onChange={(e) => setComment(e.target.value)} className={inputCls} rows={2} />
+                <AutoResizeTextarea value={comment} onChange={(e) => setComment(e.target.value)} className={inputCls} />
               </div>
             </div>
           </div>
@@ -251,7 +251,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.opening_number} onChange={(e) => updateItem(idx, 'opening_number', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={item.room_name} onChange={(e) => updateItem(idx, 'room_name', e.target.value)} className={cellInput} /></td>
                         <td className="px-2 py-1.5 align-top">
-                          <textarea value={item.model_name} onChange={(e) => updateItem(idx, 'model_name', e.target.value)} rows={2} className="w-full min-w-[300px] rounded border-gray-300 text-sm leading-snug resize-y whitespace-pre-wrap break-words" />
+                          <AutoResizeTextarea value={item.model_name} onChange={(e) => updateItem(idx, 'model_name', e.target.value)} className="w-full min-w-[300px] rounded border-gray-300 text-sm" />
                         </td>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={item.price ?? ''} onChange={(e) => updateItem(idx, 'price', e.target.value)} className="w-20 rounded border-gray-300 text-sm text-right" /></td>
@@ -346,7 +346,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                           </select>
                         </td>
                         <td className="px-2 py-1.5 align-top">
-                          <textarea value={addon.name} onChange={(e) => updateAddon(idx, 'name', e.target.value)} rows={2} className="w-full min-w-[280px] rounded border-gray-300 text-sm leading-snug resize-y whitespace-pre-wrap break-words" />
+                          <AutoResizeTextarea value={addon.name} onChange={(e) => updateAddon(idx, 'name', e.target.value)} className="w-full min-w-[280px] rounded border-gray-300 text-sm" />
                         </td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={addon.quantity ?? ''} onChange={(e) => updateAddon(idx, 'quantity', e.target.value)} className="w-16 rounded border-gray-300 text-sm text-right" /></td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={addon.size} onChange={(e) => updateAddon(idx, 'size', e.target.value)} className="w-24 rounded border-gray-300 text-sm" /></td>

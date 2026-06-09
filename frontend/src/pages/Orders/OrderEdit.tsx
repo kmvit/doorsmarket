@@ -6,6 +6,7 @@ import { salonsAPI } from '../../api/salons'
 import { Order, Salon, CreateOrderData, OrderStatus } from '../../types/orders'
 import OrderItemsEditor from './OrderItemsEditor'
 import OrderAddonsEditor from './OrderAddonsEditor'
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import NextActionBlock from './NextActionBlock'
 
 const OrderEdit = () => {
@@ -297,11 +298,11 @@ const OrderEdit = () => {
           </div>
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
-            <textarea
+            <AutoResizeTextarea
               value={form.comment}
               onChange={(e) => setField('comment', e.target.value)}
               className={inputCls}
-              rows={3}
+              minRows={3}
             />
           </div>
         </div>

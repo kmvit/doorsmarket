@@ -14,6 +14,7 @@ import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 
 const fieldCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
@@ -735,23 +736,21 @@ const MeasurementForm = () => {
             <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Доп. фурнитура</label>
-                <textarea
+                <AutoResizeTextarea
                   value={op.extra_hardware}
                   onChange={(e) => updateOpeningLocal(op.id, 'extra_hardware', e.target.value)}
                   onBlur={() => saveOpening(op)}
                   disabled={!canEditOpenings}
-                  rows={2}
                   className={fieldCls}
                 />
               </div>
               <div>
                 <label className={labelCls}>Порог</label>
-                <textarea
+                <AutoResizeTextarea
                   value={op.threshold}
                   onChange={(e) => updateOpeningLocal(op.id, 'threshold', e.target.value)}
                   onBlur={() => saveOpening(op)}
                   disabled={!canEditOpenings}
-                  rows={2}
                   className={fieldCls}
                 />
               </div>
@@ -759,12 +758,11 @@ const MeasurementForm = () => {
 
             <div className="mb-3">
               <label className={labelCls}>Примечания / рекомендации</label>
-              <textarea
+              <AutoResizeTextarea
                 value={op.notes}
                 onChange={(e) => updateOpeningLocal(op.id, 'notes', e.target.value)}
                 onBlur={() => saveOpening(op)}
                 disabled={!canEditOpenings}
-                rows={2}
                 className={fieldCls}
               />
             </div>
