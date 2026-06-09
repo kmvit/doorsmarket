@@ -58,16 +58,14 @@ const MeasurementForm = () => {
       openings: m.openings.map((o) => {
         if (o.id !== openingId) return o
         const next = { ...o, [field]: value }
-        // Рек. размер двери = факт. проём − 70/100
+        // Рек. дверь = желаемый размер (если задан клиентом), иначе факт. проём − 70/100
         const h = next.actual_height ? Number(next.actual_height) : null
         const w = next.actual_width ? Number(next.actual_width) : null
-        next.recommended_door_height = h ? h - 70 : null
-        next.recommended_door_width = w ? w - 100 : null
-        // Рек. размер проёма: от желаемой двери (если есть) или от рекомендованной
-        const sourceH = next.desired_door_height || next.recommended_door_height
-        const sourceW = next.desired_door_width || next.recommended_door_width
-        next.recommended_opening_height = sourceH ? sourceH + 70 : null
-        next.recommended_opening_width = sourceW ? sourceW + 100 : null
+        next.recommended_door_height = next.desired_door_height || (h ? h - 70 : null)
+        next.recommended_door_width = next.desired_door_width || (w ? w - 100 : null)
+        // Рек. проём = рек. дверь (уже с учётом желаемой) + 70/100
+        next.recommended_opening_height = next.recommended_door_height ? next.recommended_door_height + 70 : null
+        next.recommended_opening_width = next.recommended_door_width ? next.recommended_door_width + 100 : null
         return next
       }),
     })

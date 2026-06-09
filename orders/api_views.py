@@ -32,7 +32,6 @@ from .pdf_parser import parse_kp_pdf
 from .recommendations import (
     calculate_door_recommendation,
     calculate_opening_recommendation,
-    calculate_opening_recommendation_with_desired,
     validate_lift_required,
 )
 
@@ -301,6 +300,10 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         for op in linked_openings:
             item = op.order_item
+            # Название комнаты из замера — заполняем, если в позиции КП оно пустое,
+            # чтобы не затирать уже введённое менеджером значение.
+            if op.room_name and not (item.room_name or '').strip():
+                item.room_name = op.room_name
             if op.door_type:
                 item.door_type = op.door_type
             if op.opening_type:
@@ -316,7 +319,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             if op.recommended_opening_width:
                 item.recommended_opening_width = op.recommended_opening_width
             item.save(update_fields=[
-                'door_type', 'opening_type', 'door_height', 'door_width',
+                'room_name', 'door_type', 'opening_type', 'door_height', 'door_width',
                 'recommended_opening_height', 'recommended_opening_width',
             ])
 
@@ -705,15 +708,15 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
     def _recalc_recommendations(self, op: MeasurementOpening):
         """
         Авто-расчёт рекомендуемых размеров двери и проёма.
-        - Рек. дверь  = факт. проём - 70/-100
-        - Рек. проём = желаемая (или рек.) дверь + 70/+100
+        - Рек. дверь  = желаемый размер двери (если указан), иначе факт. проём − 70/−100.
+          Желаемые размеры — это то, что захотел клиент, поэтому именно они должны
+          попадать в «рек. дверь» и далее в заказ, а рекомендации — считаться под них.
+        - Рек. проём = рек. дверь + 70/+100.
         """
-        if op.actual_height or op.actual_width:
-            rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
-            op.recommended_door_height = rec_dh
-            op.recommended_door_width = rec_dw
-        rec_oh, rec_ow = calculate_opening_recommendation_with_desired(
-            op.desired_door_height, op.desired_door_width,
+        rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
+        op.recommended_door_height = op.desired_door_height or rec_dh
+        op.recommended_door_width = op.desired_door_width or rec_dw
+        rec_oh, rec_ow = calculate_opening_recommendation(
             op.recommended_door_height, op.recommended_door_width,
         )
         op.recommended_opening_height = rec_oh
