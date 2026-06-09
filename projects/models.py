@@ -951,10 +951,19 @@ class Complaint(models.Model):
             )
 
     def check_installer_overdue(self):
-        """Проверяет просрочку выполнения монтажником (более месяца с момента назначения)"""
+        """
+        Проверяет просрочку монтажа.
+
+        Просрочка считается по ЗАПЛАНИРОВАННОЙ дате монтажа:
+        - если монтажник назначил дату и она ещё НЕ наступила — просрочки нет
+          (даже если с момента назначения прошло > 30 дней);
+        - если запланированная дата прошла, а монтаж не выполнен — просрочка;
+        - если дата монтажа вообще не назначена — fallback на старое правило
+          «> 30 дней с момента назначения монтажника».
+        """
         if not self.installer_assigned or not self.installer_assigned_at:
             return False
-        
+
         # Проверяем, не завершена ли уже рекламация (или на проверке у СМ)
         if self.status in [
             ComplaintStatus.COMPLETED,
@@ -963,10 +972,22 @@ class Complaint(models.Model):
             ComplaintStatus.UNDER_SM_REVIEW,
         ]:
             return False
-        
-        # Проверяем, прошло ли более месяца (30 дней)
-        month_ago = timezone.now() - timedelta(days=30)
-        if self.installer_assigned_at <= month_ago:
+
+        now = timezone.now()
+
+        # Ключевой фикс: если дата монтажа назначена и ещё не наступила — НЕ просрочка.
+        if self.planned_installation_date and self.planned_installation_date > now:
+            return False
+
+        # Определяем факт просрочки
+        if self.planned_installation_date:
+            # Дата монтажа назначена и уже прошла
+            is_overdue = self.planned_installation_date <= now
+        else:
+            # Дата ещё не назначена — старое правило: > 30 дней с момента назначения
+            is_overdue = self.installer_assigned_at <= (now - timedelta(days=30))
+
+        if is_overdue:
             # Если еще не помечена как просроченная
             if self.status != ComplaintStatus.INSTALLER_OVERDUE:
                 self.status = ComplaintStatus.INSTALLER_OVERDUE
