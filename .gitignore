@@ -166,3 +166,6 @@ secret_key.txt
 # Документы заказчика (ТЗ, образцы PDF и т.п. — не коммитим в репо)
 documentanions/
 
+
+# Claude Code worktrees (временные рабочие папки агентов)
+.claude/worktrees/
