@@ -964,6 +964,13 @@ class Complaint(models.Model):
         if not self.installer_assigned or not self.installer_assigned_at:
             return False
 
+        # Если рекламацию увели из маршрута монтажника (СМ сменил тип на «Менеджер»
+        # или «Фабрика»), просрочка монтажа к ней больше не относится. Без этой
+        # проверки list() тут же откатывает переадресацию обратно в «Просрочена
+        # монтажником», и кажется, что рекламация «не перенаправляется».
+        if self.complaint_type != ComplaintType.INSTALLER:
+            return False
+
         # Проверяем, не завершена ли уже рекламация (или на проверке у СМ)
         if self.status in [
             ComplaintStatus.COMPLETED,
@@ -975,8 +982,11 @@ class Complaint(models.Model):
 
         now = timezone.now()
 
-        # Ключевой фикс: если дата монтажа назначена и ещё не наступила — НЕ просрочка.
+        # Если дата монтажа назначена и ещё не наступила — НЕ просрочка.
+        # Если при этом флаг просрочки оставался (монтажник перенёс дату вперёд),
+        # снимаем его и возвращаем рекламацию в нормальный статус планирования.
         if self.planned_installation_date and self.planned_installation_date > now:
+            self._restore_status_from_overdue()
             return False
 
         # Определяем факт просрочки
@@ -1032,11 +1042,31 @@ class Complaint(models.Model):
                         exc,
                         exc_info=True,
                     )
-            
+
             return True
-        
+
+        # Не просрочка — снимаем флаг просрочки, если он оставался.
+        self._restore_status_from_overdue()
         return False
-    
+
+    def _restore_status_from_overdue(self):
+        """
+        Снимает статус «Просрочена монтажником» и возвращает корректный статус
+        планирования. Вызывается, когда монтаж больше не просрочен (например,
+        монтажник перенёс дату вперёд). Если флаг не стоял — ничего не делает.
+        """
+        if self.status != ComplaintStatus.INSTALLER_OVERDUE:
+            return
+        if self.planned_installation_date and self.planned_shipping_date:
+            self.status = ComplaintStatus.BOTH_PLANNED
+        elif self.planned_installation_date:
+            self.status = ComplaintStatus.INSTALLATION_PLANNED
+        elif self.planned_shipping_date:
+            self.status = ComplaintStatus.SHIPPING_PLANNED
+        else:
+            self.status = ComplaintStatus.WAITING_INSTALLER_DATE
+        self.save(update_fields=['status'])
+
     def approve_by_sm(self):
         """СМ проверяет и одобряет выполнение"""
         self.status = ComplaintStatus.COMPLETED

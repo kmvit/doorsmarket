@@ -1064,7 +1064,12 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         old_date = complaint.planned_installation_date
         complaint.planned_installation_date = installation_date
         complaint.save()
-        
+
+        # Сразу пересчитываем просрочку: если новая дата в будущем — снимаем
+        # статус «Просрочена монтажником», не дожидаясь следующего открытия списка.
+        complaint.check_installer_overdue()
+        complaint.refresh_from_db()
+
         # Создаем комментарий о переносе
         ComplaintComment.objects.create(
             complaint=complaint,

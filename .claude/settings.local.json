@@ -4,7 +4,16 @@
       "Bash(python manage.py migrate users 0004_city_warehouse_notification_email)",
       "Bash(npx tsc *)",
       "Bash(awk '/^def / {print NR\": \"$0}' /Users/home/PycharmProjects/marketingdoors/projects/pdf_parser.py)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(lsof -iTCP:3000 -sTCP:LISTEN -P -n)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/api/v1/)",
+      "Bash(./venv/bin/python -c \"import django; print\\('django', django.get_version\\(\\)\\)\")",
+      "Bash(./venv/bin/python manage.py runserver 8000 --noreload)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"sm_petrov\",\"password\":\"Test12345!\"}')",
+      "Bash(./venv/bin/python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('status',d.get\\('status'\\),'type',d.get\\('complaint_type'\\)\\)\")",
+      "Bash(./venv/bin/python manage.py check)",
+      "Bash(./venv/bin/python manage.py shell -c ' *)"
     ]
   }
 }
