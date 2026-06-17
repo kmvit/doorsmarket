@@ -52,6 +52,14 @@ const OrderItemsEditor = ({ items, onChange }: Props) => {
         const qty = field === 'quantity' ? value : item.quantity
         if (price != null && qty != null) next.amount = Number(price) * Number(qty)
       }
+      // Правка размера двери пересчитывает рекомендованный проём (дверь +70/+100).
+      // Прямую правку рек. проёма не трогаем — мнение менеджера приоритетнее.
+      if (field === 'door_height') {
+        next.recommended_opening_height = value != null && value !== '' ? Number(value) + 70 : null
+      }
+      if (field === 'door_width') {
+        next.recommended_opening_width = value != null && value !== '' ? Number(value) + 100 : null
+      }
       return next
     })
     onChange(updated)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
 import { remindersAPI } from '../../api/orders'
 import { OrderActionReminder, OrderStatus, ORDER_STATUS_DISPLAY } from '../../types/orders'
 
@@ -6,6 +6,12 @@ interface Props {
   orderId: number
   canEdit: boolean
   onStatusChanged?: (newStatus: OrderStatus) => void
+}
+
+// Императивный интерфейс: позволяет родителю открыть окно «Следующее действие»
+// извне (например, сразу после нажатия «Замер обработан»).
+export interface NextActionBlockHandle {
+  promptNextAction: (status?: OrderStatus) => void
 }
 
 // Список действий-переходов, доступных при закрытии напоминания
@@ -26,7 +32,7 @@ const COMPLETE_ACTIONS: CompleteAction[] = [
   { label: 'Не актуален', status: 'cancelled', color: 'bg-red-600 hover:bg-red-700' },
 ]
 
-const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
+const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, canEdit, onStatusChanged }, ref) => {
   const [reminders, setReminders] = useState<OrderActionReminder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -34,7 +40,8 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
   const [dueAt, setDueAt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [nextPrompt, setNextPrompt] = useState<{ reminderId: number; status?: OrderStatus } | null>(null)
+  // reminderId === null → режим «создание следующего действия» (без закрытия напоминания)
+  const [nextPrompt, setNextPrompt] = useState<{ reminderId: number | null; status?: OrderStatus } | null>(null)
   const [promptText, setPromptText] = useState('')
   const [promptDueAt, setPromptDueAt] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -52,6 +59,15 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
   }
 
   useEffect(() => { load() }, [orderId])
+
+  // Открыть окно «Следующее действие» извне (после «Замер обработан» и т.п.)
+  useImperativeHandle(ref, () => ({
+    promptNextAction: (status?: OrderStatus) => {
+      setNextPrompt({ reminderId: null, status })
+      setPromptText('')
+      setPromptDueAt('')
+    },
+  }))
 
   const formatDateTime = (d: string) =>
     new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -106,18 +122,29 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
       return
     }
     try {
-      await remindersAPI.markDone(nextPrompt.reminderId, {
-        new_status: nextPrompt.status,
-        next_action_text: promptText.trim(),
-        next_action_due_at: new Date(promptDueAt).toISOString(),
-      })
+      if (nextPrompt.reminderId == null) {
+        // Режим создания: просто заводим новое «следующее действие» по заказу
+        // (например, сразу после «Замер обработан»), ничего не закрывая.
+        await remindersAPI.create({
+          order: orderId,
+          action_text: promptText.trim(),
+          due_at: new Date(promptDueAt).toISOString(),
+        })
+      } else {
+        // Режим закрытия существующего напоминания со сменой статуса
+        await remindersAPI.markDone(nextPrompt.reminderId, {
+          new_status: nextPrompt.status,
+          next_action_text: promptText.trim(),
+          next_action_due_at: new Date(promptDueAt).toISOString(),
+        })
+      }
       if (nextPrompt.status && onStatusChanged) onStatusChanged(nextPrompt.status)
       setNextPrompt(null)
       setPromptText('')
       setPromptDueAt('')
       await load()
     } catch {
-      alert('Не удалось обновить напоминание')
+      alert('Не удалось сохранить следующее действие')
     }
   }
 
@@ -348,6 +375,8 @@ const NextActionBlock = ({ orderId, canEdit, onStatusChanged }: Props) => {
       )}
     </div>
   )
-}
+})
+
+NextActionBlock.displayName = 'NextActionBlock'
 
 export default NextActionBlock

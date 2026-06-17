@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.utils import timezone
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
@@ -282,6 +283,9 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         validated_data['last_activity_kind'] = ActivityKind.CREATED
         order = Order.objects.create(**validated_data)
         for idx, item_data in enumerate(items_data):
+            # position задаём порядком в списке; убираем возможный дубль из payload,
+            # иначе create() упадёт с "multiple values for keyword argument 'position'".
+            item_data.pop('position', None)
             OrderItem.objects.create(order=order, position=idx, **item_data)
         for idx, addon_data in enumerate(addons_data):
             addon_data.setdefault('position', idx)
@@ -299,25 +303,32 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop('items', None)
         addons_data = validated_data.pop('addons', None)
         old_status = instance.status
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.last_activity_at = timezone.now()
-        if 'status' in validated_data and validated_data['status'] != old_status:
-            instance.last_activity_kind = ActivityKind.STATUS_CHANGED
-        elif items_data is not None or addons_data is not None:
-            instance.last_activity_kind = ActivityKind.ITEMS_CHANGED
-        else:
-            instance.last_activity_kind = ActivityKind.UPDATED
-        instance.save()
-        if items_data is not None:
-            instance.items.all().delete()
-            for idx, item_data in enumerate(items_data):
-                OrderItem.objects.create(order=instance, position=idx, **item_data)
-        if addons_data is not None:
-            instance.addons.all().delete()
-            for idx, addon_data in enumerate(addons_data):
-                addon_data.setdefault('position', idx)
-                OrderAddon.objects.create(order=instance, **addon_data)
+        # Всё обновление — в одной транзакции: позиции удаляются и пересоздаются,
+        # и если пересоздание упадёт, удаление откатится. Иначе при любой ошибке
+        # заказ остаётся без позиций КП.
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.last_activity_at = timezone.now()
+            if 'status' in validated_data and validated_data['status'] != old_status:
+                instance.last_activity_kind = ActivityKind.STATUS_CHANGED
+            elif items_data is not None or addons_data is not None:
+                instance.last_activity_kind = ActivityKind.ITEMS_CHANGED
+            else:
+                instance.last_activity_kind = ActivityKind.UPDATED
+            instance.save()
+            if items_data is not None:
+                instance.items.all().delete()
+                for idx, item_data in enumerate(items_data):
+                    # position задаём порядком в списке; убираем дубль из payload,
+                    # иначе create() упадёт с "multiple values for keyword 'position'".
+                    item_data.pop('position', None)
+                    OrderItem.objects.create(order=instance, position=idx, **item_data)
+            if addons_data is not None:
+                instance.addons.all().delete()
+                for idx, addon_data in enumerate(addons_data):
+                    addon_data['position'] = idx
+                    OrderAddon.objects.create(order=instance, **addon_data)
         return instance
 
 

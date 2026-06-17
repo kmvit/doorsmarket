@@ -1,9 +1,9 @@
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useRef, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
-import NextActionBlock from './NextActionBlock'
+import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
 import { Measurement } from '../../types/measurements'
@@ -25,6 +25,7 @@ const OrderDetail = () => {
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
+  const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
   const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
@@ -83,6 +84,8 @@ const OrderDetail = () => {
     try {
       await measurementsAPI.markProcessed(measurement.id)
       await reloadOrder()
+      // По ТЗ: после обработки замера сразу предлагаем указать следующее действие.
+      nextActionRef.current?.promptNextAction()
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Не удалось отметить как обработанный')
     }
@@ -458,7 +461,7 @@ const OrderDetail = () => {
             </dl>
           </div>
         )}
-        <NextActionBlock orderId={order.id} canEdit={canEdit} onStatusChanged={() => reloadOrder()} />
+        <NextActionBlock ref={nextActionRef} orderId={order.id} canEdit={canEdit} onStatusChanged={() => reloadOrder()} />
       </div>
 
       {/* Замер */}
@@ -624,8 +627,12 @@ const OrderDetail = () => {
                       {(() => {
                         const md = item.measurement_data
                         if (!md) return <span className="text-gray-400">—</span>
-                        const text = md.recommendation_text
-                          || buildRecommendationText(md.actual_height, md.actual_width, item.door_height, item.door_width)
+                        // Рекомендация считается от ФАКТ. проёма (из замера) и текущего
+                        // размера двери В ЗАКАЗЕ. Так при правке размеров менеджером она
+                        // сразу обновляется — его размер приоритетнее КП/замера.
+                        const text = buildRecommendationText(
+                          md.actual_height, md.actual_width, item.door_height, item.door_width,
+                        )
                         const canAdjust = canEdit && md.recommended_door_height && md.recommended_door_width
                           && (md.recommended_door_height !== item.door_height || md.recommended_door_width !== item.door_width)
                         return (

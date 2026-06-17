@@ -347,11 +347,14 @@ class OrderItemViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_update(self, serializer):
+        changed = serializer.validated_data
         item = serializer.save()
-        # Авто-пересчёт рек. проёма от двери
-        if item.door_height and not item.recommended_opening_height:
+        # Правка размера двери пересчитывает рекомендованный проём (дверь +70/+100).
+        # Исключение: если рек. проём задан в этом же запросе явно — оставляем его
+        # (менеджер решил переопределить, его мнение приоритетнее КП/замера).
+        if 'door_height' in changed and 'recommended_opening_height' not in changed and item.door_height:
             item.recommended_opening_height = item.door_height + 70
-        if item.door_width and not item.recommended_opening_width:
+        if 'door_width' in changed and 'recommended_opening_width' not in changed and item.door_width:
             item.recommended_opening_width = item.door_width + 100
         item.save(update_fields=['recommended_opening_height', 'recommended_opening_width'])
         item.order.touch_activity(ActivityKind.ITEMS_CHANGED)
