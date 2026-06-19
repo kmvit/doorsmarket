@@ -10,6 +10,7 @@ import { Measurement } from '../../types/measurements'
 import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import MeasurementLinkSection from './MeasurementLinkSection'
+import HScrollSync from '../../components/common/HScrollSync'
 import FileViewer from '../../components/common/FileViewer'
 
 const OrderDetail = () => {
@@ -563,7 +564,7 @@ const OrderDetail = () => {
         {!order.items || order.items.length === 0 ? (
           <p className="text-gray-500 text-sm text-center py-6">Позиции не добавлены</p>
         ) : (
-          <div className="overflow-x-auto">
+          <HScrollSync>
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
@@ -687,7 +688,7 @@ const OrderDetail = () => {
                 ))}
               </tbody>
             </table>
-          </div>
+          </HScrollSync>
         )}
       </div>
 

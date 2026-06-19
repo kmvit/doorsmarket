@@ -241,6 +241,7 @@ export interface OrderListItem {
 }
 
 export interface CreateOrderItemData {
+  id?: number
   opening_number: number
   room_name?: string
   model_name?: string

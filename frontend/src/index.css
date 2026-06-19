@@ -60,3 +60,30 @@
   }
 }
 
+
+/* Верхняя синхронная горизонтальная полоса прокрутки (HScrollSync) —
+   ВСЕГДА видимая (в т.ч. на macOS, где нативные полосы overlay-скрыты).
+   Делаем заметную дорожку + явный ползунок, чтобы её было легко поймать мышью. */
+.hscroll-top {
+  scrollbar-width: thin;                 /* Firefox */
+  scrollbar-color: #94a3b8 #e2e8f0;
+  background: #f1f5f9;                    /* фон дорожки виден сразу */
+  border-radius: 7px;
+}
+.hscroll-top::-webkit-scrollbar {
+  height: 14px;
+  -webkit-appearance: none;              /* macOS/Chrome: показывать полосу постоянно */
+}
+.hscroll-top::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 7px;
+}
+.hscroll-top::-webkit-scrollbar-thumb {
+  background: #94a3b8;                    /* заметный серо-синий ползунок */
+  border: 3px solid #e2e8f0;             /* отступ, чтобы ползунок читался как «таблетка» */
+  border-radius: 7px;
+  min-width: 40px;
+}
+.hscroll-top::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

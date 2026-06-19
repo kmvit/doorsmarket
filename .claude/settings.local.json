@@ -13,7 +13,9 @@
       "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"sm_petrov\",\"password\":\"Test12345!\"}')",
       "Bash(./venv/bin/python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('status',d.get\\('status'\\),'type',d.get\\('complaint_type'\\)\\)\")",
       "Bash(./venv/bin/python manage.py check)",
-      "Bash(./venv/bin/python manage.py shell -c ' *)"
+      "Bash(./venv/bin/python manage.py shell -c ' *)",
+      "Bash(awk 'NR>=566 && NR<=720 { if \\($0 ~ /<table/\\) t=NR; if \\($0 ~ /<\\\\/table>/\\) print \"table closes at\", NR; }' frontend/src/pages/Orders/OrderDetail.tsx)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

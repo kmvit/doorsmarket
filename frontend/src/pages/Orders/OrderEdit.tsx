@@ -59,6 +59,7 @@ const OrderEdit = () => {
           comment: orderData.comment,
           status: orderData.status,
           items: (orderData.items || []).map((item) => ({
+            id: item.id,
             opening_number: item.opening_number,
             room_name: item.room_name,
             model_name: item.model_name,

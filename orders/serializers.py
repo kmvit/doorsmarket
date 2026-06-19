@@ -154,6 +154,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderItemWriteSerializer(serializers.ModelSerializer):
+    # id передаётся с фронта при редактировании, чтобы обновлять позиции «на месте»
+    # (по id), а не удалять+пересоздавать — иначе рвутся связки замера
+    # (MeasurementOpening.order_item) и слетают рекомендации.
+    id = serializers.IntegerField(required=False)
+
     class Meta:
         model = OrderItem
         fields = [
@@ -163,7 +168,6 @@ class OrderItemWriteSerializer(serializers.ModelSerializer):
             'recommended_opening_height', 'recommended_opening_width',
             'notes', 'position',
         ]
-        read_only_fields = ['id']
 
 
 class OrderAddonWriteSerializer(serializers.ModelSerializer):
@@ -286,6 +290,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             # position задаём порядком в списке; убираем возможный дубль из payload,
             # иначе create() упадёт с "multiple values for keyword argument 'position'".
             item_data.pop('position', None)
+            item_data.pop('id', None)
             OrderItem.objects.create(order=order, position=idx, **item_data)
         for idx, addon_data in enumerate(addons_data):
             addon_data.setdefault('position', idx)
@@ -318,12 +323,28 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 instance.last_activity_kind = ActivityKind.UPDATED
             instance.save()
             if items_data is not None:
-                instance.items.all().delete()
+                # Обновляем позиции «на месте» по id, сохраняя их первичные ключи.
+                # Это критично: на OrderItem ссылается MeasurementOpening.order_item
+                # (связки замера по проёмам). Удаление+пересоздание обнуляло бы эти
+                # FK (SET_NULL) — связки и рекомендации слетали при каждом сохранении.
+                existing = {i.id: i for i in instance.items.all()}
+                seen_ids = set()
                 for idx, item_data in enumerate(items_data):
-                    # position задаём порядком в списке; убираем дубль из payload,
-                    # иначе create() упадёт с "multiple values for keyword 'position'".
                     item_data.pop('position', None)
-                    OrderItem.objects.create(order=instance, position=idx, **item_data)
+                    item_id = item_data.pop('id', None)
+                    if item_id and item_id in existing:
+                        obj = existing[item_id]
+                        for attr, value in item_data.items():
+                            setattr(obj, attr, value)
+                        obj.position = idx
+                        obj.save()
+                        seen_ids.add(item_id)
+                    else:
+                        OrderItem.objects.create(order=instance, position=idx, **item_data)
+                # Удаляем только реально убранные менеджером позиции.
+                for old_id, obj in existing.items():
+                    if old_id not in seen_ids:
+                        obj.delete()
             if addons_data is not None:
                 instance.addons.all().delete()
                 for idx, addon_data in enumerate(addons_data):
