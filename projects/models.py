@@ -1352,7 +1352,7 @@ class DefectiveProduct(models.Model):
         related_name='defective_products',
         verbose_name='Рекламация'
     )
-    product_name = models.CharField(max_length=255, blank=True, default='', verbose_name='Наименование бракованного изделия')
+    product_name = models.CharField(max_length=500, blank=True, default='', verbose_name='Наименование бракованного изделия')
     size = models.CharField(
         max_length=100,
         blank=True,
@@ -1363,7 +1363,7 @@ class DefectiveProduct(models.Model):
         blank=True,
         verbose_name='Открывание'
     )
-    problem_description = models.TextField(verbose_name='Описание проблемы')
+    problem_description = models.TextField(blank=True, default='', verbose_name='Описание проблемы')
     order = models.PositiveIntegerField(default=0, verbose_name='Порядок')
     
     class Meta:
