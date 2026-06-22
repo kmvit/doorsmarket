@@ -255,7 +255,26 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         # Возвращаем обновленный queryset через стандартный list
         response = super().list(request, *args, **kwargs)
         return response
-    
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        При открытии рекламации пересчитываем просрочку монтажа, чтобы статус был
+        актуален независимо от того, как и где меняли дату монтажа (перенос с фронта,
+        правка через админку и т.п.). Раньше пересчёт делал только list(), поэтому на
+        детальной висел старый статус «Просрочена монтажником», даже если новая дата
+        монтажа уже в будущем.
+        """
+        complaint = self.get_object()
+        if (
+            complaint.installer_assigned_id
+            and complaint.installer_assigned_at
+            and complaint.status not in ('completed', 'resolved', 'closed')
+        ):
+            complaint.check_installer_overdue()
+            complaint.refresh_from_db()
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
     def get_object(self):
         """Переопределяем для проверки доступа ОР к фабричным рекламациям"""
         user = self.request.user
@@ -1032,7 +1051,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         """Монтажник переносит дату монтажа"""
         complaint = self.get_object()
         user = request.user
-        
+
         if user.role != 'installer' or complaint.installer_assigned != user:
             return Response(
                 {'error': 'Только назначенный монтажник может переносить дату монтажа'},
@@ -1084,7 +1103,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             title='Монтаж перенесен',
             message=f'Монтажник перенес дату монтажа по рекламации #{complaint.id} на {installation_date.strftime("%d.%m.%Y %H:%M")}'
         )
-        
+
         # Уведомляем менеджера
         if complaint.manager:
             complaint._create_notification(
@@ -1093,7 +1112,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 title='Монтаж перенесен',
                 message=f'Дата монтажа по рекламации #{complaint.id} перенесена на {installation_date.strftime("%d.%m.%Y %H:%M")}'
             )
-        
+
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
     

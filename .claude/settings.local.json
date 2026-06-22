@@ -15,7 +15,10 @@
       "Bash(./venv/bin/python manage.py check)",
       "Bash(./venv/bin/python manage.py shell -c ' *)",
       "Bash(awk 'NR>=566 && NR<=720 { if \\($0 ~ /<table/\\) t=NR; if \\($0 ~ /<\\\\/table>/\\) print \"table closes at\", NR; }' frontend/src/pages/Orders/OrderDetail.tsx)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s -o /dev/null -w \"backend:%{http_code}\\\\n\" http://localhost:8000/api/v1/)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"Test12345!\"}')",
+      "Bash(pkill -f \"manage.py runserver\")"
     ]
   }
 }

@@ -36,16 +36,20 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
 
   const normalizedUrl = normalizeUrl(fileUrl)
 
-  // Определяем тип файла для правильного отображения
-  const getFileType = (url: string): 'image' | 'video' | 'pdf' | 'other' => {
-    const lowerUrl = url.toLowerCase()
-    if (lowerUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/)) return 'image'
-    if (lowerUrl.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv)$/)) return 'video'
-    if (lowerUrl.match(/\.(pdf)$/)) return 'pdf'
-    return 'other'
+  // Определяем тип файла. Берём расширение в первую очередь из ИМЕНИ файла —
+  // у blob-URL (URL.createObjectURL при создании) расширения нет, а у обычных
+  // ссылок может быть query-строка (?token=...), ломающая якорь $. Поэтому
+  // отрезаем query/hash и проверяем сначала имя, затем сам URL.
+  const detectType = (s: string): 'image' | 'video' | 'pdf' | 'other' | null => {
+    const v = s.toLowerCase().split('?')[0].split('#')[0]
+    if (v.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif|avif)$/)) return 'image'
+    if (v.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/)) return 'video'
+    if (v.match(/\.(pdf)$/)) return 'pdf'
+    return null
   }
 
-  const fileType = getFileType(normalizedUrl)
+  const fileType: 'image' | 'video' | 'pdf' | 'other' =
+    detectType(fileName || '') || detectType(normalizedUrl) || 'other'
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {

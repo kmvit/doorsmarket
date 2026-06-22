@@ -2,6 +2,7 @@ import { ComplaintAttachment } from '../../types/complaints'
 import { complaintsAPI } from '../../api/complaints'
 import { useState } from 'react'
 import FileViewer from '../common/FileViewer'
+import { downloadFile } from '../../utils/download'
 
 interface AttachmentListProps {
   attachments: ComplaintAttachment[]
@@ -122,16 +123,17 @@ const AttachmentList = ({ attachments, complaintId, canEdit = false, onUpdate }:
             {commercialOffers.map((attachment, index) => (
               <div key={attachment.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
                 <button
-                  onClick={() => setViewingFile({
-                    url: attachment.file_url || attachment.file || '',
-                    name: `КП #${index + 1}`
-                  })}
+                  onClick={() => downloadFile(
+                    attachment.file_url || attachment.file || '',
+                    attachment.file?.split('/').pop() || `КП-${index + 1}`,
+                  )}
+                  title="Скачать КП"
                   className="flex items-center text-sm text-primary-600 hover:text-primary-700 flex-1 text-left"
                 >
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  КП #{index + 1}
+                  Скачать КП #{index + 1}
                   {attachment.file_size && (
                     <span className="ml-auto text-xs text-gray-500">{attachment.file_size}</span>
                   )}
