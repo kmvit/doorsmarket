@@ -39,6 +39,7 @@ const ComplaintDetail = () => {
   const [formData, setFormData] = useState<{
     installationDate?: string
     installerId?: string
+    dateByInstaller?: boolean
     newInstallerId?: string
     productionDeadline?: string
     shippingDate?: string
@@ -210,25 +211,31 @@ const ComplaintDetail = () => {
           await complaintsAPI.approve(Number(id))
           break
         case 'plan_installation':
-          if (!formData.installationDate) {
-            alert('Укажите дату монтажа')
-            return
-          }
           // Если это СМ планирует, нужен installerId, если монтажник - он планирует сам
           if (user?.role === 'service_manager') {
             if (!formData.installerId) {
               alert('Укажите монтажника')
               return
             }
+            // Дата нужна, только если её НЕ оставляют на монтажника
+            if (!formData.dateByInstaller && !formData.installationDate) {
+              alert('Укажите дату монтажа или отметьте «Дату запланирует монтажник»')
+              return
+            }
             await complaintsAPI.planInstallation(
               Number(id),
               Number(formData.installerId),
-              formData.installationDate
+              formData.installationDate || '',
+              !!formData.dateByInstaller,
             )
             setShowForms({ ...showForms, planInstallation: false })
-            setFormData({ ...formData, installationDate: '', installerId: '' })
+            setFormData({ ...formData, installationDate: '', installerId: '', dateByInstaller: false })
           } else if (user?.role === 'installer') {
             // Монтажник планирует сам
+            if (!formData.installationDate) {
+              alert('Укажите дату монтажа')
+              return
+            }
             await complaintsAPI.planInstallation(
               Number(id),
               user.id,
@@ -825,16 +832,32 @@ const ComplaintDetail = () => {
                           <div className="p-4 border-2 border-orange-200 rounded-xl bg-orange-50">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Планирование монтажа</h4>
                             <div className="space-y-3">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа <span className="text-red-500">*</span></label>
+                              <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer select-none">
                                 <input
-                                  type="datetime-local"
-                                  value={formData.installationDate || ''}
-                                  onChange={(e) => setFormData({ ...formData, installationDate: e.target.value })}
-                                  required
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                  type="checkbox"
+                                  checked={!!formData.dateByInstaller}
+                                  onChange={(e) => setFormData({ ...formData, dateByInstaller: e.target.checked })}
+                                  className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                                 />
-                              </div>
+                                Дату и время запланирует монтажник
+                              </label>
+                              {!formData.dateByInstaller && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа <span className="text-red-500">*</span></label>
+                                  <input
+                                    type="datetime-local"
+                                    value={formData.installationDate || ''}
+                                    onChange={(e) => setFormData({ ...formData, installationDate: e.target.value })}
+                                    required
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                  />
+                                </div>
+                              )}
+                              {formData.dateByInstaller && (
+                                <p className="text-xs text-gray-600">
+                                  Монтажнику придёт уведомление — он сам назначит дату и время. Статус: «Ожидает дату от монтажника».
+                                </p>
+                              )}
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Монтажник <span className="text-red-500">*</span></label>
                                 <select

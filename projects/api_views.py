@@ -612,28 +612,43 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         installer_id = request.data.get('installer_id')
         installation_date = request.data.get('installation_date')
-        
-        if not installer_id or not installation_date:
+        date_by_installer = str(request.data.get('date_by_installer', '')).lower() in ('true', '1', 'yes', 'on')
+
+        if not installer_id:
             return Response(
-                {'error': 'Необходимо указать installer_id и installation_date'},
+                {'error': 'Необходимо указать монтажника'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             installer = User.objects.get(id=installer_id, role='installer')
-            installation_date = datetime.fromisoformat(installation_date.replace('Z', '+00:00'))
-            installation_date = timezone.make_aware(installation_date)
         except User.DoesNotExist:
             return Response(
                 {'error': 'Монтажник не найден'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+        # Вариант: СМ назначает монтажника, а дату/время определит сам монтажник.
+        if date_by_installer and user.role in ('service_manager', 'admin'):
+            complaint.plan_installation_assign_only(installer)
+            serializer = self.get_serializer(complaint)
+            return Response(serializer.data)
+
+        # Иначе дата обязательна.
+        if not installation_date:
+            return Response(
+                {'error': 'Необходимо указать дату монтажа'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            installation_date = datetime.fromisoformat(installation_date.replace('Z', '+00:00'))
+            installation_date = timezone.make_aware(installation_date)
         except (ValueError, AttributeError):
             return Response(
                 {'error': 'Неверный формат даты'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         if user.role == 'installer':
             # Монтажник планирует сам
             complaint.plan_installation(installer, installation_date)
@@ -645,7 +660,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 {'error': 'У вас нет прав для планирования монтажа'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
     

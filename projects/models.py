@@ -1257,7 +1257,47 @@ class Complaint(models.Model):
                     exc,
                     exc_info=True,
         )
-    
+
+    def plan_installation_assign_only(self, installer):
+        """
+        СМ назначает монтажника, но дату и время монтажа определит сам монтажник
+        (галочка «Дату запланирует монтажник»). Статус — «Ожидает дату от монтажника».
+        """
+        self.installer_assigned = installer
+        if not self.installer_assigned_at:
+            self.installer_assigned_at = timezone.now()
+        self.planned_installation_date = None
+        self.status = ComplaintStatus.WAITING_INSTALLER_DATE
+        self.save()
+
+        # Уведомление монтажнику: нужно назначить дату
+        self._create_notification(
+            recipient=installer,
+            notification_type='pc',
+            title='Назначьте дату монтажа',
+            message=(
+                f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). '
+                f'Назначьте дату и время. Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}'
+            ),
+        )
+
+        # SMS монтажнику со ссылкой на рекламацию
+        try:
+            frontend_url = getattr(settings, 'FRONTEND_URL', '')
+            complaint_url = (
+                f"{frontend_url.rstrip('/')}/complaints/{self.id}" if frontend_url
+                else f"/complaints/{self.id}"
+            )
+            send_sms_notification(
+                user=installer,
+                message=f"Нужно запланировать монтаж по рекламации #{self.id} {complaint_url}",
+            )
+        except Exception as exc:
+            logger.error(
+                'Ошибка отправки SMS монтажнику для рекламации #%s: %s',
+                self.id, exc, exc_info=True,
+            )
+
     def _get_service_manager(self):
         """Определяет СМ для этой рекламации"""
         # Если получатель - СМ, возвращаем его

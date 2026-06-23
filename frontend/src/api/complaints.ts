@@ -274,10 +274,16 @@ export const complaintsAPI = {
     return response.data
   },
 
-  planInstallation: async (id: number, installerId: number, installationDate: string): Promise<Complaint> => {
+  planInstallation: async (
+    id: number,
+    installerId: number,
+    installationDate: string,
+    dateByInstaller = false,
+  ): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/plan_installation/`, {
       installer_id: installerId,
-      installation_date: installationDate,
+      installation_date: dateByInstaller ? null : installationDate,
+      date_by_installer: dateByInstaller,
     })
     return response.data
   },

@@ -568,9 +568,9 @@ const OrderDetail = () => {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 z-20 bg-white min-w-[52px]">№</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-[52px] z-20 bg-white border-r border-gray-200">Помещение</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Модель</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white" style={{ left: 0, width: 48, minWidth: 48, maxWidth: 48 }}>№</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white" style={{ left: 48, width: 120, minWidth: 120, maxWidth: 120 }}>Помещение</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white border-r border-gray-200" style={{ left: 168, width: 180, minWidth: 180, maxWidth: 180 }}>Модель</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Кол.</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Цена</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
@@ -593,9 +593,9 @@ const OrderDetail = () => {
                 {order.items.map((item) => (
                   <Fragment key={item.id}>
                   <tr className="group hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium align-top sticky left-0 z-10 bg-white group-hover:bg-gray-50 min-w-[52px]">{item.opening_number}</td>
-                    <td className="px-3 py-2 text-gray-600 align-top sticky left-[52px] z-10 bg-white group-hover:bg-gray-50 border-r border-gray-200">{item.room_name || '—'}</td>
-                    <td className="px-3 py-2 text-gray-900 align-top whitespace-pre-wrap break-words max-w-[400px]">{item.model_name || '—'}</td>
+                    <td className="px-3 py-2 font-medium align-top sticky z-10 bg-white group-hover:bg-gray-50" style={{ left: 0, width: 48, minWidth: 48, maxWidth: 48 }}>{item.opening_number}</td>
+                    <td className="px-3 py-2 text-gray-600 align-top break-words sticky z-10 bg-white group-hover:bg-gray-50" style={{ left: 48, width: 120, minWidth: 120, maxWidth: 120 }}>{item.room_name || '—'}</td>
+                    <td className="px-3 py-2 text-gray-900 align-top whitespace-pre-wrap break-words sticky z-10 bg-white group-hover:bg-gray-50 border-r border-gray-200" style={{ left: 168, width: 180, minWidth: 180, maxWidth: 180 }}>{item.model_name || '—'}</td>
                     <td className="px-3 py-2 text-right align-top">{item.quantity}</td>
                     <td className="px-3 py-2 text-right align-top">{item.price != null ? Number(item.price).toLocaleString('ru-RU') : '—'}</td>
                     <td className="px-3 py-2 text-right font-medium align-top">{item.amount != null ? Number(item.amount).toLocaleString('ru-RU') : '—'}</td>
