@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+    @bottom-center {
+      content: "Бланк замера №" "{{ m.id }}" " · стр. " counter(page) " из " counter(pages);
+      font-size: 8pt; color: #888;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Arial", sans-serif; font-size: 9pt; color: #1a1a1a; }
+  h1 { font-size: 15pt; margin: 0 0 2mm; }
+  .muted { color: #666; }
+  .small { font-size: 8pt; }
+  .header-meta { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #222; padding-bottom: 3mm; margin-bottom: 4mm; }
+  .kv { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+  .kv td { padding: 1.2mm 2mm; vertical-align: top; }
+  .kv td.k { color: #666; width: 32mm; white-space: nowrap; }
+  .kv td.v { font-weight: 600; }
+  .section-title { font-size: 11pt; font-weight: 700; margin: 4mm 0 2mm; border-left: 3px solid #2563eb; padding-left: 2.5mm; }
+  table.openings { width: 100%; border-collapse: collapse; font-size: 7.6pt; }
+  table.openings th, table.openings td { border: 0.4pt solid #bbb; padding: 1.2mm 1.4mm; text-align: center; vertical-align: top; }
+  table.openings th { background: #eef2f7; font-weight: 700; }
+  table.openings td.left { text-align: left; }
+  .warn { color: #b91c1c; font-weight: 600; }
+  .conditions { margin-top: 5mm; padding: 3mm; border: 0.6pt solid #ccc; background: #fafafa; border-radius: 2mm; font-size: 8.2pt; line-height: 1.45; }
+  .sign-row { margin-top: 7mm; display: flex; justify-content: space-between; gap: 8mm; }
+  .sign-box { flex: 1; }
+  .sign-line { margin-top: 12mm; border-top: 0.6pt solid #333; padding-top: 1mm; font-size: 8pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .photos { display: flex; flex-wrap: wrap; gap: 4mm; }
+  .photo-card { width: 84mm; border: 0.6pt solid #ddd; border-radius: 2mm; padding: 2mm; }
+  .photo-card img { width: 100%; max-height: 95mm; object-fit: contain; }
+  .photo-card .cap { font-size: 8pt; color: #555; margin-bottom: 1.5mm; }
+  .plan img { width: 100%; max-height: 235mm; object-fit: contain; }
+  .sig-photo { margin-top: 4mm; }
+  .sig-photo img { max-width: 80mm; max-height: 45mm; border: 0.6pt solid #ccc; }
+</style>
+</head>
+<body>
+
+  {# ===== Страница 1: шапка + проёмы + подпись ===== #}
+  <div class="header-meta">
+    <div>
+      <h1>Бланк замера</h1>
+      <div class="muted small">Заказ № {{ order.kp_number|default:"—" }}{% if order %} · ID {{ order.id }}{% endif %}</div>
+    </div>
+    <div class="small muted" style="text-align:right;">
+      {% if m.measurement_date %}Дата замера: <b>{{ m.measurement_date|date:"d.m.Y H:i" }}</b><br>{% endif %}
+      Сервис-менеджер: <b>{{ sm_name|default:"—" }}</b>
+    </div>
+  </div>
+
+  <table class="kv">
+    <tr><td class="k">Клиент</td><td class="v">{{ order.client_name|default:"—" }}</td>
+        <td class="k">Контактное лицо</td><td class="v">{{ req.contact_name|default:"—" }}{% if req.contact_position %} ({{ req.contact_position }}){% endif %}</td></tr>
+    <tr><td class="k">Адрес</td><td class="v">{{ order.address|default:"—" }}</td>
+        <td class="k">Телефон</td><td class="v">{{ req.contact_phone|default:"—" }}</td></tr>
+    <tr><td class="k">Лифт</td><td class="v">{% if order.lift_available is True %}есть{% elif order.lift_available is False %}нет{% else %}—{% endif %}</td>
+        <td class="k">Лестница</td><td class="v">{% if order.stairs_available is True %}есть{% elif order.stairs_available is False %}нет{% else %}—{% endif %}</td></tr>
+    <tr><td class="k">Готовность пола</td><td class="v">{{ order.floor_readiness|default:"—" }}</td>
+        <td class="k">Проёмов</td><td class="v">{{ openings|length }}</td></tr>
+  </table>
+
+  <div class="section-title">Проёмы</div>
+  <table class="openings">
+    <thead>
+      <tr>
+        <th>№</th>
+        <th>Помещение</th>
+        <th>Тип двери</th>
+        <th>Факт. проём<br>В×Ш×Гл, мм</th>
+        <th>Рек. дверь<br>В×Ш</th>
+        <th>Желаемая дверь<br>В×Ш</th>
+        <th>Рек. проём<br>В×Ш</th>
+        <th>Открывание</th>
+        <th>Порог</th>
+        <th>Примечания</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in openings %}
+      <tr>
+        <td>{{ op.opening_number }}</td>
+        <td class="left">{{ op.room_name|default:"—" }}</td>
+        <td>{{ op.get_door_type_display|default:"—" }}</td>
+        <td>{{ op.actual_height|default:"—" }}×{{ op.actual_width|default:"—" }}{% if op.actual_depth %}×{{ op.actual_depth }}{% endif %}</td>
+        <td>{{ op.recommended_door_height|default:"—" }}×{{ op.recommended_door_width|default:"—" }}</td>
+        <td>{{ op.desired_door_height|default:"—" }}×{{ op.desired_door_width|default:"—" }}</td>
+        <td>{{ op.recommended_opening_height|default:"—" }}×{{ op.recommended_opening_width|default:"—" }}</td>
+        <td>{{ op.get_opening_type_display|default:"—" }}</td>
+        <td class="left">{{ op.threshold|default:"—" }}</td>
+        <td class="left">{{ op.notes|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="10" class="muted">Проёмы не заполнены</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="conditions">
+    <b>Условия подписания.</b> Подтверждаю правильность снятых замеров, согласованные размеры дверей и проёмов,
+    тип открывания и комплектацию, указанные в настоящем бланке. С рекомендациями по подготовке проёмов ознакомлен(а).
+    После подписания изменения размеров возможны только по согласованию и могут повлиять на сроки и стоимость.
+  </div>
+
+  <div class="sign-row">
+    <div class="sign-box">
+      <div class="sign-line">Клиент (ФИО, подпись)</div>
+    </div>
+    <div class="sign-box">
+      <div class="sign-line">Сервис-менеджер: {{ sm_name|default:"—" }}</div>
+    </div>
+  </div>
+
+  {% if signature_path %}
+  <div class="sig-photo">
+    <div class="small muted">Фото подписанного бланка:</div>
+    <img src="file://{{ signature_path }}" alt="Подпись">
+  </div>
+  {% endif %}
+
+  {# ===== Страница 2: схемы проёмов (только если есть фото) ===== #}
+  {% if opening_photos %}
+  <div class="page-break"></div>
+  <div class="section-title">Схемы и фото проёмов</div>
+  <div class="photos">
+    {% for grp in opening_photos %}
+      {% for img in grp.images %}
+      <div class="photo-card">
+        <div class="cap">Проём № {{ grp.opening.opening_number }}{% if grp.opening.room_name %} — {{ grp.opening.room_name }}{% endif %}</div>
+        <img src="file://{{ img }}" alt="Схема проёма">
+      </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ===== Страница 3: план открывания (только если есть) ===== #}
+  {% if plan_path %}
+  <div class="page-break"></div>
+  <div class="section-title">План открывания</div>
+  <div class="plan">
+    <img src="file://{{ plan_path }}" alt="План открывания">
+  </div>
+  {% endif %}
+
+</body>
+</html>

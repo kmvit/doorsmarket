@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Prefetch
@@ -670,6 +671,74 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         order.touch_activity(ActivityKind.MEASUREMENT_PROCESSED, save=False)
         order.save()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- PDF-бланк замера (Фаза 4) ----
+    @action(detail=True, methods=['get'], url_path='download_blank_pdf')
+    def download_blank_pdf(self, request, pk=None):
+        """Генерирует и отдаёт PDF-бланк замера."""
+        from django.http import HttpResponse
+        from .pdf_blank import render_measurement_blank
+        m = self.get_object()
+        try:
+            pdf = render_measurement_blank(m)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception('Ошибка генерации PDF бланка замера #%s: %s', m.id, exc)
+            return Response(
+                {'detail': 'Не удалось сгенерировать PDF бланка замера.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="measurement_{m.id}.pdf"'
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='upload_signature',
+            parser_classes=[MultiPartParser, FormParser])
+    def upload_signature(self, request, pk=None):
+        """Загрузка фото подписанного бланка → signature_photo."""
+        m = self.get_object()
+        file = request.FILES.get('signature') or request.FILES.get('file')
+        if not file:
+            return Response(
+                {'detail': 'Не передан файл подписи (поле signature).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m.signature_photo = file
+        m.save(update_fields=['signature_photo', 'updated_at'])
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+
+class PublicMeasurementPdfView(APIView):
+    """
+    Публичный доступ к PDF-бланку замера по client_access_token — без авторизации
+    (для клиента по ссылке). Отдаёт только PDF; неверный токен → 404.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request, token):
+        from django.http import HttpResponse, Http404
+        from .pdf_blank import render_measurement_blank
+        try:
+            m = Measurement.objects.select_related(
+                'request__order', 'service_manager'
+            ).get(client_access_token=token)
+        except Measurement.DoesNotExist:
+            raise Http404('Замер не найден')
+        try:
+            pdf = render_measurement_blank(m)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Ошибка генерации публичного PDF замера #%s: %s', m.id, exc
+            )
+            return Response(
+                {'detail': 'Не удалось сгенерировать PDF.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="measurement_{m.id}.pdf"'
+        return resp
 
 
 class MeasurementOpeningViewSet(viewsets.ModelViewSet):

@@ -185,6 +185,29 @@ const MeasurementForm = () => {
     }
   }
 
+  const handleDownloadPdf = async () => {
+    if (!m) return
+    setActionError(null)
+    try {
+      await measurementsAPI.openBlankPdf(m.id)
+    } catch {
+      setActionError('Не удалось сформировать PDF-бланк замера')
+    }
+  }
+
+  const handleUploadSignature = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!m || !e.target.files?.[0]) return
+    setActionError(null)
+    try {
+      const updated = await measurementsAPI.uploadSignature(m.id, e.target.files[0])
+      setM(updated)
+    } catch (err: any) {
+      setActionError(err.response?.data?.detail || 'Не удалось загрузить фото подписи')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
   const saveConditions = async (patch: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string }) => {
     if (!m) return
     // Оптимистично обновляем локально
@@ -290,6 +313,18 @@ const MeasurementForm = () => {
             >
               ✓ Замер обработан
             </button>
+          )}
+          <button
+            onClick={handleDownloadPdf}
+            className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl"
+          >
+            📄 Бланк PDF
+          </button>
+          {(user?.role === 'service_manager' || user?.role === 'admin') && (
+            <label className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer">
+              {m.signature_photo_url ? '↻ Заменить фото подписи' : '✍ Загрузить фото подписи'}
+              <input type="file" accept="image/*" onChange={handleUploadSignature} className="hidden" />
+            </label>
           )}
         </div>
       </div>

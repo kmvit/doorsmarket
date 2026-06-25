@@ -54,12 +54,38 @@ export const measurementsAPI = {
 
   uploadSignature: async (id: number, file: File): Promise<Measurement> => {
     const fd = new FormData()
-    fd.append('signature_photo', file)
-    const response = await apiClient.patch(`/measurements/${id}/`, fd, {
+    fd.append('signature', file)
+    const response = await apiClient.post(`/measurements/${id}/upload_signature/`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data
   },
+
+  // PDF-бланк замера: качаем как blob и открываем/скачиваем (эндпоинт под авторизацией).
+  downloadBlankPdf: async (id: number): Promise<Blob> => {
+    const response = await apiClient.get(`/measurements/${id}/download_blank_pdf/`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  openBlankPdf: async (id: number): Promise<void> => {
+    const blob = await measurementsAPI.downloadBlankPdf(id)
+    // Скачиваем файл через временную ссылку (работает везде, без попап-блокировок
+    // и ограничений превью на window.open).
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `zamer_${id}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  },
+
+  // Публичная ссылка на PDF для клиента (без авторизации).
+  getPublicPdfUrl: (clientAccessToken: string): string =>
+    `${window.location.origin}/api/v1/public/measurements/${clientAccessToken}/pdf/`,
 }
 
 export const measurementOpeningsAPI = {

@@ -92,6 +92,26 @@ const OrderDetail = () => {
     }
   }
 
+  const handleDownloadMeasurementPdf = async () => {
+    if (!measurement) return
+    try {
+      await measurementsAPI.openBlankPdf(measurement.id)
+    } catch {
+      alert('Не удалось сформировать PDF замера')
+    }
+  }
+
+  const handleCopyClientLink = async () => {
+    if (!measurement?.client_access_token) return
+    const url = measurementsAPI.getPublicPdfUrl(measurement.client_access_token)
+    try {
+      await navigator.clipboard.writeText(url)
+      alert('Ссылка для клиента скопирована:\n' + url)
+    } catch {
+      window.prompt('Ссылка для клиента (скопируйте):', url)
+    }
+  }
+
   const handleAdjustDoor = async (itemId: number, recDoorH: number | null, recDoorW: number | null) => {
     if (!recDoorH && !recDoorW) {
       alert('Нет данных рекомендованной двери в замере')
@@ -495,6 +515,22 @@ const OrderDetail = () => {
                 >
                   ✓ Замер обработан
                 </button>
+              )}
+              {measurement && measurement.is_done && (
+                <>
+                  <button
+                    onClick={handleDownloadMeasurementPdf}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                  >
+                    📄 Скачать замер PDF
+                  </button>
+                  <button
+                    onClick={handleCopyClientLink}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                  >
+                    🔗 Ссылка для клиента
+                  </button>
+                </>
               )}
             </div>
           </div>

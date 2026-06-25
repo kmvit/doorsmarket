@@ -14,5 +14,8 @@ router.register('measurement-attachments', api_views.MeasurementAttachmentViewSe
 router.register('order-attachments', api_views.OrderAttachmentViewSet, basename='order-attachment')
 
 urlpatterns = [
+    # Публичный PDF-бланк замера по токену (без авторизации, для клиента по ссылке).
+    path('public/measurements/<uuid:token>/pdf/', api_views.PublicMeasurementPdfView.as_view(),
+         name='public-measurement-pdf'),
     path('', include(router.urls)),
 ]

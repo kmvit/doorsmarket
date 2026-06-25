@@ -20,7 +20,15 @@
       "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login/ -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"Test12345!\"}')",
       "Bash(pkill -f \"manage.py runserver\")",
       "Bash(./venv/bin/python manage.py makemigrations projects)",
-      "Bash(./venv/bin/python manage.py migrate projects)"
+      "Bash(./venv/bin/python manage.py migrate projects)",
+      "Bash(./venv/bin/pip install *)",
+      "Bash(brew --prefix)",
+      "Bash(DYLD_FALLBACK_LIBRARY_PATH=__TRACKED_VAR__/lib ./venv/bin/python -c 'import weasyprint; print\\('\\\\''weasyprint OK'\\\\'', weasyprint.__version__\\)')",
+      "Bash(./venv/bin/python -c \"import weasyprint; print\\('OK', weasyprint.__version__\\)\")",
+      "Bash(./venv/bin/python -c \"import weasyprint; pdf=weasyprint.HTML\\(string='<h1>Тест</h1><p>Замер</p>'\\).write_pdf\\(\\); print\\('PDF bytes:', len\\(pdf\\)\\)\")",
+      "Bash(./venv/bin/python -c \"import weasyprint; print\\('import ok'\\); pdf=weasyprint.HTML\\(string='<h1>x</h1>'\\).write_pdf\\(\\); print\\('pdf', len\\(pdf\\)\\)\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(./venv/bin/python -c ' *)"
     ]
   }
 }

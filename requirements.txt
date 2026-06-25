@@ -13,3 +13,4 @@ pywebpush>=2.1.2
 cryptography>=46.0.0
 requests>=2.31.0
 pdfplumber>=0.11.0
+weasyprint>=66.0

@@ -13,8 +13,19 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import sys
 
 load_dotenv()
+
+# WeasyPrint (PDF-бланк замера). На macOS (dev) brew-библиотеки cairo/pango лежат
+# вне стандартного пути dyld — добавляем их, иначе weasyprint не найдёт libgobject.
+# На Linux (prod) системные пакеты ставятся в стандартные пути, блок ничего не делает.
+if sys.platform == 'darwin':
+    _brew_libs = [p for p in ('/opt/homebrew/lib', '/usr/local/lib') if os.path.isdir(p)]
+    if _brew_libs:
+        _existing = os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '')
+        _paths = _brew_libs + ([_existing] if _existing else [])
+        os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = ':'.join(_paths)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
