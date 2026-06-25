@@ -28,6 +28,9 @@
   table.openings td.left { text-align: left; }
   .warn { color: #b91c1c; font-weight: 600; }
   .conditions { margin-top: 5mm; padding: 3mm; border: 0.6pt solid #ccc; background: #fafafa; border-radius: 2mm; font-size: 8.2pt; line-height: 1.45; }
+  ol.cond-list { margin: 2mm 0 0; padding-left: 5mm; }
+  ol.cond-list li { margin-bottom: 0.8mm; }
+  .footer-note { margin-top: 6mm; padding-top: 3mm; border-top: 0.6pt solid #ccc; font-size: 8.4pt; line-height: 1.4; }
   .sign-row { margin-top: 7mm; display: flex; justify-content: space-between; gap: 8mm; }
   .sign-box { flex: 1; }
   .sign-line { margin-top: 12mm; border-top: 0.6pt solid #333; padding-top: 1mm; font-size: 8pt; color: #555; }
@@ -46,8 +49,8 @@
   {# ===== Страница 1: шапка + проёмы + подпись ===== #}
   <div class="header-meta">
     <div>
-      <h1>Бланк замера</h1>
-      <div class="muted small">Заказ № {{ order.kp_number|default:"—" }}{% if order %} · ID {{ order.id }}{% endif %}</div>
+      <h1>Замеры дверных проёмов</h1>
+      <div class="muted small">к договору № {{ order.kp_number|default:"—" }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>
     </div>
     <div class="small muted" style="text-align:right;">
       {% if m.measurement_date %}Дата замера: <b>{{ m.measurement_date|date:"d.m.Y H:i" }}</b><br>{% endif %}
@@ -104,8 +107,14 @@
 
   <div class="conditions">
     <b>Условия подписания.</b> Подтверждаю правильность снятых замеров, согласованные размеры дверей и проёмов,
-    тип открывания и комплектацию, указанные в настоящем бланке. С рекомендациями по подготовке проёмов ознакомлен(а).
-    После подписания изменения размеров возможны только по согласованию и могут повлиять на сроки и стоимость.
+    тип открывания и комплектацию, указанные в настоящем бланке, а также то, что:
+    <ol class="cond-list">
+      <li>Рекомендации по подготовке проёмов получил(а) и ознакомлен(а).</li>
+      <li>Стены отделаны «по уровню», не имеют отклонений от вертикальной и горизонтальной осей.</li>
+      <li>Напольное покрытие уложено до монтажа, по уровню, в одной плоскости (ровное).</li>
+      <li>Стены для стеновых панелей выровнены, загрунтованы.</li>
+      <li>Стыки напольных покрытий выполнены под полотном двери.</li>
+    </ol>
   </div>
 
   <div class="sign-row">
@@ -114,6 +123,15 @@
     </div>
     <div class="sign-box">
       <div class="sign-line">Сервис-менеджер: {{ sm_name|default:"—" }}</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    <div>Замер произвёл (СМ): <b>{{ sm_name|default:"—" }}</b> &nbsp; ____________________________</div>
+    <div class="warn" style="margin-top:2mm;">Рекомендуемые размеры проёма даны от «ЧИСТОГО» ПОЛА!!!</div>
+    <div class="small muted" style="margin-top:2mm;">
+      Внимание! После подписания замера ответственность за любые изменения размеров проёмов, напольного покрытия
+      и отделки стен несёт покупатель. Такие изменения могут повлиять на возможность монтажа, сроки и стоимость.
     </div>
   </div>
 
