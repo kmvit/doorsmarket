@@ -15,6 +15,7 @@ import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
+import LoadingOverlay from '../../components/common/LoadingOverlay'
 
 const fieldCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
@@ -30,6 +31,7 @@ const MeasurementForm = () => {
   const [actionError, setActionError] = useState<string | null>(null)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [savingConditions, setSavingConditions] = useState(false)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
 
   const canEditOpenings = !m?.is_done && (
     user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
@@ -186,12 +188,15 @@ const MeasurementForm = () => {
   }
 
   const handleDownloadPdf = async () => {
-    if (!m) return
+    if (!m || pdfGenerating) return
     setActionError(null)
+    setPdfGenerating(true)
     try {
       await measurementsAPI.openBlankPdf(m.id)
     } catch {
       setActionError('Не удалось сформировать PDF-бланк замера')
+    } finally {
+      setPdfGenerating(false)
     }
   }
 
@@ -316,9 +321,10 @@ const MeasurementForm = () => {
           )}
           <button
             onClick={handleDownloadPdf}
-            className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl"
+            disabled={pdfGenerating}
+            className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            📄 Бланк PDF
+            {pdfGenerating ? '⏳ Формируем PDF…' : '📄 Бланк PDF'}
           </button>
           {(user?.role === 'service_manager' || user?.role === 'admin') && (
             <label className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer">
@@ -889,6 +895,9 @@ const MeasurementForm = () => {
           fileName={viewerFile.name}
           onClose={() => setViewerFile(null)}
         />
+      )}
+      {pdfGenerating && (
+        <LoadingOverlay message="Формируем PDF-бланк замера…" hint="Это может занять несколько секунд, не закрывайте страницу." />
       )}
     </div>
   )

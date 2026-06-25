@@ -11,6 +11,7 @@ import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import MeasurementLinkSection from './MeasurementLinkSection'
 import HScrollSync from '../../components/common/HScrollSync'
+import LoadingOverlay from '../../components/common/LoadingOverlay'
 import FileViewer from '../../components/common/FileViewer'
 
 const OrderDetail = () => {
@@ -26,6 +27,7 @@ const OrderDetail = () => {
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
@@ -93,11 +95,14 @@ const OrderDetail = () => {
   }
 
   const handleDownloadMeasurementPdf = async () => {
-    if (!measurement) return
+    if (!measurement || pdfGenerating) return
+    setPdfGenerating(true)
     try {
       await measurementsAPI.openBlankPdf(measurement.id)
     } catch {
       alert('Не удалось сформировать PDF замера')
+    } finally {
+      setPdfGenerating(false)
     }
   }
 
@@ -520,9 +525,10 @@ const OrderDetail = () => {
                 <>
                   <button
                     onClick={handleDownloadMeasurementPdf}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                    disabled={pdfGenerating}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    📄 Скачать замер PDF
+                    {pdfGenerating ? '⏳ Формируем PDF…' : '📄 Скачать замер PDF'}
                   </button>
                   <button
                     onClick={handleCopyClientLink}
@@ -809,6 +815,9 @@ const OrderDetail = () => {
           fileName={viewerFile.name}
           onClose={() => setViewerFile(null)}
         />
+      )}
+      {pdfGenerating && (
+        <LoadingOverlay message="Формируем PDF замера…" hint="Это может занять несколько секунд, не закрывайте страницу." />
       )}
     </div>
   )
