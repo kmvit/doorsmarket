@@ -168,6 +168,17 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {'detail': 'Укажите следующее действие по заказу и его срок (next_action_text + next_action_due_at)'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Дата приходит строкой (ISO) — парсим в datetime (иначе in-memory объект
+        # напоминания хранит строку и ломает is_overdue при сериализации).
+        if isinstance(next_action_due, str):
+            from django.utils.dateparse import parse_datetime
+            parsed = parse_datetime(next_action_due)
+            if parsed is None:
+                return Response(
+                    {'detail': 'Неверный формат срока следующего действия (next_action_due_at).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            next_action_due = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
 
         items = data.pop('items', []) or []
         addons = data.pop('addons', []) or []
@@ -415,10 +426,21 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         next_due = request.data.get('next_action_due_at')
         next_reminder = None
         if next_text and next_due:
+            # next_due приходит строкой (ISO). Парсим в datetime, иначе in-memory
+            # объект хранит строку и сериализатор падает на is_overdue (str < datetime).
+            from django.utils.dateparse import parse_datetime
+            parsed_due = parse_datetime(next_due) if isinstance(next_due, str) else next_due
+            if parsed_due is None:
+                return Response(
+                    {'detail': 'Неверный формат даты следующего действия (next_action_due_at).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if timezone.is_naive(parsed_due):
+                parsed_due = timezone.make_aware(parsed_due)
             next_reminder = OrderActionReminder.objects.create(
                 order=order,
                 action_text=str(next_text)[:500],
-                due_at=next_due,
+                due_at=parsed_due,
                 created_by=request.user,
             )
 
