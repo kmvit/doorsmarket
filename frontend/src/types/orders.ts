@@ -13,6 +13,7 @@ export type OrderStatus =
   | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
   | 'paid' | 'in_production' | 'on_warehouse' | 'shipped' | 'completed'
   | 'cancelled'
+  | 'measurement_not_planned' | 'measurement_not_done' | 'measurement_not_processed'
 
 export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   draft: 'Черновик',
@@ -27,6 +28,9 @@ export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   shipped: 'Отгружен',
   completed: 'Выполнен',
   cancelled: 'Не актуален',
+  measurement_not_planned: 'Замер не запланирован',
+  measurement_not_done: 'Замер не выполнен',
+  measurement_not_processed: 'Замер не обработан',
 }
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
@@ -42,6 +46,22 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   shipped: 'bg-indigo-100 text-indigo-700',
   completed: 'bg-green-200 text-green-800',
   cancelled: 'bg-red-100 text-red-700',
+  measurement_not_planned: 'bg-red-100 text-red-700',
+  measurement_not_done: 'bg-red-100 text-red-700',
+  measurement_not_processed: 'bg-red-100 text-red-700',
+}
+
+// Статусы-просрочки (красная разметка в списках)
+export const OVERDUE_STATUSES: OrderStatus[] = [
+  'measurement_not_planned', 'measurement_not_done', 'measurement_not_processed',
+]
+
+// Подсказка менеджеру по текущему статусу (Лист 1 ТЗ)
+export const ORDER_STATUS_HINT: Partial<Record<OrderStatus, string>> = {
+  paid: 'Установите дату запуска в производство',
+  in_production: 'Установите дату готовности',
+  on_warehouse: 'Поставьте в реестр на отгрузку',
+  shipped: 'Поставьте в график монтажа',
 }
 
 export type DoorType = 'entrance' | 'interior' | 'other' | ''
@@ -76,6 +96,7 @@ export type ActivityKind =
   | 'created' | 'updated' | 'items_changed' | 'status_changed'
   | 'file_attached' | 'comment_added'
   | 'measurement_requested' | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
+  | 'sms_sent'
   | ''
 
 export const ACTIVITY_KIND_DISPLAY: Record<string, string> = {
@@ -89,6 +110,21 @@ export const ACTIVITY_KIND_DISPLAY: Record<string, string> = {
   measurement_scheduled: 'Замер запланирован',
   measurement_done: 'Замер выполнен',
   measurement_processed: 'Замер обработан',
+  sms_sent: 'Отправлено SMS клиенту',
+}
+
+export interface OrderActivityLog {
+  id: number
+  order: number
+  kind: ActivityKind
+  kind_display: string
+  actor: number | null
+  actor_name: string
+  description: string
+  old_status: string
+  new_status: string
+  meta: Record<string, any>
+  created_at: string
 }
 
 export const ADDON_KIND_DISPLAY: Record<AddonKind, string> = {
@@ -211,6 +247,9 @@ export interface Order {
   comment: string
   status: OrderStatus
   status_display: string
+  is_overdue?: boolean
+  production_start_date: string | null
+  production_deadline: string | null
   commercial_offer_url: string | null
   items?: OrderItem[]
   addons?: OrderAddon[]
@@ -235,6 +274,7 @@ export interface OrderListItem {
   address: string
   status: OrderStatus
   status_display: string
+  is_overdue?: boolean
   last_activity_at: string | null
   last_activity_kind: ActivityKind
   last_activity_kind_display: string
@@ -270,6 +310,8 @@ export interface CreateOrderData {
   floor_readiness?: string
   comment?: string
   status?: OrderStatus
+  production_start_date?: string | null
+  production_deadline?: string | null
   items?: CreateOrderItemData[]
   addons?: CreateOrderAddonData[]
 }

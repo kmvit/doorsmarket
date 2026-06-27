@@ -28,7 +28,19 @@
       "Bash(./venv/bin/python -c \"import weasyprint; pdf=weasyprint.HTML\\(string='<h1>Тест</h1><p>Замер</p>'\\).write_pdf\\(\\); print\\('PDF bytes:', len\\(pdf\\)\\)\")",
       "Bash(./venv/bin/python -c \"import weasyprint; print\\('import ok'\\); pdf=weasyprint.HTML\\(string='<h1>x</h1>'\\).write_pdf\\(\\); print\\('pdf', len\\(pdf\\)\\)\")",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(./venv/bin/python -c ' *)"
+      "Bash(./venv/bin/python -c ' *)",
+      "Bash(venv/bin/python manage.py makemigrations orders)",
+      "Bash(venv/bin/python manage.py check)",
+      "Bash(venv/bin/python manage.py migrate orders)",
+      "Bash(venv/bin/python manage.py check_measurement_not_planned)",
+      "Bash(venv/bin/python manage.py check_measurement_not_done)",
+      "Bash(venv/bin/python manage.py check_measurement_not_processed)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(venv/bin/python manage.py runserver 8000)",
+      "Read(//tmp/**)",
+      "Bash(nohup venv/bin/python manage.py runserver 8000)",
+      "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(venv/bin/python -c ' *)"
     ]
   }
 }

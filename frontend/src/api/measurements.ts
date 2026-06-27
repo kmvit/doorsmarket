@@ -44,6 +44,12 @@ export const measurementsAPI = {
     return response.data
   },
 
+  // Phase 5: SMS клиенту о недозвоне («Отправить» / «Повторно отправить»)
+  notifyClientCallFailed: async (id: number): Promise<{ detail: string; phone: string }> => {
+    const response = await apiClient.post(`/measurements/${id}/notify_client_call_failed/`)
+    return response.data
+  },
+
   setSiteConditions: async (
     id: number,
     data: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string },

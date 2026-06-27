@@ -3,6 +3,7 @@ from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
+    OrderActivityLog,
 )
 
 
@@ -93,3 +94,13 @@ class MeasurementOpeningAdmin(admin.ModelAdmin):
     list_display = ('id', 'measurement', 'opening_number', 'room_name', 'door_type', 'opening_type')
     list_filter = ('opening_type', 'door_type')
     raw_id_fields = ('measurement', 'order_item')
+
+
+@admin.register(OrderActivityLog)
+class OrderActivityLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'kind', 'actor', 'old_status', 'new_status', 'created_at')
+    list_filter = ('kind',)
+    search_fields = ('order__client_name', 'description')
+    raw_id_fields = ('order', 'actor')
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at',)

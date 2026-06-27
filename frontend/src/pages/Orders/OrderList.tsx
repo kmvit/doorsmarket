@@ -179,7 +179,11 @@ const OrderList = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => {}}>
+                  <tr
+                    key={order.id}
+                    className={`cursor-pointer ${order.is_overdue ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
+                    onClick={() => {}}
+                  >
                     <td className="px-4 py-3">
                       <Link to={`/orders/${order.id}`} className="text-primary-600 font-medium hover:underline">
                         #{order.id}

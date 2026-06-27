@@ -6,6 +6,7 @@ from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
+    OrderActivityLog, OVERDUE_STATUSES,
 )
 
 User = get_user_model()
@@ -197,15 +198,19 @@ class OrderListSerializer(serializers.ModelSerializer):
     salon_name = serializers.CharField(source='salon.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon', 'salon_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
-            'status', 'status_display',
+            'status', 'status_display', 'is_overdue',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
         ]
+
+    def get_is_overdue(self, obj):
+        return obj.status in OVERDUE_STATUSES
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -218,6 +223,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     commercial_offer_url = serializers.SerializerMethodField()
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     lift_impossible_warning = serializers.SerializerMethodField()
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -227,9 +233,13 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'lift_available', 'stairs_available', 'floor_readiness', 'comment',
             'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
             'attachments',
+            'production_start_date', 'production_deadline', 'is_overdue',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'lift_impossible_warning',
         ]
+
+    def get_is_overdue(self, obj):
+        return obj.status in OVERDUE_STATUSES
 
     def get_attachments(self, obj):
         qs = obj.attachments.filter(order_item__isnull=True)
@@ -261,6 +271,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'salon', 'kp_number', 'kp_date', 'client_name', 'contact_phone',
             'address', 'lift_available', 'stairs_available', 'floor_readiness',
             'comment', 'status', 'items', 'addons',
+            'production_start_date', 'production_deadline',
             'next_action_text', 'next_action_due_at',
         ]
 
@@ -406,6 +417,26 @@ class OrderActionReminderSerializer(serializers.ModelSerializer):
         if obj.done:
             return False
         return obj.due_at < timezone.now()
+
+
+class OrderActivityLogSerializer(serializers.ModelSerializer):
+    """Журнал событий заказа (Лист 6)."""
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderActivityLog
+        fields = [
+            'id', 'order', 'kind', 'kind_display', 'actor', 'actor_name',
+            'description', 'old_status', 'new_status', 'meta', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return 'Система'
+        u = obj.actor
+        return f'{u.first_name} {u.last_name}'.strip() or u.username
 
 
 class WorkshopOrderSerializer(serializers.ModelSerializer):

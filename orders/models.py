@@ -37,6 +37,18 @@ class OrderStatus(models.TextChoices):
     SHIPPED = 'shipped', 'Отгружен'
     COMPLETED = 'completed', 'Выполнен'
     CANCELLED = 'cancelled', 'Не актуален'
+    # Просрочки (выставляются кронами, отображаются красным)
+    MEASUREMENT_NOT_PLANNED = 'measurement_not_planned', 'Замер не запланирован'
+    MEASUREMENT_NOT_DONE = 'measurement_not_done', 'Замер не выполнен'
+    MEASUREMENT_NOT_PROCESSED = 'measurement_not_processed', 'Замер не обработан'
+
+
+# Статусы-просрочки — для красной разметки в списках
+OVERDUE_STATUSES = frozenset({
+    OrderStatus.MEASUREMENT_NOT_PLANNED,
+    OrderStatus.MEASUREMENT_NOT_DONE,
+    OrderStatus.MEASUREMENT_NOT_PROCESSED,
+})
 
 
 class ActivityKind(models.TextChoices):
@@ -51,6 +63,7 @@ class ActivityKind(models.TextChoices):
     MEASUREMENT_SCHEDULED = 'measurement_scheduled', 'Замер запланирован'
     MEASUREMENT_DONE = 'measurement_done', 'Замер выполнен'
     MEASUREMENT_PROCESSED = 'measurement_processed', 'Замер обработан'
+    SMS_SENT = 'sms_sent', 'Отправлено SMS клиенту'
 
 
 class Order(models.Model):
@@ -101,6 +114,13 @@ class Order(models.Model):
         default='',
         verbose_name='Вид активности',
     )
+    # Фаза 5: даты производства
+    production_start_date = models.DateField(
+        null=True, blank=True, verbose_name='Дата запуска в производство',
+    )
+    production_deadline = models.DateField(
+        null=True, blank=True, verbose_name='Дата готовности',
+    )
 
     class Meta:
         verbose_name = 'Заказ'
@@ -117,6 +137,99 @@ class Order(models.Model):
         self.last_activity_kind = kind
         if save:
             self.save(update_fields=['last_activity_at', 'last_activity_kind', 'updated_at'])
+
+    # ==================== Фаза 5: журнал + переходы статусов ====================
+
+    def log_activity(self, kind, actor=None, description='', old_status='', new_status='', meta=None):
+        """Записать событие в общий журнал OrderActivityLog (Лист 6)."""
+        return OrderActivityLog.objects.create(
+            order=self,
+            kind=kind,
+            actor=actor,
+            description=description or '',
+            old_status=old_status or '',
+            new_status=new_status or '',
+            meta=meta or {},
+        )
+
+    def _notify_status_change(self, old_status, new_status, actor=None):
+        """Push менеджеру (и СМ) о смене статуса заказа. Актора не уведомляем."""
+        import logging
+        from users.push_utils import send_push_notification
+        logger = logging.getLogger(__name__)
+        recipients = set()
+        if self.manager_id:
+            recipients.add(self.manager)
+        for user in recipients:
+            if actor is not None and user.pk == actor.pk:
+                continue
+            try:
+                send_push_notification(
+                    user=user,
+                    title=f'Заказ #{self.id}: {self.get_status_display()}',
+                    body=f'Статус изменён на «{self.get_status_display()}»',
+                    url=f'/orders/{self.id}',
+                    data={'orderId': self.id},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error('Ошибка push о смене статуса заказа #%s: %s', self.id, exc)
+
+    def change_status(self, new_status, actor=None, description='', extra_update_fields=None, notify=True):
+        """
+        Базовый переход статуса: пишет в журнал и шлёт уведомления.
+        Используется методами mark_* и кронами просрочек.
+        """
+        from django.utils import timezone
+        old_status = self.status
+        self.status = new_status
+        self.last_activity_at = timezone.now()
+        self.last_activity_kind = ActivityKind.STATUS_CHANGED
+        fields = ['status', 'last_activity_at', 'last_activity_kind', 'updated_at']
+        if extra_update_fields:
+            fields.extend(f for f in extra_update_fields if f not in fields)
+        self.save(update_fields=fields)
+        self.log_activity(
+            ActivityKind.STATUS_CHANGED,
+            actor=actor,
+            description=description,
+            old_status=old_status,
+            new_status=new_status,
+        )
+        if notify:
+            self._notify_status_change(old_status, new_status, actor=actor)
+        return old_status
+
+    def mark_paid(self, actor=None):
+        return self.change_status(OrderStatus.PAID, actor=actor, description='Заказ оплачен')
+
+    def mark_in_production(self, deadline=None, start_date=None, actor=None):
+        from django.utils import timezone
+        extra = []
+        if start_date is not None:
+            self.production_start_date = start_date
+            extra.append('production_start_date')
+        elif self.production_start_date is None:
+            self.production_start_date = timezone.localdate()
+            extra.append('production_start_date')
+        if deadline is not None:
+            self.production_deadline = deadline
+            extra.append('production_deadline')
+        return self.change_status(
+            OrderStatus.IN_PRODUCTION, actor=actor,
+            description='Запущен в производство', extra_update_fields=extra,
+        )
+
+    def mark_on_warehouse(self, actor=None):
+        return self.change_status(OrderStatus.ON_WAREHOUSE, actor=actor, description='Поступил на склад')
+
+    def mark_shipped(self, actor=None):
+        return self.change_status(OrderStatus.SHIPPED, actor=actor, description='Отгружен')
+
+    def mark_completed(self, actor=None):
+        return self.change_status(OrderStatus.COMPLETED, actor=actor, description='Заказ выполнен')
+
+    def mark_cancelled(self, actor=None):
+        return self.change_status(OrderStatus.CANCELLED, actor=actor, description='Заказ отменён (не актуален)')
 
 
 class DoorType(models.TextChoices):
@@ -504,3 +617,51 @@ class MeasurementAttachment(models.Model):
 
     def __str__(self):
         return self.name or self.file.name
+
+
+# ==================== Phase 5: журнал событий заказа ====================
+
+
+class OrderActivityLog(models.Model):
+    """
+    Общий журнал «кто/когда/что» по любому событию заказа (Лист 6 ТЗ).
+    Пишется на: создание/правки заказа, смену позиций, загрузку файлов,
+    смену статуса, события замера и отправку SMS клиенту.
+    Заменяет узкий OrderStatusHistory.
+    """
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='activity_logs',
+        verbose_name='Заказ',
+    )
+    kind = models.CharField(
+        max_length=40,
+        choices=ActivityKind.choices,
+        verbose_name='Вид события',
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_activity_logs',
+        verbose_name='Кто',
+        help_text='Пусто = системное событие (cron)',
+    )
+    description = models.CharField(max_length=500, blank=True, verbose_name='Описание')
+    old_status = models.CharField(max_length=40, blank=True, verbose_name='Старый статус')
+    new_status = models.CharField(max_length=40, blank=True, verbose_name='Новый статус')
+    meta = models.JSONField(default=dict, blank=True, verbose_name='Доп. данные')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Когда')
+
+    class Meta:
+        verbose_name = 'Событие заказа'
+        verbose_name_plural = 'Журнал событий заказа'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['order', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'#{self.order_id} {self.get_kind_display()} ({self.created_at:%d.%m.%Y %H:%M})'

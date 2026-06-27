@@ -11,8 +11,9 @@ from django.utils import timezone
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
-    Measurement, MeasurementOpening, MeasurementAttachment,
+    Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
 )
+from . import sms_templates
 from .serializers import (
     SalonSerializer,
     OrderListSerializer,
@@ -28,6 +29,7 @@ from .serializers import (
     MeasurementOpeningSerializer,
     MeasurementOpeningWriteSerializer,
     MeasurementAttachmentSerializer,
+    OrderActivityLogSerializer,
 )
 from .pdf_parser import parse_kp_pdf
 from .recommendations import (
@@ -65,6 +67,35 @@ def get_orders_queryset_for_user(user):
             return qs.filter(salon=user.salon)
         return qs.filter(manager=user)
     return qs.none()
+
+
+def send_client_sms(order, phone, message, *, actor=None, meta=None):
+    """
+    Отправляет SMS клиенту/контактному и пишет событие в журнал заказа.
+    Возвращает True при успешной отправке. Логирует всегда (с пометкой sms_ok).
+    """
+    from users.push_utils import send_sms_to_phone
+    ok = False
+    if phone:
+        try:
+            ok = send_sms_to_phone(phone, message)
+        except Exception:  # noqa: BLE001
+            ok = False
+    order.log_activity(
+        ActivityKind.SMS_SENT,
+        actor=actor,
+        description=message[:500],
+        meta={**(meta or {}), 'phone': phone or '', 'sms_ok': ok},
+    )
+    return ok
+
+
+def _sm_name_phone(user):
+    """Имя и телефон сервис-менеджера для SMS-шаблонов."""
+    if not user:
+        return '', ''
+    name = (user.get_full_name() or '').strip() or user.username
+    return name, (user.phone_number or '').strip()
 
 
 class SalonViewSet(viewsets.ReadOnlyModelViewSet):
@@ -342,6 +373,54 @@ class OrderViewSet(viewsets.ModelViewSet):
             OrderDetailSerializer(order, context={'request': request}).data,
         )
 
+    # ---------- Phase 5: переходы статусов производства/отгрузки ----------
+    @action(detail=True, methods=['post'], url_path='transition')
+    def transition(self, request, pk=None):
+        """
+        POST /orders/{id}/transition/  Body: {status, production_deadline?, production_start_date?}
+        Переходы paid → in_production → on_warehouse → shipped → completed (+ cancelled).
+        Каждый переход пишет в журнал и шлёт уведомления (метод mark_* модели).
+        """
+        from django.utils.dateparse import parse_date
+        order = self.get_object()
+        if request.user.role not in ('manager', 'admin', 'leader'):
+            return Response(
+                {'detail': 'Менять статус заказа может только менеджер/руководитель.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        target = request.data.get('status')
+        actor = request.user
+        if target == OrderStatus.PAID:
+            order.mark_paid(actor=actor)
+        elif target == OrderStatus.IN_PRODUCTION:
+            order.mark_in_production(
+                deadline=parse_date(request.data.get('production_deadline') or '') or None,
+                start_date=parse_date(request.data.get('production_start_date') or '') or None,
+                actor=actor,
+            )
+        elif target == OrderStatus.ON_WAREHOUSE:
+            order.mark_on_warehouse(actor=actor)
+        elif target == OrderStatus.SHIPPED:
+            order.mark_shipped(actor=actor)
+        elif target == OrderStatus.COMPLETED:
+            order.mark_completed(actor=actor)
+        elif target == OrderStatus.CANCELLED:
+            order.mark_cancelled(actor=actor)
+        else:
+            return Response(
+                {'detail': f'Недопустимый целевой статус: {target}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(OrderDetailSerializer(order, context={'request': request}).data)
+
+    # ---------- Phase 5: журнал событий заказа ----------
+    @action(detail=True, methods=['get'], url_path='activity_log')
+    def activity_log(self, request, pk=None):
+        """История событий по заказу (Лист 6)."""
+        order = self.get_object()
+        logs = order.activity_logs.select_related('actor')[:200]
+        return Response(OrderActivityLogSerializer(logs, many=True).data)
+
 
 class OrderItemViewSet(viewsets.ModelViewSet):
     """
@@ -418,10 +497,10 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         new_status = request.data.get('new_status')
         order = reminder.order
         if new_status and new_status in dict(OrderStatus.choices):
-            old_status = order.status
-            order.status = new_status
-            order.touch_activity(ActivityKind.STATUS_CHANGED, save=False)
-            order.save(update_fields=['status', 'last_activity_at', 'last_activity_kind'])
+            order.change_status(
+                new_status, actor=request.user,
+                description='Смена статуса при закрытии напоминания',
+            )
 
         # Авто-создание следующего напоминания
         next_text = request.data.get('next_action_text')
@@ -611,6 +690,14 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 service_manager=request.user,
                 measurement_date=request.data.get('measurement_date') or None,
             )
+            # SMS контактному: «Вам позвонит {СМ} по замеру в течение 2 раб. дн.»
+            sm_name, sm_phone = _sm_name_phone(request.user)
+            phone = mr.contact_phone or mr.order.contact_phone
+            send_client_sms(
+                mr.order, phone,
+                sms_templates.request_created(sm_name, sm_phone),
+                actor=request.user,
+            )
 
         # Если назначили дату при создании — статус scheduled
         if m.measurement_date and mr.order.status == OrderStatus.MEASUREMENT_REQUESTED:
@@ -630,13 +717,25 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         date = request.data.get('measurement_date')
         if not date:
             return Response({'detail': 'Не указана дата'}, status=status.HTTP_400_BAD_REQUEST)
+        had_date = m.measurement_date is not None
         m.measurement_date = date
         m.save(update_fields=['measurement_date', 'updated_at'])
         order = m.request.order
-        if order.status in (OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED):
+        if order.status in (
+            OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED,
+            OrderStatus.MEASUREMENT_NOT_PLANNED,
+        ):
             order.status = OrderStatus.MEASUREMENT_SCHEDULED
             order.touch_activity(ActivityKind.MEASUREMENT_SCHEDULED, save=False)
             order.save()
+        # SMS контактному: назначение или перепланировка
+        mr = m.request
+        phone = mr.contact_phone or order.contact_phone
+        text = (
+            sms_templates.measurement_rescheduled(m.measurement_date) if had_date
+            else sms_templates.measurement_scheduled(m.measurement_date)
+        )
+        send_client_sms(order, phone, text, actor=request.user)
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
     # ---- СМ заполняет условия объекта (лифт/лестница/готовность пола) ----
@@ -676,7 +775,31 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         order.status = OrderStatus.MEASUREMENT_DONE
         order.touch_activity(ActivityKind.MEASUREMENT_DONE, save=False)
         order.save()
+        # SMS клиенту: «Замер выполнен. Скачать {ссылка PDF}»
+        mr = m.request
+        phone = mr.contact_phone or order.contact_phone
+        send_client_sms(order, phone, sms_templates.measurement_done(m), actor=request.user)
         return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- Уведомление клиенту о недозвоне (кнопка «Отправить / Повторно») ----
+    @action(detail=True, methods=['post'], url_path='notify_client_call_failed')
+    def notify_client_call_failed(self, request, pk=None):
+        """SMS клиенту: «Мы не дозвонились по замеру. Перезвоните...»."""
+        m = self.get_object()
+        order = m.request.order
+        sm_name, sm_phone = _sm_name_phone(m.service_manager or request.user)
+        phone = m.request.contact_phone or order.contact_phone
+        ok = send_client_sms(
+            order, phone,
+            sms_templates.call_failed(sm_name, sm_phone),
+            actor=request.user,
+        )
+        if not ok:
+            return Response(
+                {'detail': 'Не удалось отправить SMS (проверьте номер контакта).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'detail': 'Уведомление отправлено', 'phone': phone})
 
     # ---- Менеджер: «обработан» ----
     @action(detail=True, methods=['post'])

@@ -3,7 +3,7 @@ import {
   Order, OrderListItem, CreateOrderData, OrderFilters,
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
-  WorkshopOrder, ParsedKpData, OrderAttachment,
+  WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
 } from '../types/orders'
 
 export const ordersAPI = {
@@ -125,6 +125,24 @@ export const ordersAPI = {
   applyMeasurementToItems: async (orderId: number): Promise<Order> => {
     const response = await apiClient.post(`/orders/${orderId}/apply_measurement_to_items/`)
     return response.data
+  },
+
+  // ===== Phase 5: переходы статусов производства/отгрузки =====
+  transition: async (
+    orderId: number,
+    status: OrderStatus,
+    opts?: { production_start_date?: string | null; production_deadline?: string | null },
+  ): Promise<Order> => {
+    const response = await apiClient.post(`/orders/${orderId}/transition/`, {
+      status,
+      ...(opts || {}),
+    })
+    return response.data
+  },
+
+  getActivityLog: async (orderId: number): Promise<OrderActivityLog[]> => {
+    const response = await apiClient.get(`/orders/${orderId}/activity_log/`)
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
   },
 
   updateItem: async (

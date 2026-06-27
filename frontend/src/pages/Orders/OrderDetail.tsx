@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
+import OrderStatusWorkflow from './OrderStatusWorkflow'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
 import { Measurement } from '../../types/measurements'
@@ -31,7 +32,24 @@ const OrderDetail = () => {
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
+  const canManage = canEdit || user?.role === 'leader'
   const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
+  const [notifyingClient, setNotifyingClient] = useState(false)
+  const [callNotifySent, setCallNotifySent] = useState(false)
+
+  const handleNotifyClientCallFailed = async () => {
+    if (!measurement || notifyingClient) return
+    setNotifyingClient(true)
+    try {
+      const res = await measurementsAPI.notifyClientCallFailed(measurement.id)
+      setCallNotifySent(true)
+      alert(`SMS отправлено${res.phone ? ` на ${res.phone}` : ''}`)
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Не удалось отправить уведомление')
+    } finally {
+      setNotifyingClient(false)
+    }
+  }
 
   const loadMeasurement = async (mr: MeasurementRequest | null) => {
     if (!mr) {
@@ -258,6 +276,11 @@ const OrderDetail = () => {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Воркфлоу статусов + подсказки + даты производства */}
+      <div className="mb-6">
+        <OrderStatusWorkflow order={order} canManage={canManage} onChanged={reloadOrder} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -524,6 +547,16 @@ const OrderDetail = () => {
                     Назначить дату замера
                   </button>
                 )
+              )}
+              {measurement && !measurement.is_done && ['service_manager', 'manager', 'admin', 'leader'].includes(user?.role || '') && (
+                <button
+                  onClick={handleNotifyClientCallFailed}
+                  disabled={notifyingClient}
+                  className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg disabled:opacity-60"
+                  title="SMS клиенту: «Мы не дозвонились по замеру»"
+                >
+                  {notifyingClient ? 'Отправляем…' : callNotifySent ? '↻ Повторно отправить' : '📵 Не дозвонились — уведомить'}
+                </button>
               )}
               {measurement && measurement.is_done && !measurement.is_processed && canEdit && (
                 <button
