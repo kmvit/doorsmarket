@@ -35,11 +35,10 @@
   .sign-box { flex: 1; }
   .sign-line { margin-top: 12mm; border-top: 0.6pt solid #333; padding-top: 1mm; font-size: 8pt; color: #555; }
   .page-break { page-break-before: always; }
-  .photos { display: flex; flex-wrap: wrap; gap: 4mm; }
-  .photo-card { width: 84mm; border: 0.6pt solid #ddd; border-radius: 2mm; padding: 2mm; }
-  .photo-card img { width: 100%; max-height: 95mm; object-fit: contain; }
-  .photo-card .cap { font-size: 8pt; color: #555; margin-bottom: 1.5mm; }
-  .plan img { width: 100%; max-height: 235mm; object-fit: contain; }
+  /* Фото проёмов и план — каждое на отдельной странице во весь лист */
+  .photo-page { page-break-before: always; }
+  .photo-cap { font-size: 9pt; color: #555; margin-bottom: 2mm; }
+  img.photo-full { display: block; width: 100%; max-height: 258mm; object-fit: contain; }
   .sig-photo { margin-top: 4mm; }
   .sig-photo img { max-width: 80mm; max-height: 45mm; border: 0.6pt solid #ccc; }
 </style>
@@ -142,28 +141,23 @@
   </div>
   {% endif %}
 
-  {# ===== Страница 2: схемы проёмов (только если есть фото) ===== #}
+  {# ===== Схемы/фото проёмов — каждое фото на отдельной странице, во весь лист ===== #}
   {% if opening_photos %}
-  <div class="page-break"></div>
-  <div class="section-title">Схемы и фото проёмов</div>
-  <div class="photos">
     {% for grp in opening_photos %}
       {% for img in grp.images %}
-      <div class="photo-card">
-        <div class="cap">Проём № {{ grp.opening.opening_number }}{% if grp.opening.room_name %} — {{ grp.opening.room_name }}{% endif %}</div>
-        <img src="file://{{ img }}" alt="Схема проёма">
+      <div class="photo-page">
+        <div class="photo-cap">Проём № {{ grp.opening.opening_number }}{% if grp.opening.room_name %} — {{ grp.opening.room_name }}{% endif %}</div>
+        <img class="photo-full" src="file://{{ img }}" alt="Схема проёма">
       </div>
       {% endfor %}
     {% endfor %}
-  </div>
   {% endif %}
 
-  {# ===== Страница 3: план открывания (только если есть) ===== #}
+  {# ===== План открывания — на отдельной странице, во весь лист ===== #}
   {% if plan_path %}
-  <div class="page-break"></div>
-  <div class="section-title">План открывания</div>
-  <div class="plan">
-    <img src="file://{{ plan_path }}" alt="План открывания">
+  <div class="photo-page">
+    <div class="photo-cap">План открывания</div>
+    <img class="photo-full" src="file://{{ plan_path }}" alt="План открывания">
   </div>
   {% endif %}
 

@@ -618,29 +618,29 @@ const OrderDetail = () => {
         {!order.items || order.items.length === 0 ? (
           <p className="text-gray-500 text-sm text-center py-6">Позиции не добавлены</p>
         ) : (
-          <HScrollSync>
+          <HScrollSync className="max-h-[70vh]">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white" style={{ left: 0, width: 48, minWidth: 48, maxWidth: 48 }}>№</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white" style={{ left: 48, width: 120, minWidth: 120, maxWidth: 120 }}>Помещение</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky z-20 bg-white border-r border-gray-200" style={{ left: 168, width: 180, minWidth: 180, maxWidth: 180 }}>Модель</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Кол.</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Цена</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип двери</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Откр.</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Выс. полотна</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Шир. полотна</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. выс. проёма</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Рек. шир. проёма</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. выс.</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. шир.</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Факт. глуб.</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. дверь</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase">Рек. проём</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-cyan-600 uppercase">Откр. (замер)</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-orange-600 uppercase min-w-[260px]">Рекомендация по проёму</th>
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky top-0 z-30 bg-white border-b border-gray-200" style={{ left: 0, width: 48, minWidth: 48, maxWidth: 48 }}>№</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky top-0 z-30 bg-white border-b border-gray-200" style={{ left: 48, width: 120, minWidth: 120, maxWidth: 120 }}>Помещение</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky top-0 z-30 bg-white border-r border-b border-gray-200" style={{ left: 168, width: 180, minWidth: 180, maxWidth: 180 }}>Модель</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Кол.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Цена</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Сумма</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Тип двери</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Откр.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Выс. полотна</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Шир. полотна</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Рек. выс. проёма</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Рек. шир. проёма</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Факт. выс.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Факт. шир.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Факт. глуб.</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Рек. дверь</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Рек. проём</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-cyan-600 uppercase sticky top-0 z-20 bg-white border-b border-gray-200">Откр. (замер)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-orange-600 uppercase min-w-[260px] sticky top-0 z-20 bg-white border-b border-gray-200">Рекомендация по проёму</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

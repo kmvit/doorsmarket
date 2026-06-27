@@ -312,23 +312,25 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         for op in linked_openings:
             item = op.order_item
-            # Название комнаты из замера — заполняем, если в позиции КП оно пустое,
-            # чтобы не затирать уже введённое менеджером значение.
+            # Заполняем ТОЛЬКО пустые поля позиции и НЕ затираем уже заполненные —
+            # правки менеджера приоритетнее. Иначе повторное «Заполнить по замеру»
+            # откатывало бы вручную исправленные размеры обратно к значениям из КП.
+            # Для точечной замены под замер есть инлайн-кнопка «Изменить размер двери».
             if op.room_name and not (item.room_name or '').strip():
                 item.room_name = op.room_name
-            if op.door_type:
+            if op.door_type and not item.door_type:
                 item.door_type = op.door_type
-            if op.opening_type:
+            if op.opening_type and not item.opening_type:
                 item.opening_type = op.opening_type
             new_h = op.desired_door_height or op.recommended_door_height
             new_w = op.desired_door_width or op.recommended_door_width
-            if new_h:
+            if new_h and not item.door_height:
                 item.door_height = new_h
-            if new_w:
+            if new_w and not item.door_width:
                 item.door_width = new_w
-            if op.recommended_opening_height:
+            if op.recommended_opening_height and not item.recommended_opening_height:
                 item.recommended_opening_height = op.recommended_opening_height
-            if op.recommended_opening_width:
+            if op.recommended_opening_width and not item.recommended_opening_width:
                 item.recommended_opening_width = op.recommended_opening_width
             item.save(update_fields=[
                 'room_name', 'door_type', 'opening_type', 'door_height', 'door_width',

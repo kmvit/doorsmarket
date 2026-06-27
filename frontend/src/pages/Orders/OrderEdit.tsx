@@ -333,7 +333,8 @@ const OrderEdit = () => {
           <NextActionBlock orderId={Number(id)} canEdit={canEdit} />
         )}
 
-        <div className="flex items-center gap-3 justify-end">
+        {/* Липкая панель действий — всегда видна при прокрутке длинного списка позиций */}
+        <div className="sticky bottom-0 z-30 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] flex items-center gap-3 justify-end">
           <button
             type="button"
             onClick={() => navigate(`/orders/${id}`)}
