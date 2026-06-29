@@ -23,7 +23,7 @@ type CompleteAction = {
 }
 
 const COMPLETE_ACTIONS: CompleteAction[] = [
-  { label: 'Сделано', promptNext: true, color: 'bg-green-600 hover:bg-green-700' },
+  { label: 'Сделано', promptNext: false, color: 'bg-green-600 hover:bg-green-700' },
   { label: 'Оплачен', status: 'paid', promptNext: true, color: 'bg-emerald-600 hover:bg-emerald-700' },
   { label: 'В производстве', status: 'in_production', promptNext: true, color: 'bg-orange-600 hover:bg-orange-700' },
   { label: 'На складе', status: 'on_warehouse', promptNext: true, color: 'bg-cyan-600 hover:bg-cyan-700' },
