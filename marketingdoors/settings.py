@@ -220,6 +220,10 @@ VAPID_CLAIM_EMAIL = os.getenv('VAPID_CLAIM_EMAIL', 'support@marketingdoors.ru')
 # SMS.ru API Settings
 SMS_RU_API_ID = os.getenv('SMS_RU_API_ID', '')
 
+# Включение/выключение SMS клиенту по ЗАКАЗАМ (на время тестирования).
+# Рекламаций не касается. Выключить: ORDERS_SMS_ENABLED=False в .env, затем рестарт.
+ORDERS_SMS_ENABLED = os.getenv('ORDERS_SMS_ENABLED', 'True').strip().lower() in ('1', 'true', 'yes', 'on')
+
 # Frontend URL for generating links in notifications
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://16c90da0e1be.vps.myjino.ru')
 

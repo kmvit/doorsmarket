@@ -18,6 +18,7 @@ import Users from './pages/Users'
 import Offline from './pages/Offline'
 import OrderList from './pages/Orders/OrderList'
 import OrderDetail from './pages/Orders/OrderDetail'
+import OrderHistory from './pages/Orders/OrderHistory'
 import OrderCreate from './pages/Orders/OrderCreate'
 import OrderEdit from './pages/Orders/OrderEdit'
 import Workshop from './pages/Orders/Workshop'
@@ -212,6 +213,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <OrderDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:id/history"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderHistory />
                     </Layout>
                   </ProtectedRoute>
                 }

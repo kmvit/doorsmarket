@@ -7,6 +7,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Prefetch
 from django.utils import timezone
+from django.conf import settings
 
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
@@ -72,11 +73,16 @@ def get_orders_queryset_for_user(user):
 def send_client_sms(order, phone, message, *, actor=None, meta=None):
     """
     Отправляет SMS клиенту/контактному и пишет событие в журнал заказа.
-    Возвращает True при успешной отправке. Логирует всегда (с пометкой sms_ok).
+    Возвращает True если отправка прошла или была намеренно отключена (тест-режим).
+    Логирует всегда (с пометками sms_ok / suppressed).
+
+    SMS по заказам можно отключить флагом ORDERS_SMS_ENABLED=False (на время теста).
     """
     from users.push_utils import send_sms_to_phone
+    enabled = getattr(settings, 'ORDERS_SMS_ENABLED', True)
+    suppressed = not enabled
     ok = False
-    if phone:
+    if enabled and phone:
         try:
             ok = send_sms_to_phone(phone, message)
         except Exception:  # noqa: BLE001
@@ -85,9 +91,10 @@ def send_client_sms(order, phone, message, *, actor=None, meta=None):
         ActivityKind.SMS_SENT,
         actor=actor,
         description=message[:500],
-        meta={**(meta or {}), 'phone': phone or '', 'sms_ok': ok},
+        meta={**(meta or {}), 'phone': phone or '', 'sms_ok': ok, 'suppressed': suppressed},
     )
-    return ok
+    # В тест-режиме считаем «обработанным», чтобы экшены (недозвон) не падали 400.
+    return ok or suppressed
 
 
 def _sm_name_phone(user):

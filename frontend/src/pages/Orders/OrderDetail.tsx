@@ -5,7 +5,6 @@ import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
 import OrderStatusWorkflow from './OrderStatusWorkflow'
-import OrderHistory from './OrderHistory'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
 import { Measurement } from '../../types/measurements'
@@ -257,6 +256,15 @@ const OrderDetail = () => {
               </svg>
               {measurementRequest ? 'Заявка на замер' : 'Заявка на замер'}
             </button>
+            <Link
+              to={`/orders/${order.id}/history`}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-all"
+            >
+              <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              История
+            </Link>
             <Link
               to={`/orders/${order.id}/edit`}
               className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl transition-all"
@@ -827,9 +835,6 @@ const OrderDetail = () => {
           </div>
         </div>
       )}
-
-      {/* История событий заказа (Лист 6) */}
-      <OrderHistory orderId={order.id} />
 
       {showMrModal && (
         <MeasurementRequestForm

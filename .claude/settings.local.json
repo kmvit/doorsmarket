@@ -40,7 +40,8 @@
       "Read(//tmp/**)",
       "Bash(nohup venv/bin/python manage.py runserver 8000)",
       "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"%{http_code}\\\\n\")",
-      "Bash(venv/bin/python -c ' *)"
+      "Bash(venv/bin/python -c ' *)",
+      "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"backend HTTP %{http_code}\\\\n\")"
     ]
   }
 }
