@@ -5,6 +5,7 @@ import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
 import OrderStatusWorkflow from './OrderStatusWorkflow'
+import OrderHistory from './OrderHistory'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
 import { Measurement } from '../../types/measurements'
@@ -826,6 +827,9 @@ const OrderDetail = () => {
           </div>
         </div>
       )}
+
+      {/* История событий заказа (Лист 6) */}
+      <OrderHistory orderId={order.id} />
 
       {showMrModal && (
         <MeasurementRequestForm
