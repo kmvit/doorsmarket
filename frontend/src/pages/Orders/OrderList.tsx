@@ -1,12 +1,20 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
 
+// Метки папок для баннера (folder может быть статусом или составной выборкой)
+const FOLDER_LABELS: Record<string, string> = {
+  created: 'Создан',
+  today_measurement: 'Сегодня замер',
+}
+
 const OrderList = () => {
   const { user } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const folder = searchParams.get('folder') || ''
   const [orders, setOrders] = useState<OrderListItem[]>([])
   const [salons, setSalons] = useState<Salon[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -19,6 +27,16 @@ const OrderList = () => {
 
   const canCreate = user?.role === 'manager' || user?.role === 'admin'
 
+  const folderLabel = folder
+    ? (FOLDER_LABELS[folder] || ORDER_STATUS_DISPLAY[folder as OrderStatus] || folder)
+    : ''
+
+  const clearFolder = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('folder')
+    setSearchParams(next)
+  }
+
   const loadOrders = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -28,6 +46,7 @@ const OrderList = () => {
         salon: salonFilter || undefined,
         search: search || undefined,
         my_orders: myOrders || undefined,
+        folder: folder || undefined,
       })
       setOrders(data)
     } catch (err: any) {
@@ -35,7 +54,7 @@ const OrderList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, salonFilter, myOrders])
+  }, [search, statusFilter, salonFilter, myOrders, folder])
 
   useEffect(() => {
     salonsAPI.getAll().then(setSalons).catch(() => {})
@@ -73,6 +92,16 @@ const OrderList = () => {
           </Link>
         )}
       </div>
+
+      {/* Активная папка (переход с Dashboard) */}
+      {folder && (
+        <div className="mb-4 flex items-center gap-2 text-sm bg-primary-50 border border-primary-200 text-primary-800 rounded-xl px-4 py-2">
+          <span>Папка: <strong>{folderLabel}</strong></span>
+          <button onClick={clearFolder} className="ml-auto text-primary-600 hover:underline">
+            Сбросить ✕
+          </button>
+        </div>
+      )}
 
       {/* Фильтры */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-end">

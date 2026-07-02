@@ -5,6 +5,8 @@ import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
 import { ComplaintCreateData, ParsedComplaintData, ParsedProduct } from '../../types/complaints'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
+import { Order } from '../../types/orders'
+import { OPENING_TYPE_SHORT } from '../../types/orders'
 import { User } from '../../types/auth'
 import { useAuthStore } from '../../store/authStore'
 import Button from '../../components/common/Button'
@@ -38,6 +40,12 @@ const ComplaintCreate = () => {
   const [isParsingPDF, setIsParsingPDF] = useState(false)
   const [showProductSelection, setShowProductSelection] = useState(false)
   const [parsedProducts, setParsedProducts] = useState<ParsedProduct[]>([])
+  // Фаза 6: поиск заказа по номеру
+  const [orderQuery, setOrderQuery] = useState('')
+  const [orderResults, setOrderResults] = useState<Order[]>([])
+  const [orderSearching, setOrderSearching] = useState(false)
+  const [orderSearched, setOrderSearched] = useState(false)
+  const [sourceOrderId, setSourceOrderId] = useState<number | null>(null)
   // Защита от повторного создания рекламации при дублирующихся кликах
   const createdComplaintIdRef = useRef<number | null>(null)
 
@@ -224,6 +232,48 @@ const ComplaintCreate = () => {
     setParsedProducts([])
   }
 
+  // Фаза 6: поиск заказа по номеру
+  const handleSearchOrder = async () => {
+    const q = orderQuery.trim()
+    if (!q) return
+    setOrderSearching(true)
+    setOrderSearched(false)
+    try {
+      const results = await complaintsAPI.findOrderByNumber(q)
+      setOrderResults(results)
+    } catch {
+      setOrderResults([])
+    } finally {
+      setOrderSearching(false)
+      setOrderSearched(true)
+    }
+  }
+
+  // Выбор найденного заказа: автозаполнение данных + выбор позиций галочками
+  const handlePickOrder = (order: Order) => {
+    setValue('order_number', order.kp_number || String(order.id))
+    if (order.client_name) setValue('client_name', order.client_name)
+    if (order.contact_phone) setValue('contact_phone', normalizePhone(order.contact_phone))
+    if (order.address) setValue('address', order.address)
+    setSourceOrderId(order.id)
+
+    // Позиции заказа → формат выбора (переиспользуем ProductSelectionDialog)
+    const items = order.items || []
+    const asProducts: ParsedProduct[] = items.map((it) => ({
+      product_name: it.model_name || `Проём ${it.opening_number}`,
+      quantity: String(it.quantity ?? ''),
+      size: it.door_height && it.door_width ? `${it.door_height}×${it.door_width}` : '',
+      opening_type: it.opening_type ? (OPENING_TYPE_SHORT[it.opening_type] || it.opening_type) : '',
+      problem_description: '',
+    }))
+    setOrderResults([])
+    setOrderSearched(false)
+    if (asProducts.length > 0) {
+      setParsedProducts(asProducts)
+      setShowProductSelection(true)
+    }
+  }
+
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }
@@ -317,6 +367,7 @@ const ComplaintCreate = () => {
       document_package_link: data.document_package_link || '',
     }
 
+    if (sourceOrderId) apiData.source_order_id = sourceOrderId
     if (data.manager_id) apiData.manager_id = Number(data.manager_id)
     if (data.recipient_id) apiData.recipient_id = Number(data.recipient_id)
     if (data.complaint_type) apiData.complaint_type = data.complaint_type as 'manager' | 'installer' | 'factory'
@@ -574,6 +625,59 @@ const ComplaintCreate = () => {
           {/* Информация о заказе и клиенте */}
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Информация о заказе и клиенте</h2>
+
+            {/* Фаза 6: найти существующий заказ по номеру */}
+            <div className="mb-5 p-4 bg-primary-50/60 border border-primary-100 rounded-2xl">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Найти по номеру заказа
+                {sourceOrderId && (
+                  <span className="ml-2 text-xs font-normal text-green-700">✓ привязан заказ #{sourceOrderId}</span>
+                )}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={orderQuery}
+                  onChange={(e) => setOrderQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchOrder() } }}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="Номер КП или заказа"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearchOrder}
+                  disabled={orderSearching || !orderQuery.trim()}
+                  className="px-4 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl disabled:opacity-50"
+                >
+                  {orderSearching ? 'Поиск…' : 'Найти'}
+                </button>
+              </div>
+              {orderSearched && orderResults.length === 0 && (
+                <p className="mt-2 text-sm text-gray-500">Заказы не найдены</p>
+              )}
+              {orderResults.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {orderResults.map((o) => (
+                    <li key={o.id}>
+                      <button
+                        type="button"
+                        onClick={() => handlePickOrder(o)}
+                        className="w-full text-left px-3 py-2 bg-white border border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50/50 transition-all"
+                      >
+                        <span className="font-medium text-gray-900">#{o.id}</span>
+                        {o.kp_number && <span className="text-gray-600"> · КП {o.kp_number}</span>}
+                        <span className="text-gray-600"> · {o.client_name}</span>
+                        <span className="text-xs text-gray-400"> · позиций: {(o.items || []).length}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs text-gray-500">
+                Данные клиента подтянутся автоматически, позиции выберете галочками.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">

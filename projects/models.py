@@ -133,6 +133,15 @@ class Complaint(models.Model):
         verbose_name='Причина рекламации'
     )
     order_number = models.CharField(max_length=100, verbose_name='Номер заказа')
+    source_order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='complaints',
+        verbose_name='Заказ-источник',
+        help_text='Заказ, из которого создана рекламация (Фаза 6)',
+    )
     client_name = models.CharField(max_length=255, verbose_name='Наименование клиента')
     address = models.TextField(verbose_name='Адрес')
     contact_person = models.CharField(max_length=255, verbose_name='Контактное лицо от клиента')

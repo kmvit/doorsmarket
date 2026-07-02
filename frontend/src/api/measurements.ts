@@ -3,6 +3,7 @@ import {
   Measurement, MeasurementListItem, MeasurementFolder,
   MeasurementOpening, MeasurementAttachment,
 } from '../types/measurements'
+import { MeasurementFolderCount } from '../types/orders'
 
 export const measurementsAPI = {
   list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number }): Promise<MeasurementListItem[]> => {
@@ -12,6 +13,13 @@ export const measurementsAPI = {
     if (params?.service_manager) queryParams.service_manager = params.service_manager
     const response = await apiClient.get('/measurements/', { params: queryParams })
     return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
+  getFolderCounts: async (opts?: { mine?: boolean }): Promise<MeasurementFolderCount[]> => {
+    const params: Record<string, any> = {}
+    if (opts?.mine) params.mine = 'true'
+    const response = await apiClient.get('/measurements/folder_counts/', { params })
+    return Array.isArray(response.data) ? response.data : []
   },
 
   getById: async (id: number): Promise<Measurement> => {

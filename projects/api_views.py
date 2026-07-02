@@ -439,6 +439,36 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         response_serializer = ComplaintDetailSerializer(complaint, context=self.get_serializer_context())
         return Response(response_serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='find-order')
+    def find_order_by_number(self, request):
+        """
+        Поиск заказа по номеру (KP или id) для создания рекламации из заказа (Фаза 6).
+        GET /complaints/find-order/?order_number=XXX
+        Возвращает список подходящих заказов с позициями (для выбора галочками).
+        """
+        from orders.models import Order
+        from orders.serializers import OrderDetailSerializer
+
+        query = (request.query_params.get('order_number') or '').strip()
+        if not query:
+            return Response(
+                {'detail': 'Укажите номер заказа (order_number).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lookup = Q(kp_number__icontains=query)
+        if query.isdigit():
+            lookup = lookup | Q(id=int(query))
+
+        orders = (
+            Order.objects.filter(lookup)
+            .select_related('salon', 'salon__city', 'manager')
+            .prefetch_related('items', 'addons')
+            .order_by('-created_at')[:10]
+        )
+        data = OrderDetailSerializer(orders, many=True, context={'request': request}).data
+        return Response(data)
+
     @action(detail=False, methods=['post'], url_path='parse-pdf')
     def parse_pdf(self, request):
         """

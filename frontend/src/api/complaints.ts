@@ -474,6 +474,14 @@ export const complaintsAPI = {
     await apiClient.delete(`/comments/${id}/`)
   },
 
+  // Поиск заказа по номеру для создания рекламации из заказа (Фаза 6)
+  findOrderByNumber: async (orderNumber: string): Promise<import('../types/orders').Order[]> => {
+    const response = await apiClient.get('/complaints/find-order/', {
+      params: { order_number: orderNumber },
+    })
+    return Array.isArray(response.data) ? response.data : []
+  },
+
   // Парсинг PDF файла
   parsePDF: async (file: File): Promise<import('../types/complaints').ParsedComplaintData> => {
     const formData = new FormData()

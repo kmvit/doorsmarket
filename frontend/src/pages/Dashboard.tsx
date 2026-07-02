@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
-import { remindersAPI } from '../api/orders'
+import { remindersAPI, ordersAPI } from '../api/orders'
+import { measurementsAPI } from '../api/measurements'
+import { OrderFolderCount, MeasurementFolderCount } from '../types/orders'
 
 interface DashboardStat {
   key: string
@@ -12,6 +14,21 @@ interface DashboardStat {
   url_param: string | null
   url: string
 }
+
+// Карточка папки (наработки заказов / замеры) для Dashboard (Фаза 6)
+const FolderCard = ({ to, label, count, overdue }: { to: string; label: string; count: number; overdue?: boolean }) => (
+  <Link
+    to={to}
+    className={`group rounded-xl border p-4 shadow-sm hover:shadow-md transition-all ${
+      overdue && count > 0 ? 'bg-red-50 border-red-200' : 'bg-white/80 border-gray-100'
+    }`}
+  >
+    <p className={`text-xs font-medium ${overdue && count > 0 ? 'text-red-700' : 'text-gray-500'}`}>{label}</p>
+    <p className={`mt-1 text-2xl font-bold ${overdue && count > 0 ? 'text-red-900' : 'text-gray-900 group-hover:text-primary-600'} transition-colors`}>
+      {count}
+    </p>
+  </Link>
+)
 
 const Dashboard = () => {
   const { user, setUser } = useAuthStore()
@@ -22,8 +39,22 @@ const Dashboard = () => {
   const [isSavingPhone, setIsSavingPhone] = useState(false)
   const [reminderTodayCount, setReminderTodayCount] = useState<number | null>(null)
   const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
+  const [orderFolders, setOrderFolders] = useState<OrderFolderCount[]>([])
+  const [measFolders, setMeasFolders] = useState<MeasurementFolderCount[]>([])
 
   const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'admin'].includes(user.role)
+  const isManager = user?.role === 'manager'
+  const isSM = user?.role === 'service_manager'
+
+  // Папки Фазы 6: менеджеру — заказы, СМ — замеры + просроченные заказы
+  useEffect(() => {
+    if (isManager) {
+      ordersAPI.getFolderCounts({ mine: true }).then(setOrderFolders).catch(() => {})
+    } else if (isSM) {
+      measurementsAPI.getFolderCounts({ mine: true }).then(setMeasFolders).catch(() => {})
+      ordersAPI.getFolderCounts().then(setOrderFolders).catch(() => {})
+    }
+  }, [isManager, isSM])
 
   useEffect(() => {
     if (!showWorkshopCard) return
@@ -198,6 +229,54 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+
+        {/* Фаза 6: Наработки менеджера — папки по статусам заказов */}
+        {isManager && orderFolders.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Наработки</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {orderFolders.map((f) => (
+                <FolderCard
+                  key={f.folder}
+                  to={`/orders?folder=${f.folder}`}
+                  label={f.label}
+                  count={f.count}
+                  overdue={f.overdue}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Фаза 6: Замеры СМ — папки замеров + просроченные заказы */}
+        {isSM && (measFolders.length > 0 || orderFolders.length > 0) && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Замеры</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {measFolders.map((f) => (
+                <FolderCard
+                  key={f.folder}
+                  to={`/measurements?folder=${f.folder}`}
+                  label={f.label}
+                  count={f.count}
+                />
+              ))}
+              {orderFolders.filter((f) => f.overdue).map((f) => (
+                <FolderCard
+                  key={f.folder}
+                  to={`/orders?folder=${f.folder}`}
+                  label={f.label}
+                  count={f.count}
+                  overdue
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(isManager || isSM) && stats.length > 0 && (
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">Рекламации</h2>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">

@@ -128,6 +128,48 @@ class SalonViewSet(viewsets.ReadOnlyModelViewSet):
         return qs.none()
 
 
+# ---- Папки заказов для Dashboard (Фаза 6) ----
+# Каждая папка → выборка заказов. Порядок = порядок отображения.
+ORDER_FOLDERS = [
+    ('created', 'Создан', False),
+    ('measurement_requested', 'Заявка на замер', False),
+    ('measurement_scheduled', 'Замер запланирован', False),
+    ('today_measurement', 'Сегодня замер', False),
+    ('measurement_done', 'Замер выполнен', False),
+    ('measurement_processed', 'Замер обработан', False),
+    ('paid', 'Заказ оплачен', False),
+    ('in_production', 'В производстве', False),
+    ('on_warehouse', 'На складе', False),
+    ('shipped', 'Отгружен', False),
+    ('completed', 'Выполнен', False),
+    ('cancelled', 'Не актуален', False),
+    ('measurement_not_planned', 'Не запланирован', True),
+    ('measurement_not_done', 'Не выполнен', True),
+    ('measurement_not_processed', 'Не обработан', True),
+]
+
+
+def apply_order_folder(qs, folder):
+    """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
+    if not folder:
+        return qs
+    if folder == 'created':
+        # «Создан» = черновик/активный без заявки на замер
+        return qs.filter(
+            status__in=[OrderStatus.DRAFT, OrderStatus.ACTIVE],
+            measurement_request__isnull=True,
+        )
+    if folder == 'today_measurement':
+        # «Сегодня замер» = запланирован + дата замера сегодня
+        return qs.filter(
+            status=OrderStatus.MEASUREMENT_SCHEDULED,
+            measurement_request__measurement__measurement_date__date=timezone.localdate(),
+        )
+    if folder in OrderStatus.values:
+        return qs.filter(status=folder)
+    return qs
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -154,7 +196,30 @@ class OrderViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get('exclude_cancelled') == 'true':
             qs = qs.exclude(status='cancelled')
 
+        folder = self.request.query_params.get('folder')
+        if folder:
+            qs = apply_order_folder(qs, folder)
+
         return qs
+
+    @action(detail=False, methods=['get'], url_path='folder_counts')
+    def folder_counts(self, request):
+        """
+        Счётчики по папкам заказов для Dashboard (Фаза 6).
+        Учитывает ACL пользователя. ?mine=true — только свои заказы.
+        """
+        base = get_orders_queryset_for_user(request.user)
+        if request.query_params.get('mine') == 'true':
+            base = base.filter(manager=request.user)
+        result = []
+        for folder, label, overdue in ORDER_FOLDERS:
+            result.append({
+                'folder': folder,
+                'label': label,
+                'overdue': overdue,
+                'count': apply_order_folder(base, folder).count(),
+            })
+        return Response(result)
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -624,6 +689,30 @@ def get_measurements_queryset_for_user(user):
     )
 
 
+# ---- Папки замеров для дашборда СМ (Фаза 6) ----
+MEASUREMENT_FOLDERS = [
+    ('unscheduled', 'Назначить замер'),
+    ('scheduled', 'Замер запланирован'),
+    ('today', 'Сегодня замер'),
+    ('done', 'Замер выполнен'),
+]
+
+
+def apply_measurement_folder(qs, folder, user):
+    """Фильтр папки замеров. Неизвестная папка → без изменений."""
+    if folder == 'unscheduled':
+        return qs.filter(measurement_date__isnull=True, is_done=False)
+    if folder == 'scheduled':
+        return qs.filter(measurement_date__isnull=False, is_done=False)
+    if folder == 'today':
+        return qs.filter(measurement_date__date=timezone.localdate(), is_done=False)
+    if folder == 'done':
+        return qs.filter(is_done=True)
+    if folder == 'mine':
+        return qs.filter(service_manager=user)
+    return qs
+
+
 class MeasurementViewSet(viewsets.ModelViewSet):
     """
     CRUD замеров. Доступен СМ (свой город), менеджеру (свой салон), admin/leader.
@@ -641,22 +730,25 @@ class MeasurementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = get_measurements_queryset_for_user(self.request.user)
-        # Folder-фильтры из ТЗ:
         folder = self.request.query_params.get('folder')
-        if folder == 'unscheduled':
-            # Ожидают назначения — measurement_date пуст
-            qs = qs.filter(measurement_date__isnull=True, is_done=False)
-        elif folder == 'scheduled':
-            # Запланированные — есть дата, не выполнен
-            qs = qs.filter(measurement_date__isnull=False, is_done=False)
-        elif folder == 'today':
-            today = timezone.localdate()
-            qs = qs.filter(measurement_date__date=today, is_done=False)
-        elif folder == 'done':
-            qs = qs.filter(is_done=True)
-        elif folder == 'mine':
-            qs = qs.filter(service_manager=self.request.user)
+        if folder:
+            qs = apply_measurement_folder(qs, folder, self.request.user)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='folder_counts')
+    def folder_counts(self, request):
+        """Счётчики по папкам замеров для дашборда СМ (Фаза 6)."""
+        base = get_measurements_queryset_for_user(request.user)
+        if request.query_params.get('mine') == 'true':
+            base = base.filter(service_manager=request.user)
+        result = []
+        for folder, label in MEASUREMENT_FOLDERS:
+            result.append({
+                'folder': folder,
+                'label': label,
+                'count': apply_measurement_folder(base, folder, request.user).count(),
+            })
+        return Response(result)
 
     def get_serializer_class(self):
         if self.action == 'list':

@@ -41,7 +41,15 @@
       "Bash(nohup venv/bin/python manage.py runserver 8000)",
       "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"%{http_code}\\\\n\")",
       "Bash(venv/bin/python -c ' *)",
-      "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"backend HTTP %{http_code}\\\\n\")"
+      "Bash(curl -s http://localhost:8000/api/v1/ -o /dev/null -w \"backend HTTP %{http_code}\\\\n\")",
+      "Bash(venv/bin/python manage.py makemigrations projects)",
+      "Bash(venv/bin/python manage.py migrate projects)",
+      "Bash(curl -s http://localhost:8000/api/v1/orders/folder_counts/ -o /dev/null -w \"no-auth folder_counts: %{http_code}\\\\n\")",
+      "Bash(venv/bin/python manage.py showmigrations projects orders)",
+      "Bash(sed -n '/interface ComplaintCreateData/,/^}/p' types/complaints.ts)",
+      "Bash(sed -n '/interface ParsedProduct\\\\b/,/^}/p' types/complaints.ts)",
+      "Bash(venv/bin/python manage.py makemigrations --check --dry-run)",
+      "Bash(venv/bin/python manage.py showmigrations)"
     ]
   }
 }

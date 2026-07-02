@@ -4,6 +4,7 @@ import {
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
   WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
+  OrderFolderCount,
 } from '../types/orders'
 
 export const ordersAPI = {
@@ -15,9 +16,17 @@ export const ordersAPI = {
     if (filters?.search) params.search = filters.search
     if (filters?.my_orders) params.my_orders = 'true'
     if (filters?.exclude_cancelled) params.exclude_cancelled = 'true'
+    if (filters?.folder) params.folder = filters.folder
 
     const response = await apiClient.get('/orders/', { params })
     return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
+  getFolderCounts: async (opts?: { mine?: boolean }): Promise<OrderFolderCount[]> => {
+    const params: Record<string, any> = {}
+    if (opts?.mine) params.mine = 'true'
+    const response = await apiClient.get('/orders/folder_counts/', { params })
+    return Array.isArray(response.data) ? response.data : []
   },
 
   getById: async (id: number): Promise<Order> => {

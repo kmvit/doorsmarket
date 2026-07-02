@@ -323,6 +323,20 @@ export interface OrderFilters {
   search?: string
   my_orders?: boolean
   exclude_cancelled?: boolean
+  folder?: string
+}
+
+export interface OrderFolderCount {
+  folder: string
+  label: string
+  count: number
+  overdue: boolean
+}
+
+export interface MeasurementFolderCount {
+  folder: string
+  label: string
+  count: number
 }
 
 // ===== Phase 2 =====

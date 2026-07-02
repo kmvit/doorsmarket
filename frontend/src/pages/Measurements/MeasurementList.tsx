@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { measurementsAPI } from '../../api/measurements'
 import { MeasurementListItem, MeasurementFolder } from '../../types/measurements'
 import { ORDER_STATUS_COLOR } from '../../types/orders'
@@ -13,12 +13,18 @@ const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: 'mine', label: 'Мои', color: 'bg-purple-100 text-purple-700' },
 ]
 
+const VALID_FOLDERS: MeasurementFolder[] = ['', 'unscheduled', 'scheduled', 'today', 'done', 'mine']
+
 const MeasurementList = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const urlFolder = searchParams.get('folder') as MeasurementFolder | null
   const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [folder, setFolder] = useState<MeasurementFolder>('unscheduled')
+  const [folder, setFolder] = useState<MeasurementFolder>(
+    urlFolder != null && VALID_FOLDERS.includes(urlFolder) ? urlFolder : 'unscheduled',
+  )
   const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {

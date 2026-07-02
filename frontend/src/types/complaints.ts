@@ -183,6 +183,7 @@ export interface ComplaintCreateData {
   assignee_comment?: string
   document_package_link?: string
   commercial_offer_text?: string
+  source_order_id?: number | null
 }
 
 export interface ComplaintFilters {

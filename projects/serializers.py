@@ -13,6 +13,7 @@ from .models import (
     ComplaintType,
 )
 from users.serializers import UserSerializer, CitySerializer
+from orders.models import Order
 
 User = get_user_model()
 
@@ -264,7 +265,8 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'contact_phone',
             'additional_info',
             'assignee_comment',
-            
+            'source_order',
+
             # Документы
             'document_package_link',
             'commercial_offer',
@@ -340,7 +342,14 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         source='reason',
         write_only=True
     )
-    
+    source_order_id = serializers.PrimaryKeyRelatedField(
+        queryset=Order.objects.all(),
+        source='source_order',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
         model = Complaint
         fields = [
@@ -350,6 +359,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
             'installer_assigned_id',
             'production_site_id',
             'reason_id',
+            'source_order_id',
             'complaint_type',
             'order_number',
             'client_name',
