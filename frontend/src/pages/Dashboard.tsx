@@ -248,26 +248,26 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Фаза 6: Замеры СМ — папки замеров + просроченные заказы */}
+        {/* Фаза 6: Замеры СМ — «Назначить замер» + те же папки заказов (включая «Заявка на замер») */}
         {isSM && (measFolders.length > 0 || orderFolders.length > 0) && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Замеры</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {measFolders.map((f) => (
+              {measFolders.filter((f) => f.folder === 'unscheduled').map((f) => (
                 <FolderCard
-                  key={f.folder}
-                  to={`/measurements?folder=${f.folder}`}
-                  label={f.label}
+                  key={`m-${f.folder}`}
+                  to="/measurements?folder=unscheduled"
+                  label="Назначить замер"
                   count={f.count}
                 />
               ))}
-              {orderFolders.filter((f) => f.overdue).map((f) => (
+              {orderFolders.map((f) => (
                 <FolderCard
                   key={f.folder}
                   to={`/orders?folder=${f.folder}`}
                   label={f.label}
                   count={f.count}
-                  overdue
+                  overdue={f.overdue}
                 />
               ))}
             </div>
