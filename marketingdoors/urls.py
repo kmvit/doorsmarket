@@ -19,9 +19,12 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
+from orders.api_views import ShortMeasurementRedirectView
 
 urlpatterns = [
     path('', RedirectView.as_view(pattern_name='users:web_login', permanent=False)),
+    # Короткая ссылка для SMS: /z/{код} → PDF-бланк замера
+    path('z/<str:code>/', ShortMeasurementRedirectView.as_view(), name='short-measurement-pdf'),
     path('admin/', admin.site.urls),
     path('api/v1/', include('users.urls')),
     path('api/v1/', include('projects.api_urls')),

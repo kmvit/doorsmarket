@@ -15,6 +15,14 @@ interface DashboardStat {
   url: string
 }
 
+// Папки, показываемые в «Наработках» (пайплайн замера + просрочки).
+// Производственные/отгрузочные статусы в наработках не выводим.
+const NARABOTKI_FOLDERS = [
+  'created', 'measurement_requested', 'measurement_scheduled',
+  'measurement_done', 'measurement_processed',
+  'measurement_not_planned', 'measurement_not_done', 'measurement_not_processed',
+]
+
 // Карточка папки (наработки заказов / замеры) для Dashboard (Фаза 6)
 const FolderCard = ({ to, label, count, overdue }: { to: string; label: string; count: number; overdue?: boolean }) => (
   <Link
@@ -38,6 +46,7 @@ const Dashboard = () => {
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
   const [isSavingPhone, setIsSavingPhone] = useState(false)
   const [reminderTodayCount, setReminderTodayCount] = useState<number | null>(null)
+  const [reminderTomorrowCount, setReminderTomorrowCount] = useState<number | null>(null)
   const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
   const [orderFolders, setOrderFolders] = useState<OrderFolderCount[]>([])
   const [measFolders, setMeasFolders] = useState<MeasurementFolderCount[]>([])
@@ -60,11 +69,13 @@ const Dashboard = () => {
     if (!showWorkshopCard) return
     const load = async () => {
       try {
-        const [today, overdue] = await Promise.all([
+        const [today, tomorrow, overdue] = await Promise.all([
           remindersAPI.list({ today: true, mine: true }).catch(() => []),
+          remindersAPI.list({ tomorrow: true, mine: true }).catch(() => []),
           remindersAPI.list({ overdue: true, mine: true }).catch(() => []),
         ])
         setReminderTodayCount(today.length)
+        setReminderTomorrowCount(tomorrow.length)
         setReminderOverdueCount(overdue.length)
       } catch {}
     }
@@ -152,8 +163,8 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-6xl mx-auto animate-fadeIn">
-        {/* Карточка "Наработки" — для модуля заказов */}
-        {showWorkshopCard && (
+        {/* Карточка "Наработки" — только для менеджеров (у СМ свой раздел «Замеры») */}
+        {showWorkshopCard && !isSM && (
           <Link
             to="/workshop"
             className="block mb-6 bg-gradient-to-r from-primary-600 to-cyan-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all"
@@ -230,20 +241,42 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Фаза 6: Наработки менеджера — папки по статусам заказов */}
+        {/* Фаза 6: кнопки задач на сегодня / завтра (наработки-напоминания) */}
+        {(isManager || isSM) && (
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <Link
+              to="/workshop?reminder=today"
+              className="rounded-2xl p-4 bg-gradient-to-br from-primary-600 to-cyan-600 text-white shadow-md hover:shadow-lg transition-all"
+            >
+              <p className="text-sm opacity-90">Задачи на сегодня</p>
+              <p className="mt-1 text-3xl font-bold">{reminderTodayCount ?? '—'}</p>
+            </Link>
+            <Link
+              to="/workshop?reminder=tomorrow"
+              className="rounded-2xl p-4 bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all"
+            >
+              <p className="text-sm opacity-90">Задачи на завтра</p>
+              <p className="mt-1 text-3xl font-bold">{reminderTomorrowCount ?? '—'}</p>
+            </Link>
+          </div>
+        )}
+
+        {/* Фаза 6: Наработки менеджера — папки пайплайна замера + просрочки */}
         {isManager && orderFolders.length > 0 && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Наработки</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {orderFolders.map((f) => (
-                <FolderCard
-                  key={f.folder}
-                  to={`/orders?folder=${f.folder}`}
-                  label={f.label}
-                  count={f.count}
-                  overdue={f.overdue}
-                />
-              ))}
+              {orderFolders
+                .filter((f) => NARABOTKI_FOLDERS.includes(f.folder))
+                .map((f) => (
+                  <FolderCard
+                    key={f.folder}
+                    to={`/orders?folder=${f.folder}`}
+                    label={f.label}
+                    count={f.count}
+                    overdue={f.overdue}
+                  />
+                ))}
             </div>
           </div>
         )}
@@ -261,15 +294,17 @@ const Dashboard = () => {
                   count={f.count}
                 />
               ))}
-              {orderFolders.map((f) => (
-                <FolderCard
-                  key={f.folder}
-                  to={`/orders?folder=${f.folder}`}
-                  label={f.label}
-                  count={f.count}
-                  overdue={f.overdue}
-                />
-              ))}
+              {orderFolders
+                .filter((f) => NARABOTKI_FOLDERS.includes(f.folder))
+                .map((f) => (
+                  <FolderCard
+                    key={f.folder}
+                    to={`/orders?folder=${f.folder}`}
+                    label={f.label}
+                    count={f.count}
+                    overdue={f.overdue}
+                  />
+                ))}
             </div>
           </div>
         )}

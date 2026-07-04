@@ -171,10 +171,11 @@ export const ordersAPI = {
 }
 
 export const remindersAPI = {
-  list: async (params?: { mine?: boolean; today?: boolean; overdue?: boolean; order?: number; done?: boolean }): Promise<OrderActionReminder[]> => {
+  list: async (params?: { mine?: boolean; today?: boolean; tomorrow?: boolean; overdue?: boolean; order?: number; done?: boolean }): Promise<OrderActionReminder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.today) queryParams.today = 'true'
+    if (params?.tomorrow) queryParams.tomorrow = 'true'
     if (params?.overdue) queryParams.overdue = 'true'
     if (params?.order != null) queryParams.order = params.order
     if (params?.done != null) queryParams.done = params.done ? 'true' : 'false'
@@ -215,10 +216,11 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_overdue_reminder?: boolean; status?: string; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
+    if (params?.with_reminder_tomorrow) queryParams.with_reminder_tomorrow = 'true'
     if (params?.with_overdue_reminder) queryParams.with_overdue_reminder = 'true'
     if (params?.status) queryParams.status = params.status
     if (params?.search) queryParams.search = params.search

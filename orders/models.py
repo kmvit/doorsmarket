@@ -1,6 +1,16 @@
 import uuid
+import secrets
+import string
 from django.db import models
 from django.conf import settings
+
+# base62 алфавит для коротких кодов ссылок (без похожих символов не заморачиваемся —
+# код генерится и проверяется на уникальность).
+_SHORT_ALPHABET = string.ascii_letters + string.digits
+
+
+def generate_short_code(length: int = 7) -> str:
+    return ''.join(secrets.choice(_SHORT_ALPHABET) for _ in range(length))
 
 
 class Salon(models.Model):
@@ -495,6 +505,15 @@ class Measurement(models.Model):
         verbose_name='Публичный токен для PDF',
         help_text='Используется в публичной ссылке на PDF без авторизации',
     )
+    short_code = models.CharField(
+        max_length=12,
+        unique=True,
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name='Короткий код для SMS-ссылки',
+        help_text='Короткая ссылка /z/{код} → PDF-бланк (для SMS клиенту)',
+    )
     is_done = models.BooleanField(default=False, verbose_name='Замер выполнен')
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
@@ -509,6 +528,16 @@ class Measurement(models.Model):
 
     def __str__(self):
         return f'Замер по заказу #{self.request.order_id}'
+
+    def save(self, *args, **kwargs):
+        # Генерируем уникальный короткий код при первом сохранении
+        if not self.short_code:
+            for _ in range(10):
+                code = generate_short_code()
+                if not Measurement.objects.filter(short_code=code).exists():
+                    self.short_code = code
+                    break
+        super().save(*args, **kwargs)
 
     @property
     def order(self):

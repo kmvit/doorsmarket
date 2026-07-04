@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
 
 const Workshop = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const reminderParam = searchParams.get('reminder') // 'today' | 'tomorrow'
   const [orders, setOrders] = useState<WorkshopOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -12,7 +14,8 @@ const Workshop = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('')
   const [mine, setMine] = useState(false)
-  const [withReminderToday, setWithReminderToday] = useState(false)
+  const [withReminderToday, setWithReminderToday] = useState(reminderParam === 'today')
+  const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
   const [withOverdue, setWithOverdue] = useState(false)
 
   const load = useCallback(async () => {
@@ -22,6 +25,7 @@ const Workshop = () => {
       const data = await workshopAPI.list({
         mine: mine || undefined,
         with_reminder_today: withReminderToday || undefined,
+        with_reminder_tomorrow: withReminderTomorrow || undefined,
         with_overdue_reminder: withOverdue || undefined,
         status: statusFilter || undefined,
         search: search || undefined,
@@ -32,7 +36,7 @@ const Workshop = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, mine, withReminderToday, withOverdue])
+  }, [search, statusFilter, mine, withReminderToday, withReminderTomorrow, withOverdue])
 
   useEffect(() => {
     const t = setTimeout(load, 300)
@@ -96,6 +100,10 @@ const Workshop = () => {
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input type="checkbox" checked={withReminderToday} onChange={(e) => setWithReminderToday(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
           На сегодня
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={withReminderTomorrow} onChange={(e) => setWithReminderTomorrow(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
+          На завтра
         </label>
         <label className="flex items-center gap-2 text-sm text-red-700 cursor-pointer">
           <input type="checkbox" checked={withOverdue} onChange={(e) => setWithOverdue(e.target.checked)} className="rounded border-gray-300 text-red-600" />

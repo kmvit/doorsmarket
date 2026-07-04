@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
+from datetime import timedelta
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 from django.conf import settings
@@ -544,6 +545,9 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get('today') == 'true':
             today = timezone.localdate()
             qs = qs.filter(due_at__date=today, done=False)
+        if self.request.query_params.get('tomorrow') == 'true':
+            tomorrow = timezone.localdate() + timedelta(days=1)
+            qs = qs.filter(due_at__date=tomorrow, done=False)
         if self.request.query_params.get('overdue') == 'true':
             qs = qs.filter(due_at__lt=timezone.now(), done=False)
         return qs
@@ -648,6 +652,9 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
         if self.request.query_params.get('with_reminder_today') == 'true':
             today = timezone.localdate()
             qs = qs.filter(action_reminders__due_at__date=today, action_reminders__done=False).distinct()
+        if self.request.query_params.get('with_reminder_tomorrow') == 'true':
+            tomorrow = timezone.localdate() + timedelta(days=1)
+            qs = qs.filter(action_reminders__due_at__date=tomorrow, action_reminders__done=False).distinct()
         if self.request.query_params.get('with_overdue_reminder') == 'true':
             qs = qs.filter(action_reminders__due_at__lt=timezone.now(), action_reminders__done=False).distinct()
         return qs
@@ -952,6 +959,23 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.signature_photo = file
         m.save(update_fields=['signature_photo', 'updated_at'])
         return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+
+class ShortMeasurementRedirectView(APIView):
+    """
+    Короткая ссылка для SMS: /z/{code} → 302 на публичный PDF-бланк замера.
+    Без авторизации. Неверный код → 404.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request, code):
+        from django.http import Http404
+        from django.shortcuts import redirect
+        m = Measurement.objects.filter(short_code=code).only('client_access_token').first()
+        if not m:
+            raise Http404('Ссылка не найдена')
+        return redirect(f'/api/v1/public/measurements/{m.client_access_token}/pdf/')
 
 
 class PublicMeasurementPdfView(APIView):

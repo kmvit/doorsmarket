@@ -20,10 +20,24 @@ def _format_dt(value) -> str:
         return str(value)
 
 
+def _base_url() -> str:
+    return (getattr(settings, 'BASE_URL', '') or getattr(settings, 'FRONTEND_URL', '') or '').rstrip('/')
+
+
 def public_pdf_url(measurement) -> str:
     """Полная публичная ссылка на PDF-бланк замера по client_access_token."""
-    base = (getattr(settings, 'BASE_URL', '') or getattr(settings, 'FRONTEND_URL', '') or '').rstrip('/')
+    base = _base_url()
     path = f'/api/v1/public/measurements/{measurement.client_access_token}/pdf/'
+    return f'{base}{path}' if base else path
+
+
+def short_pdf_url(measurement) -> str:
+    """Короткая ссылка /z/{код} на PDF-бланк (для SMS). Fallback — полная ссылка."""
+    code = getattr(measurement, 'short_code', None)
+    if not code:
+        return public_pdf_url(measurement)
+    base = _base_url()
+    path = f'/z/{code}/'
     return f'{base}{path}' if base else path
 
 
@@ -46,8 +60,8 @@ def measurement_rescheduled(measurement_date) -> str:
 
 
 def measurement_done(measurement) -> str:
-    """При выполнении замера — ссылка на PDF-бланк."""
-    return f'Замер выполнен. Скачать: {public_pdf_url(measurement)}'
+    """При выполнении замера — короткая ссылка на PDF-бланк."""
+    return f'Замер выполнен. Скачать: {short_pdf_url(measurement)}'
 
 
 def call_failed(sm_name: str, sm_phone: str) -> str:

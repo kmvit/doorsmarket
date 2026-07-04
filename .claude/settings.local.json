@@ -49,7 +49,11 @@
       "Bash(sed -n '/interface ComplaintCreateData/,/^}/p' types/complaints.ts)",
       "Bash(sed -n '/interface ParsedProduct\\\\b/,/^}/p' types/complaints.ts)",
       "Bash(venv/bin/python manage.py makemigrations --check --dry-run)",
-      "Bash(venv/bin/python manage.py showmigrations)"
+      "Bash(venv/bin/python manage.py showmigrations)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/action-reminders/?tomorrow=true\" -o /dev/null -w \"reminders?tomorrow no-auth: %{http_code}\\\\n\")",
+      "Bash(curl -s -o /dev/null -w \"GET /z/NmQmsIo/ -> HTTP %{http_code}, redirect: %{redirect_url}\\\\n\" http://localhost:8000/z/NmQmsIo/)",
+      "Bash(curl -s -o /dev/null -w \"GET /z/BADCODE/ -> HTTP %{http_code}\\\\n\" http://localhost:8000/z/BADCODE/)",
+      "Bash(curl -sL -o /dev/null -w \"final content-type: %{content_type}, HTTP %{http_code}\\\\n\" http://localhost:8000/z/NmQmsIo/)"
     ]
   }
 }
