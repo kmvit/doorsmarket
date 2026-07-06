@@ -180,6 +180,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 },
                 'manager': {
                     'in_work': (Q(manager=user) | Q(initiator=user) | Q(recipient=user)) & Q(status__in=active_statuses),
+                    'new': Q(status='new'),
                     'in_progress': Q(manager=user, status='in_progress'),
                     'on_warehouse': Q(manager=user, status='on_warehouse'),
                     'shipping_overdue': Q(status='shipping_overdue'),

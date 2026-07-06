@@ -100,6 +100,12 @@ export const measurementsAPI = {
   // Публичная ссылка на PDF для клиента (без авторизации).
   getPublicPdfUrl: (clientAccessToken: string): string =>
     `${window.location.origin}/api/v1/public/measurements/${clientAccessToken}/pdf/`,
+
+  // Короткая ссылка для клиента (/z/{код}). Fallback — полная, если кода нет.
+  getClientLink: (m: { short_code?: string | null; client_access_token: string }): string =>
+    m.short_code
+      ? `${window.location.origin}/z/${m.short_code}/`
+      : `${window.location.origin}/api/v1/public/measurements/${m.client_access_token}/pdf/`,
 }
 
 export const measurementOpeningsAPI = {

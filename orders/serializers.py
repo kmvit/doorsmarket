@@ -577,7 +577,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'request', 'order_id', 'service_manager', 'service_manager_name',
             'measurement_date', 'signature_photo', 'signature_photo_url',
-            'client_access_token', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'client_access_token', 'short_code', 'is_done', 'done_at', 'is_processed', 'processed_at',
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
@@ -586,7 +586,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
-            'is_processed', 'processed_at', 'client_access_token',
+            'is_processed', 'processed_at', 'client_access_token', 'short_code',
             'service_manager',
         ]
         extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}

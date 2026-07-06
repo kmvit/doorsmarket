@@ -4,8 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
 import { remindersAPI, ordersAPI } from '../api/orders'
-import { measurementsAPI } from '../api/measurements'
-import { OrderFolderCount, MeasurementFolderCount } from '../types/orders'
+import { OrderFolderCount } from '../types/orders'
 
 interface DashboardStat {
   key: string
@@ -15,12 +14,23 @@ interface DashboardStat {
   url: string
 }
 
-// Папки, показываемые в «Наработках» (пайплайн замера + просрочки).
+// Папки, показываемые в «Наработках» менеджера (пайплайн замера + просрочки).
 // Производственные/отгрузочные статусы в наработках не выводим.
 const NARABOTKI_FOLDERS = [
   'created', 'measurement_requested', 'measurement_scheduled',
   'measurement_done', 'measurement_processed',
   'measurement_not_planned', 'measurement_not_done', 'measurement_not_processed',
+]
+
+// Папки «Замеры» для СМ (его зона: до выполнения замера).
+// «Замер выполнен» и «Не обработан» — уже зона менеджера, СМ не показываем.
+const SM_FOLDERS: { folder: string; label: string }[] = [
+  { folder: 'measurement_requested', label: 'Назначить замер' },
+  { folder: 'measurement_scheduled', label: 'Замер запланирован' },
+  { folder: 'today_measurement', label: 'Сегодня замер' },
+  { folder: 'tomorrow_measurement', label: 'Замеры на завтра' },
+  { folder: 'measurement_not_planned', label: 'Не запланирован' },
+  { folder: 'measurement_not_done', label: 'Не выполнен' },
 ]
 
 // Карточка папки (наработки заказов / замеры) для Dashboard (Фаза 6)
@@ -49,18 +59,16 @@ const Dashboard = () => {
   const [reminderTomorrowCount, setReminderTomorrowCount] = useState<number | null>(null)
   const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
   const [orderFolders, setOrderFolders] = useState<OrderFolderCount[]>([])
-  const [measFolders, setMeasFolders] = useState<MeasurementFolderCount[]>([])
 
   const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'admin'].includes(user.role)
   const isManager = user?.role === 'manager'
   const isSM = user?.role === 'service_manager'
 
-  // Папки Фазы 6: менеджеру — заказы, СМ — замеры + просроченные заказы
+  // Папки Фазы 6: менеджеру — свои заказы, СМ — заказы города (пайплайн замера)
   useEffect(() => {
     if (isManager) {
       ordersAPI.getFolderCounts({ mine: true }).then(setOrderFolders).catch(() => {})
     } else if (isSM) {
-      measurementsAPI.getFolderCounts({ mine: true }).then(setMeasFolders).catch(() => {})
       ordersAPI.getFolderCounts().then(setOrderFolders).catch(() => {})
     }
   }, [isManager, isSM])
@@ -241,8 +249,8 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Фаза 6: кнопки задач на сегодня / завтра (наработки-напоминания) */}
-        {(isManager || isSM) && (
+        {/* Фаза 6: кнопки задач на сегодня / завтра — только менеджеру (у СМ задач нет) */}
+        {isManager && (
           <div className="grid grid-cols-2 gap-3 mb-6">
             <Link
               to="/workshop?reminder=today"
@@ -281,30 +289,24 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Фаза 6: Замеры СМ — «Назначить замер» + те же папки заказов (включая «Заявка на замер») */}
-        {isSM && (measFolders.length > 0 || orderFolders.length > 0) && (
+        {/* Фаза 6: Замеры СМ — только его пайплайн (без «Замер выполнен» и «Не обработан») */}
+        {isSM && orderFolders.length > 0 && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Замеры</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {measFolders.filter((f) => f.folder === 'unscheduled').map((f) => (
-                <FolderCard
-                  key={`m-${f.folder}`}
-                  to="/measurements?folder=unscheduled"
-                  label="Назначить замер"
-                  count={f.count}
-                />
-              ))}
-              {orderFolders
-                .filter((f) => NARABOTKI_FOLDERS.includes(f.folder))
-                .map((f) => (
+              {SM_FOLDERS.map((sf) => {
+                const f = orderFolders.find((x) => x.folder === sf.folder)
+                if (!f) return null
+                return (
                   <FolderCard
-                    key={f.folder}
-                    to={`/orders?folder=${f.folder}`}
-                    label={f.label}
+                    key={sf.folder}
+                    to={`/orders?folder=${sf.folder}`}
+                    label={sf.label}
                     count={f.count}
                     overdue={f.overdue}
                   />
-                ))}
+                )
+              })}
             </div>
           </div>
         )}

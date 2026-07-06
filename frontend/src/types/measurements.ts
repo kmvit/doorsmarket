@@ -58,6 +58,7 @@ export interface Measurement {
   measurement_date: string | null
   signature_photo_url: string | null
   client_access_token: string
+  short_code: string | null
   is_done: boolean
   done_at: string | null
   is_processed: boolean

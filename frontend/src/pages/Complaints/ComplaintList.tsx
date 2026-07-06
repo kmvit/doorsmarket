@@ -46,11 +46,9 @@ const ComplaintList = () => {
       // API обрабатывает my_tasks самостоятельно, но для некоторых ролей нужны дополнительные фильтры
       if (myTasks === 'in_work') {
         urlFilters.exclude_closed = true
-        // Для менеджера применяем my_orders
-        if (user?.role === 'manager') {
-          urlFilters.my_orders = true
-        }
-        // Для СМ не применяем my_orders при in_work (API сам обработает)
+        // ВАЖНО: для менеджера НЕ добавляем my_orders — иначе список сужается до
+        // (manager|recipient), а дашборд считает (manager|initiator|recipient),
+        // и число в папке не совпадает со списком. API уже корректно фильтрует my_tasks=in_work.
       } else if (myTasks === 'in_progress') {
         if (user?.role === 'manager') {
           urlFilters.my_orders = true

@@ -136,6 +136,7 @@ ORDER_FOLDERS = [
     ('measurement_requested', 'Заявка на замер', False),
     ('measurement_scheduled', 'Замер запланирован', False),
     ('today_measurement', 'Сегодня замер', False),
+    ('tomorrow_measurement', 'Замеры на завтра', False),
     ('measurement_done', 'Замер выполнен', False),
     ('measurement_processed', 'Замер обработан', False),
     ('paid', 'Заказ оплачен', False),
@@ -165,6 +166,12 @@ def apply_order_folder(qs, folder):
         return qs.filter(
             status=OrderStatus.MEASUREMENT_SCHEDULED,
             measurement_request__measurement__measurement_date__date=timezone.localdate(),
+        )
+    if folder == 'tomorrow_measurement':
+        # «Замеры на завтра» = запланирован + дата замера завтра
+        return qs.filter(
+            status=OrderStatus.MEASUREMENT_SCHEDULED,
+            measurement_request__measurement__measurement_date__date=timezone.localdate() + timedelta(days=1),
         )
     if folder in OrderStatus.values:
         return qs.filter(status=folder)

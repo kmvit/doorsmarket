@@ -9,6 +9,7 @@ import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_C
 const FOLDER_LABELS: Record<string, string> = {
   created: 'Создан',
   today_measurement: 'Сегодня замер',
+  tomorrow_measurement: 'Замеры на завтра',
 }
 
 const OrderList = () => {

@@ -126,7 +126,7 @@ const OrderDetail = () => {
 
   const handleCopyClientLink = async () => {
     if (!measurement?.client_access_token) return
-    const url = measurementsAPI.getPublicPdfUrl(measurement.client_access_token)
+    const url = measurementsAPI.getClientLink(measurement)
     try {
       await navigator.clipboard.writeText(url)
       alert('Ссылка для клиента скопирована:\n' + url)
