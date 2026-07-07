@@ -143,7 +143,6 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
   }
 
   const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
-  const cellInput = 'w-full rounded border-gray-300 text-sm'
 
   return (
     <div className="space-y-4">
