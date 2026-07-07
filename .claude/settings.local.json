@@ -53,7 +53,20 @@
       "Bash(curl -s \"http://localhost:8000/api/v1/action-reminders/?tomorrow=true\" -o /dev/null -w \"reminders?tomorrow no-auth: %{http_code}\\\\n\")",
       "Bash(curl -s -o /dev/null -w \"GET /z/NmQmsIo/ -> HTTP %{http_code}, redirect: %{redirect_url}\\\\n\" http://localhost:8000/z/NmQmsIo/)",
       "Bash(curl -s -o /dev/null -w \"GET /z/BADCODE/ -> HTTP %{http_code}\\\\n\" http://localhost:8000/z/BADCODE/)",
-      "Bash(curl -sL -o /dev/null -w \"final content-type: %{content_type}, HTTP %{http_code}\\\\n\" http://localhost:8000/z/NmQmsIo/)"
+      "Bash(curl -sL -o /dev/null -w \"final content-type: %{content_type}, HTTP %{http_code}\\\\n\" http://localhost:8000/z/NmQmsIo/)",
+      "Bash(curl -s -o /dev/null -w \"после рестарта GET :8000/z/NmQmsIo/ -> %{http_code}, redirect: %{redirect_url}\\\\n\" http://localhost:8000/z/NmQmsIo/)",
+      "Bash(curl -sI -m 10 https://16c90da0e1be.vps.myjino.ru/)",
+      "Bash(curl -sI -m 10 https://16c90da0e1be.vps.myjino.ru/z/test123/)",
+      "Bash(curl -sI -m 10 https://16c90da0e1be.vps.myjino.ru/sw.js)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('dist/sw.js','utf8'\\); console.log\\('denylist /z/ present:', /z\\\\\\\\\\\\\\\\\\\\//.test\\(s\\)\\)\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('dist/sw.js','utf8'\\); const m=s.match\\(/denylist:\\\\[[^\\\\]]*\\\\]/\\); console.log\\(m ? m[0] : 'denylist literal not found \\(minified\\)'\\); console.log\\('contains /z/ regex:', s.includes\\('\\\\\\\\\\\\\\\\/z\\\\\\\\\\\\\\\\/'\\)\\)\")",
+      "Bash(lsof -i :8000 -sTCP:LISTEN)",
+      "Bash(curl -s \"http://localhost:3000/dev-sw.js?dev-sw\")",
+      "Bash(git -C /Users/home/PycharmProjects/marketingdoors stash)",
+      "Bash(git -C /Users/home/PycharmProjects/marketingdoors stash pop)",
+      "Bash(git -C /Users/home/PycharmProjects/marketingdoors status --short)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)"
     ]
   }
 }

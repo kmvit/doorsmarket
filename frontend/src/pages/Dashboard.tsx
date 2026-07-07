@@ -63,24 +63,27 @@ const Dashboard = () => {
   const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'admin'].includes(user.role)
   const isManager = user?.role === 'manager'
   const isSM = user?.role === 'service_manager'
+  const isLeader = user?.role === 'leader'
 
-  // Папки Фазы 6: менеджеру — свои заказы, СМ — заказы города (пайплайн замера)
+  // Папки Фазы 6: менеджеру — свои заказы, СМ и руководителю — заказы города (пайплайн замера)
   useEffect(() => {
     if (isManager) {
       ordersAPI.getFolderCounts({ mine: true }).then(setOrderFolders).catch(() => {})
-    } else if (isSM) {
+    } else if (isSM || isLeader) {
       ordersAPI.getFolderCounts().then(setOrderFolders).catch(() => {})
     }
-  }, [isManager, isSM])
+  }, [isManager, isSM, isLeader])
 
   useEffect(() => {
     if (!showWorkshopCard) return
     const load = async () => {
       try {
+        // Руководитель видит суммарные напоминания по всем салонам города, остальные — свои
+        const mine = !isLeader
         const [today, tomorrow, overdue] = await Promise.all([
-          remindersAPI.list({ today: true, mine: true }).catch(() => []),
-          remindersAPI.list({ tomorrow: true, mine: true }).catch(() => []),
-          remindersAPI.list({ overdue: true, mine: true }).catch(() => []),
+          remindersAPI.list({ today: true, mine }).catch(() => []),
+          remindersAPI.list({ tomorrow: true, mine }).catch(() => []),
+          remindersAPI.list({ overdue: true, mine }).catch(() => []),
         ])
         setReminderTodayCount(today.length)
         setReminderTomorrowCount(tomorrow.length)
@@ -88,7 +91,7 @@ const Dashboard = () => {
       } catch {}
     }
     load()
-  }, [showWorkshopCard])
+  }, [showWorkshopCard, isLeader])
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -249,8 +252,8 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Фаза 6: кнопки задач на сегодня / завтра — только менеджеру (у СМ задач нет) */}
-        {isManager && (
+        {/* Фаза 6: кнопки задач на сегодня / завтра — менеджеру (свои) и руководителю (по городу) */}
+        {(isManager || isLeader) && (
           <div className="grid grid-cols-2 gap-3 mb-6">
             <Link
               to="/workshop?reminder=today"
@@ -269,8 +272,8 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Фаза 6: Наработки менеджера — папки пайплайна замера + просрочки */}
-        {isManager && orderFolders.length > 0 && (
+        {/* Фаза 6: Наработки — менеджеру свои, руководителю суммарно по салонам города */}
+        {(isManager || isLeader) && orderFolders.length > 0 && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Наработки</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

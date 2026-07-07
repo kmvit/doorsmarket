@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'icon-192x192.png', 'icon-512x512.png'],
+      includeAssets: ['icon-192x192.png', 'icon-512x512.png'],
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
@@ -73,6 +73,11 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
     proxy: {
       '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      // Короткие ссылки замера /z/{код} обслуживает Django (как /api)
+      '/z': {
         target: 'http://localhost:8000',
         changeOrigin: true
       }

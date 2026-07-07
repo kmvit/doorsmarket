@@ -6,6 +6,7 @@ import {
   ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY,
 } from '../../types/orders'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
+import HScrollSync from '../../components/common/HScrollSync'
 
 interface Props {
   salons: Salon[]
@@ -225,12 +226,12 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
             {parsed.items.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4">Позиции не распознаны</p>
             ) : (
-              <div className="overflow-x-auto">
+              <HScrollSync>
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-2 py-2 text-left text-xs w-12">№</th>
-                      <th className="px-2 py-2 text-left text-xs w-32">Помещение</th>
+                      <th className="px-2 py-2 text-left text-xs min-w-[160px]">Помещение</th>
                       <th className="px-2 py-2 text-left text-xs min-w-[260px]">Модель</th>
                       <th className="px-2 py-2 text-left text-xs w-16">Кол.</th>
                       <th className="px-2 py-2 text-right text-xs w-20">Цена</th>
@@ -249,7 +250,9 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                       <Fragment key={idx}>
                       <tr>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.opening_number} onChange={(e) => updateItem(idx, 'opening_number', Number(e.target.value))} className="w-12 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5 align-top"><input type="text" value={item.room_name} onChange={(e) => updateItem(idx, 'room_name', e.target.value)} className={cellInput} /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          <AutoResizeTextarea value={item.room_name} onChange={(e) => updateItem(idx, 'room_name', e.target.value)} className="w-full min-w-[160px] rounded border-gray-300 text-sm" />
+                        </td>
                         <td className="px-2 py-1.5 align-top">
                           <AutoResizeTextarea value={item.model_name} onChange={(e) => updateItem(idx, 'model_name', e.target.value)} className="w-full min-w-[300px] rounded border-gray-300 text-sm" />
                         </td>
@@ -306,7 +309,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </HScrollSync>
             )}
           </div>
 
@@ -321,7 +324,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
             {parsed.addons.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-4">Сопутствующих позиций не распознано</p>
             ) : (
-              <div className="overflow-x-auto">
+              <HScrollSync>
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
@@ -377,7 +380,7 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </HScrollSync>
             )}
           </div>
 

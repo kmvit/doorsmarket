@@ -7,6 +7,38 @@ const MAX_RETRY_COUNT = 3
 // Задержка между попытками (в миллисекундах)
 const RETRY_DELAY = 1000
 
+// FormData нельзя сохранить в IndexedDB (structured clone её не поддерживает),
+// поэтому сериализуем в массив пар — File/Blob клонируются без проблем
+interface SerializedFormData {
+  __isFormData: true
+  entries: [string, string | File][]
+}
+
+const serializeBody = (data: any): any => {
+  if (data instanceof FormData) {
+    const serialized: SerializedFormData = {
+      __isFormData: true,
+      entries: [],
+    }
+    data.forEach((value, key) => {
+      serialized.entries.push([key, value as string | File])
+    })
+    return serialized
+  }
+  return data
+}
+
+const deserializeBody = (data: any): any => {
+  if (data && data.__isFormData) {
+    const formData = new FormData()
+    for (const [key, value] of (data as SerializedFormData).entries) {
+      formData.append(key, value)
+    }
+    return formData
+  }
+  return data
+}
+
 class RequestQueue {
   private isProcessing = false
   private listeners: Array<(count: number) => void> = []
@@ -39,7 +71,7 @@ class RequestQueue {
     const request: PendingRequest = {
       method,
       url,
-      data,
+      data: serializeBody(data),
       headers,
       timestamp: Date.now(),
       retryCount: 0,
@@ -67,14 +99,12 @@ class RequestQueue {
     }
 
     if (request.data && ['POST', 'PUT', 'PATCH'].includes(request.method)) {
-      if (request.data instanceof FormData) {
-        config.data = request.data
-        config.headers = {
-          ...config.headers,
-          'Content-Type': 'multipart/form-data',
-        }
-      } else {
-        config.data = request.data
+      const body = deserializeBody(request.data)
+      config.data = body
+      if (body instanceof FormData) {
+        // Убираем Content-Type — браузер сам выставит multipart/form-data с boundary
+        config.headers = { ...config.headers }
+        delete (config.headers as Record<string, any>)['Content-Type']
       }
     }
 
@@ -167,6 +197,31 @@ class RequestQueue {
 
 // Экспортируем singleton
 export const requestQueue = new RequestQueue()
+
+// Выполнить мутацию, а при отсутствии сети — поставить в очередь синхронизации.
+// Бросает ошибку «Запрос добавлен в очередь…», чтобы UI показал понятное сообщение
+// (тот же контракт, что у complaintsAPI.create/update).
+export const requestWithQueue = async <T = any>(
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  url: string,
+  data?: any,
+  headers?: Record<string, string>,
+): Promise<T> => {
+  try {
+    const config: AxiosRequestConfig = { method, url, data }
+    if (headers) config.headers = headers
+    const response = await apiClient(config)
+    return response.data
+  } catch (error: any) {
+    const isNetworkError =
+      !navigator.onLine || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')
+    if (isNetworkError && error.response?.status === undefined) {
+      await requestQueue.add(method, url, data, headers)
+      throw new Error('Запрос добавлен в очередь для синхронизации')
+    }
+    throw error
+  }
+}
 
 // Инициализация синхронизации
 export const initSync = (): void => {

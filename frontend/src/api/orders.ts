@@ -6,6 +6,12 @@ import {
   WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
   OrderFolderCount,
 } from '../types/orders'
+import { orderUtils, withOfflineFallback } from '../services/offline'
+import { requestWithQueue } from '../services/sync'
+
+// TTL кеша для вспомогательных данных (счётчики папок, журналы) — 7 дней,
+// чтобы данные пережили длительный офлайн
+const LONG_TTL = 7 * 24 * 60 * 60 * 1000
 
 export const ordersAPI = {
   getList: async (filters?: OrderFilters): Promise<OrderListItem[]> => {
@@ -18,35 +24,52 @@ export const ordersAPI = {
     if (filters?.exclude_cancelled) params.exclude_cancelled = 'true'
     if (filters?.folder) params.folder = filters.folder
 
-    const response = await apiClient.get('/orders/', { params })
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `orders_list_${JSON.stringify(params)}`,
+      request: async () => {
+        const response = await apiClient.get('/orders/', { params })
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      saveOffline: (list) => orderUtils.saveList(list),
+      loadOffline: () => orderUtils.getList(),
+    })
   },
 
   getFolderCounts: async (opts?: { mine?: boolean }): Promise<OrderFolderCount[]> => {
     const params: Record<string, any> = {}
     if (opts?.mine) params.mine = 'true'
-    const response = await apiClient.get('/orders/folder_counts/', { params })
-    return Array.isArray(response.data) ? response.data : []
+    return withOfflineFallback({
+      cacheKey: `orders_folder_counts_${opts?.mine ? 'mine' : 'all'}`,
+      request: async () => {
+        const response = await apiClient.get('/orders/folder_counts/', { params })
+        return Array.isArray(response.data) ? response.data : []
+      },
+      ttl: LONG_TTL,
+    })
   },
 
   getById: async (id: number): Promise<Order> => {
-    const response = await apiClient.get(`/orders/${id}/`)
-    return response.data
+    return withOfflineFallback({
+      cacheKey: `order_detail_${id}`,
+      request: async () => {
+        const response = await apiClient.get(`/orders/${id}/`)
+        return response.data
+      },
+      saveOffline: (order) => orderUtils.saveDetail(order),
+      loadOffline: () => orderUtils.getDetail(id),
+    })
   },
 
   create: async (data: CreateOrderData): Promise<Order> => {
-    const response = await apiClient.post('/orders/', data)
-    return response.data
+    return requestWithQueue('POST', '/orders/', data)
   },
 
   update: async (id: number, data: Partial<CreateOrderData>): Promise<Order> => {
-    const response = await apiClient.patch(`/orders/${id}/`, data)
-    return response.data
+    return requestWithQueue('PATCH', `/orders/${id}/`, data)
   },
 
   fullUpdate: async (id: number, data: CreateOrderData): Promise<Order> => {
-    const response = await apiClient.put(`/orders/${id}/`, data)
-    return response.data
+    return requestWithQueue('PUT', `/orders/${id}/`, data)
   },
 
   delete: async (id: number): Promise<void> => {
@@ -56,10 +79,9 @@ export const ordersAPI = {
   uploadOffer: async (id: number, file: File): Promise<Order> => {
     const formData = new FormData()
     formData.append('commercial_offer', file)
-    const response = await apiClient.patch(`/orders/${id}/`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    return requestWithQueue('PATCH', `/orders/${id}/`, formData, {
+      'Content-Type': 'multipart/form-data',
     })
-    return response.data
   },
 
   uploadAttachment: async (
@@ -73,10 +95,9 @@ export const ordersAPI = {
     if (orderItemId) {
       formData.append('order_item', String(orderItemId))
     }
-    const response = await apiClient.post('/order-attachments/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    return requestWithQueue('POST', '/order-attachments/', formData, {
+      'Content-Type': 'multipart/form-data',
     })
-    return response.data
   },
 
   deleteAttachment: async (attachmentId: number): Promise<void> => {
@@ -85,6 +106,7 @@ export const ordersAPI = {
 
   // ===== Phase 2 =====
 
+  // Парсинг КП выполняется на сервере — офлайн недоступен
   parseKp: async (file: File): Promise<ParsedKpData> => {
     const formData = new FormData()
     formData.append('file', file)
@@ -102,13 +124,18 @@ export const ordersAPI = {
       next_action_due_at: string
     },
   ): Promise<Order> => {
-    const response = await apiClient.post('/orders/create_from_parsed/', data)
-    return response.data
+    return requestWithQueue('POST', '/orders/create_from_parsed/', data)
   },
 
   getMeasurementRequest: async (orderId: number): Promise<MeasurementRequest | null> => {
-    const response = await apiClient.get(`/orders/${orderId}/measurement-request/`)
-    return response.data
+    return withOfflineFallback({
+      cacheKey: `order_measurement_request_${orderId}`,
+      request: async () => {
+        const response = await apiClient.get(`/orders/${orderId}/measurement-request/`)
+        return response.data
+      },
+      ttl: LONG_TTL,
+    })
   },
 
   saveMeasurementRequest: async (
@@ -122,18 +149,15 @@ export const ordersAPI = {
         if (v !== undefined && v !== null) formData.append(k, String(v))
       })
       formData.append('opening_plan', openingPlan)
-      const response = await apiClient.post(`/orders/${orderId}/measurement-request/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      return requestWithQueue('POST', `/orders/${orderId}/measurement-request/`, formData, {
+        'Content-Type': 'multipart/form-data',
       })
-      return response.data
     }
-    const response = await apiClient.post(`/orders/${orderId}/measurement-request/`, data)
-    return response.data
+    return requestWithQueue('POST', `/orders/${orderId}/measurement-request/`, data)
   },
 
   applyMeasurementToItems: async (orderId: number): Promise<Order> => {
-    const response = await apiClient.post(`/orders/${orderId}/apply_measurement_to_items/`)
-    return response.data
+    return requestWithQueue('POST', `/orders/${orderId}/apply_measurement_to_items/`)
   },
 
   // ===== Phase 5: переходы статусов производства/отгрузки =====
@@ -142,16 +166,21 @@ export const ordersAPI = {
     status: OrderStatus,
     opts?: { production_start_date?: string | null; production_deadline?: string | null },
   ): Promise<Order> => {
-    const response = await apiClient.post(`/orders/${orderId}/transition/`, {
+    return requestWithQueue('POST', `/orders/${orderId}/transition/`, {
       status,
       ...(opts || {}),
     })
-    return response.data
   },
 
   getActivityLog: async (orderId: number): Promise<OrderActivityLog[]> => {
-    const response = await apiClient.get(`/orders/${orderId}/activity_log/`)
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `order_activity_log_${orderId}`,
+      request: async () => {
+        const response = await apiClient.get(`/orders/${orderId}/activity_log/`)
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      ttl: LONG_TTL,
+    })
   },
 
   updateItem: async (
@@ -165,8 +194,7 @@ export const ordersAPI = {
       recommended_opening_width: number | null
     }>,
   ): Promise<any> => {
-    const response = await apiClient.patch(`/order-items/${itemId}/`, data)
-    return response.data
+    return requestWithQueue('PATCH', `/order-items/${itemId}/`, data)
   },
 }
 
@@ -179,18 +207,22 @@ export const remindersAPI = {
     if (params?.overdue) queryParams.overdue = 'true'
     if (params?.order != null) queryParams.order = params.order
     if (params?.done != null) queryParams.done = params.done ? 'true' : 'false'
-    const response = await apiClient.get('/action-reminders/', { params: queryParams })
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `reminders_list_${JSON.stringify(queryParams)}`,
+      request: async () => {
+        const response = await apiClient.get('/action-reminders/', { params: queryParams })
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      ttl: LONG_TTL,
+    })
   },
 
   create: async (data: CreateActionReminderData): Promise<OrderActionReminder> => {
-    const response = await apiClient.post('/action-reminders/', data)
-    return response.data
+    return requestWithQueue('POST', '/action-reminders/', data)
   },
 
   update: async (id: number, data: Partial<CreateActionReminderData>): Promise<OrderActionReminder> => {
-    const response = await apiClient.patch(`/action-reminders/${id}/`, data)
-    return response.data
+    return requestWithQueue('PATCH', `/action-reminders/${id}/`, data)
   },
 
   markDone: async (
@@ -201,13 +233,11 @@ export const remindersAPI = {
       next_action_due_at?: string
     },
   ): Promise<OrderActionReminder & { next_reminder?: OrderActionReminder }> => {
-    const response = await apiClient.post(`/action-reminders/${id}/mark_done/`, options || {})
-    return response.data
+    return requestWithQueue('POST', `/action-reminders/${id}/mark_done/`, options || {})
   },
 
   reschedule: async (id: number, dueAt: string): Promise<OrderActionReminder> => {
-    const response = await apiClient.post(`/action-reminders/${id}/reschedule/`, { due_at: dueAt })
-    return response.data
+    return requestWithQueue('POST', `/action-reminders/${id}/reschedule/`, { due_at: dueAt })
   },
 
   delete: async (id: number): Promise<void> => {
@@ -224,7 +254,13 @@ export const workshopAPI = {
     if (params?.with_overdue_reminder) queryParams.with_overdue_reminder = 'true'
     if (params?.status) queryParams.status = params.status
     if (params?.search) queryParams.search = params.search
-    const response = await apiClient.get('/workshop/', { params: queryParams })
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `workshop_list_${JSON.stringify(queryParams)}`,
+      request: async () => {
+        const response = await apiClient.get('/workshop/', { params: queryParams })
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      ttl: LONG_TTL,
+    })
   },
 }

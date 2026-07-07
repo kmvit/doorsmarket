@@ -22,8 +22,8 @@ precacheAndRoute(self.__WB_MANIFEST)
 const navigationRoute = new NavigationRoute(
   createHandlerBoundToURL('/index.html'),
   {
-    // Исключаем API запросы из навигационного роутинга
-    denylist: [/^\/api\//, /^\/admin\//, /^\/static\//, /^\/media\//]
+    // Исключаем API запросы и короткие ссылки замера /z/{код} из навигационного роутинга
+    denylist: [/^\/api\//, /^\/admin\//, /^\/static\//, /^\/media\//, /^\/z\//]
   }
 )
 registerRoute(navigationRoute)

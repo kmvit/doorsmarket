@@ -4,6 +4,11 @@ import {
   MeasurementOpening, MeasurementAttachment,
 } from '../types/measurements'
 import { MeasurementFolderCount } from '../types/orders'
+import { measurementUtils, withOfflineFallback } from '../services/offline'
+import { requestWithQueue } from '../services/sync'
+
+// TTL кеша для вспомогательных данных — 7 дней, чтобы пережить длительный офлайн
+const LONG_TTL = 7 * 24 * 60 * 60 * 1000
 
 export const measurementsAPI = {
   list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number }): Promise<MeasurementListItem[]> => {
@@ -11,45 +16,61 @@ export const measurementsAPI = {
     if (params?.folder) queryParams.folder = params.folder
     if (params?.search) queryParams.search = params.search
     if (params?.service_manager) queryParams.service_manager = params.service_manager
-    const response = await apiClient.get('/measurements/', { params: queryParams })
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `measurements_list_${JSON.stringify(queryParams)}`,
+      request: async () => {
+        const response = await apiClient.get('/measurements/', { params: queryParams })
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      saveOffline: (list) => measurementUtils.saveList(list),
+      loadOffline: () => measurementUtils.getList(),
+    })
   },
 
   getFolderCounts: async (opts?: { mine?: boolean }): Promise<MeasurementFolderCount[]> => {
     const params: Record<string, any> = {}
     if (opts?.mine) params.mine = 'true'
-    const response = await apiClient.get('/measurements/folder_counts/', { params })
-    return Array.isArray(response.data) ? response.data : []
+    return withOfflineFallback({
+      cacheKey: `measurements_folder_counts_${opts?.mine ? 'mine' : 'all'}`,
+      request: async () => {
+        const response = await apiClient.get('/measurements/folder_counts/', { params })
+        return Array.isArray(response.data) ? response.data : []
+      },
+      ttl: LONG_TTL,
+    })
   },
 
   getById: async (id: number): Promise<Measurement> => {
-    const response = await apiClient.get(`/measurements/${id}/`)
-    return response.data
+    return withOfflineFallback({
+      cacheKey: `measurement_detail_${id}`,
+      request: async () => {
+        const response = await apiClient.get(`/measurements/${id}/`)
+        return response.data
+      },
+      saveOffline: (m) => measurementUtils.saveDetail(m),
+      loadOffline: () => measurementUtils.getDetail(id),
+    })
   },
 
   createFromRequest: async (requestId: number, measurementDate?: string | null): Promise<Measurement> => {
-    const response = await apiClient.post('/measurements/create_from_request/', {
+    return requestWithQueue('POST', '/measurements/create_from_request/', {
       request_id: requestId,
       measurement_date: measurementDate,
     })
-    return response.data
   },
 
   schedule: async (id: number, measurementDate: string): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/schedule/`, {
+    return requestWithQueue('POST', `/measurements/${id}/schedule/`, {
       measurement_date: measurementDate,
     })
-    return response.data
   },
 
   markDone: async (id: number): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/mark_done/`)
-    return response.data
+    return requestWithQueue('POST', `/measurements/${id}/mark_done/`)
   },
 
   markProcessed: async (id: number): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/mark_processed/`)
-    return response.data
+    return requestWithQueue('POST', `/measurements/${id}/mark_processed/`)
   },
 
   // Phase 5: SMS клиенту о недозвоне («Отправить» / «Повторно отправить»)
@@ -62,17 +83,15 @@ export const measurementsAPI = {
     id: number,
     data: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string },
   ): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/set_site_conditions/`, data)
-    return response.data
+    return requestWithQueue('POST', `/measurements/${id}/set_site_conditions/`, data)
   },
 
   uploadSignature: async (id: number, file: File): Promise<Measurement> => {
     const fd = new FormData()
     fd.append('signature', file)
-    const response = await apiClient.post(`/measurements/${id}/upload_signature/`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    return requestWithQueue('POST', `/measurements/${id}/upload_signature/`, fd, {
+      'Content-Type': 'multipart/form-data',
     })
-    return response.data
   },
 
   // PDF-бланк замера: качаем как blob и открываем/скачиваем (эндпоинт под авторизацией).
@@ -110,36 +129,39 @@ export const measurementsAPI = {
 
 export const measurementOpeningsAPI = {
   list: async (measurementId: number): Promise<MeasurementOpening[]> => {
-    const response = await apiClient.get('/measurement-openings/', { params: { measurement: measurementId } })
-    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+    return withOfflineFallback({
+      cacheKey: `measurement_openings_${measurementId}`,
+      request: async () => {
+        const response = await apiClient.get('/measurement-openings/', { params: { measurement: measurementId } })
+        return Array.isArray(response.data) ? response.data : (response.data.results || [])
+      },
+      saveOffline: (openings) => measurementUtils.saveOpenings(measurementId, openings),
+      loadOffline: () => measurementUtils.getOpenings(measurementId),
+    })
   },
 
   update: async (id: number, data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
-    const response = await apiClient.patch(`/measurement-openings/${id}/`, data)
-    return response.data
+    return requestWithQueue('PATCH', `/measurement-openings/${id}/`, data)
   },
 
   create: async (data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
-    const response = await apiClient.post('/measurement-openings/', data)
-    return response.data
+    return requestWithQueue('POST', '/measurement-openings/', data)
   },
 
   delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/measurement-openings/${id}/`)
+    await requestWithQueue('DELETE', `/measurement-openings/${id}/`)
   },
 
   linkToOrderItem: async (openingId: number, orderItemId: number | null): Promise<MeasurementOpening> => {
-    const response = await apiClient.post(`/measurement-openings/${openingId}/link/`, {
+    return requestWithQueue('POST', `/measurement-openings/${openingId}/link/`, {
       order_item_id: orderItemId,
     })
-    return response.data
   },
 
   batchLink: async (
     links: { measurement_opening_id: number; order_item_id: number | null }[],
   ): Promise<MeasurementOpening[]> => {
-    const response = await apiClient.post('/measurement-openings/batch_link/', { links })
-    return response.data
+    return requestWithQueue('POST', '/measurement-openings/batch_link/', { links })
   },
 }
 
@@ -150,10 +172,9 @@ export const measurementAttachmentsAPI = {
     if (openingId) fd.append('opening', String(openingId))
     fd.append('file', file)
     fd.append('name', file.name)
-    const response = await apiClient.post('/measurement-attachments/', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    return requestWithQueue('POST', '/measurement-attachments/', fd, {
+      'Content-Type': 'multipart/form-data',
     })
-    return response.data
   },
 
   delete: async (id: number): Promise<void> => {
