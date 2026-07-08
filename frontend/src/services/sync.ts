@@ -188,6 +188,12 @@ class RequestQueue {
     return await db.pendingRequests.orderBy('timestamp').toArray()
   }
 
+  // Удалить конкретный запрос из очереди (например, отменённое офлайн-создание)
+  async remove(id: number): Promise<void> {
+    await db.pendingRequests.delete(id)
+    this.notifyListeners()
+  }
+
   // Очистить очередь
   async clear(): Promise<void> {
     await db.pendingRequests.clear()
@@ -197,6 +203,18 @@ class RequestQueue {
 
 // Экспортируем singleton
 export const requestQueue = new RequestQueue()
+
+// Сетевая ошибка (нет соединения / сервер недоступен) — от неё имеет смысл
+// уходить в офлайн-режим. Ответы с HTTP-статусом сетевой ошибкой не считаем.
+export const isNetworkError = (error: any): boolean =>
+  error?.response?.status === undefined &&
+  (!navigator.onLine || error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error'))
+
+// Текст-маркер ошибки «запрос поставлен в очередь» — UI может показать
+// мягкое уведомление вместо ошибки
+export const QUEUED_MESSAGE = 'Запрос добавлен в очередь для синхронизации'
+export const isQueuedError = (error: any): boolean =>
+  typeof error?.message === 'string' && error.message.includes(QUEUED_MESSAGE)
 
 // Выполнить мутацию, а при отсутствии сети — поставить в очередь синхронизации.
 // Бросает ошибку «Запрос добавлен в очередь…», чтобы UI показал понятное сообщение
@@ -213,11 +231,9 @@ export const requestWithQueue = async <T = any>(
     const response = await apiClient(config)
     return response.data
   } catch (error: any) {
-    const isNetworkError =
-      !navigator.onLine || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')
-    if (isNetworkError && error.response?.status === undefined) {
+    if (isNetworkError(error)) {
       await requestQueue.add(method, url, data, headers)
-      throw new Error('Запрос добавлен в очередь для синхронизации')
+      throw new Error(QUEUED_MESSAGE)
     }
     throw error
   }

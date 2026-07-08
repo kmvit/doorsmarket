@@ -11,6 +11,7 @@ import {
 } from '../../api/measurements'
 import { Measurement, MeasurementOpening } from '../../types/measurements'
 import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import { isQueuedError } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
@@ -29,6 +30,8 @@ const MeasurementForm = () => {
   const [savingOpeningId, setSavingOpeningId] = useState<number | null>(null)
   const [showSchedule, setShowSchedule] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Уведомление о работе офлайн (действие поставлено в очередь синхронизации)
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [savingConditions, setSavingConditions] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
@@ -169,8 +172,12 @@ const MeasurementForm = () => {
       // Тихая перезагрузка без спиннера — нужна чтобы обновить список вложений
       const data = await measurementsAPI.getById(m.id)
       setM(data)
-    } catch {
+    } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: файл сохранён и будет загружен при появлении интернета.')
+      } else {
       alert('Не удалось загрузить файл')
+      }
     } finally {
       e.target.value = ''
     }
@@ -183,6 +190,10 @@ const MeasurementForm = () => {
       const updated = await measurementsAPI.markDone(m.id)
       setM(updated)
     } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: отметка «Замер выполнен» сохранена и будет отправлена при появлении интернета.')
+        return
+      }
       setActionError(err.response?.data?.detail || 'Не удалось закрыть замер')
     }
   }
@@ -207,6 +218,10 @@ const MeasurementForm = () => {
       const updated = await measurementsAPI.uploadSignature(m.id, e.target.files[0])
       setM(updated)
     } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: фото подписи сохранено и будет загружено при появлении интернета.')
+        return
+      }
       setActionError(err.response?.data?.detail || 'Не удалось загрузить фото подписи')
     } finally {
       e.target.value = ''
@@ -222,6 +237,10 @@ const MeasurementForm = () => {
       const updated = await measurementsAPI.setSiteConditions(m.id, patch)
       setM(updated)
     } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: условия объекта сохранены и будут отправлены при появлении интернета.')
+        return
+      }
       setActionError(err.response?.data?.detail || 'Не удалось сохранить условия объекта')
     } finally {
       setSavingConditions(false)
@@ -235,6 +254,10 @@ const MeasurementForm = () => {
       const updated = await measurementsAPI.markProcessed(m.id)
       setM(updated)
     } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: отметка «Замер обработан» сохранена и будет отправлена при появлении интернета.')
+        return
+      }
       setActionError(err.response?.data?.detail || 'Не удалось отметить как обработанный')
     }
   }
@@ -337,6 +360,12 @@ const MeasurementForm = () => {
 
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{actionError}</div>
+      )}
+      {offlineNotice && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4 flex items-center justify-between gap-3">
+          <span>📡 {offlineNotice}</span>
+          <button onClick={() => setOfflineNotice(null)} className="text-amber-700 hover:text-amber-900 text-sm font-medium shrink-0">✕</button>
+        </div>
       )}
       {m.lift_impossible_warning && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 font-medium">
