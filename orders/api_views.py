@@ -493,6 +493,37 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
         return Response(OrderDetailSerializer(order, context={'request': request}).data)
 
+    # ---------- Уведомление клиенту о недозвоне (СМ, с момента заявки) ----------
+    @action(detail=True, methods=['post'], url_path='notify_client_call_failed')
+    def notify_client_call_failed(self, request, pk=None):
+        """
+        SMS клиенту «Мы не дозвонились по замеру...». Доступно СМ сразу после
+        создания заявки на замер — замер ещё может быть не создан.
+        Имя/телефон СМ: из замера, если он есть, иначе — текущий пользователь.
+        """
+        order = self.get_object()
+        mr = MeasurementRequest.objects.filter(order=order).first()
+        if not mr:
+            return Response(
+                {'detail': 'По заказу нет заявки на замер.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m = Measurement.objects.filter(request=mr).select_related('service_manager').first()
+        sm_user = (m.service_manager if m and m.service_manager_id else None) or request.user
+        sm_name, sm_phone = _sm_name_phone(sm_user)
+        phone = mr.contact_phone or order.contact_phone
+        ok = send_client_sms(
+            order, phone,
+            sms_templates.call_failed(sm_name, sm_phone),
+            actor=request.user,
+        )
+        if not ok:
+            return Response(
+                {'detail': 'Не удалось отправить SMS (проверьте номер контакта).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'detail': 'Уведомление отправлено', 'phone': phone})
+
     # ---------- Phase 5: журнал событий заказа ----------
     @action(detail=True, methods=['get'], url_path='activity_log')
     def activity_log(self, request, pk=None):

@@ -66,9 +66,13 @@ export const db = new OfflineDB()
 
 // Утилиты для работы с кешем
 export const cacheUtils = {
-  // Сохранить данные в кеш
+  // Сохранить данные в кеш.
+  // ВАЖНО: сначала удаляем записи с этим key — put с автоинкрементным id
+  // не перезаписывает, а добавляет дубль, и get({key}) начинал возвращать
+  // самую старую версию данных.
   async set(key: string, data: any, ttl: number = 5 * 60 * 1000): Promise<void> {
     const expiresAt = Date.now() + ttl
+    await db.cachedData.where('key').equals(key).delete()
     await db.cachedData.put({
       key,
       data,
@@ -77,23 +81,30 @@ export const cacheUtils = {
     })
   },
 
+  // Самая свежая запись по ключу (устойчиво к дублям от старой версии set)
+  async _getLatest(key: string): Promise<CachedData | undefined> {
+    const rows = await db.cachedData.where('key').equals(key).toArray()
+    if (rows.length === 0) return undefined
+    return rows.reduce((a, b) => (b.timestamp > a.timestamp ? b : a))
+  },
+
   // Получить данные из кеша
   async get(key: string): Promise<any | null> {
-    const cached = await db.cachedData.get({ key })
+    const cached = await cacheUtils._getLatest(key)
     if (!cached) return null
-    
+
     // Проверяем срок действия
     if (Date.now() > cached.expiresAt) {
       await db.cachedData.delete(cached.id!)
       return null
     }
-    
+
     return cached.data
   },
 
   // Получить данные из кеша, игнорируя срок действия (для офлайн-фолбэка)
   async getStale(key: string): Promise<any | null> {
-    const cached = await db.cachedData.get({ key })
+    const cached = await cacheUtils._getLatest(key)
     return cached ? cached.data : null
   },
 

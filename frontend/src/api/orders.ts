@@ -183,6 +183,12 @@ export const ordersAPI = {
     })
   },
 
+  // SMS клиенту «не дозвонились» — доступно с момента заявки (замера может не быть)
+  notifyClientCallFailed: async (orderId: number): Promise<{ detail: string; phone: string }> => {
+    const response = await apiClient.post(`/orders/${orderId}/notify_client_call_failed/`)
+    return response.data
+  },
+
   updateItem: async (
     itemId: number,
     data: Partial<{

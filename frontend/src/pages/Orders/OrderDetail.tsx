@@ -38,10 +38,11 @@ const OrderDetail = () => {
   const [callNotifySent, setCallNotifySent] = useState(false)
 
   const handleNotifyClientCallFailed = async () => {
-    if (!measurement || notifyingClient) return
+    if (!order || notifyingClient) return
     setNotifyingClient(true)
     try {
-      const res = await measurementsAPI.notifyClientCallFailed(measurement.id)
+      // Шлём через заказ: работает с момента заявки, замер может быть ещё не создан
+      const res = await ordersAPI.notifyClientCallFailed(order.id)
       setCallNotifySent(true)
       alert(`SMS отправлено${res.phone ? ` на ${res.phone}` : ''}`)
     } catch (e: any) {
@@ -557,7 +558,8 @@ const OrderDetail = () => {
                   </button>
                 )
               )}
-              {measurement && !measurement.is_done && ['service_manager', 'manager', 'admin', 'leader'].includes(user?.role || '') && (
+              {/* Недозвон: кнопка у СМ с момента заявки (замер может быть ещё не создан) */}
+              {!measurement?.is_done && ['service_manager', 'admin'].includes(user?.role || '') && (
                 <button
                   onClick={handleNotifyClientCallFailed}
                   disabled={notifyingClient}

@@ -5,6 +5,7 @@ import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
 import { remindersAPI, ordersAPI } from '../api/orders'
 import { OrderFolderCount } from '../types/orders'
+import { withOfflineFallback } from '../services/offline'
 
 interface DashboardStat {
   key: string
@@ -105,13 +106,18 @@ const Dashboard = () => {
 
       console.log('[Dashboard] Загружаем статистику...')
       try {
-        const response = await apiClient.get('/dashboard/stats/')
-        console.log('[Dashboard] Статистика получена:', response.data)
-        if (response.data && response.data.stats && Array.isArray(response.data.stats)) {
-        setStats(response.data.stats)
-          console.log('[Dashboard] Установлено статистик:', response.data.stats.length)
+        // Офлайн-фолбэк: при отсутствии сети показываем последние загруженные счётчики
+        const data = await withOfflineFallback({
+          cacheKey: `dashboard_stats_${user.id}`,
+          request: async () => (await apiClient.get('/dashboard/stats/')).data,
+          ttl: 7 * 24 * 60 * 60 * 1000,
+        })
+        console.log('[Dashboard] Статистика получена:', data)
+        if (data && data.stats && Array.isArray(data.stats)) {
+          setStats(data.stats)
+          console.log('[Dashboard] Установлено статистик:', data.stats.length)
         } else {
-          console.warn('[Dashboard] Неверный формат данных статистики:', response.data)
+          console.warn('[Dashboard] Неверный формат данных статистики:', data)
           setStats([])
         }
       } catch (error: any) {
