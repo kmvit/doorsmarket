@@ -2,10 +2,12 @@ import { db, PendingRequest } from './offline'
 import apiClient from '../api/client'
 import { AxiosRequestConfig } from 'axios'
 
-// Максимальное количество попыток повтора запроса
+// Максимальное количество попыток повтора запроса, отклонённого сервером (4xx/5xx)
 const MAX_RETRY_COUNT = 3
-// Задержка между попытками (в миллисекундах)
-const RETRY_DELAY = 1000
+// Таймаут запроса синхронизации — зависший запрос не должен блокировать очередь навсегда
+const SYNC_REQUEST_TIMEOUT = 60 * 1000
+// Период фоновой проверки очереди (в PWA событие online может не прийти вовсе)
+const SYNC_INTERVAL = 30 * 1000
 
 // FormData нельзя сохранить в IndexedDB (structured clone её не поддерживает),
 // поэтому сериализуем в массив пар — File/Blob клонируются без проблем
@@ -96,6 +98,7 @@ class RequestQueue {
       method: request.method,
       url: request.url,
       headers: request.headers,
+      timeout: SYNC_REQUEST_TIMEOUT,
     }
 
     if (request.data && ['POST', 'PUT', 'PATCH'].includes(request.method)) {
@@ -135,16 +138,6 @@ class RequestQueue {
 
       for (const request of requests) {
         try {
-          // Проверяем количество попыток
-          if (request.retryCount >= MAX_RETRY_COUNT) {
-            console.error(
-              `Запрос ${request.method} ${request.url} превысил максимальное количество попыток`
-            )
-            await db.pendingRequests.delete(request.id!)
-            this.notifyListeners()
-            continue
-          }
-
           // Выполняем запрос
           await this.executeRequest(request)
 
@@ -152,23 +145,37 @@ class RequestQueue {
           await db.pendingRequests.delete(request.id!)
           this.notifyListeners()
         } catch (error: any) {
-          // Увеличиваем счетчик попыток
-          const updatedRequest: PendingRequest = {
-            ...request,
-            retryCount: request.retryCount + 1,
-            lastError: error.message || 'Unknown error',
+          // Сети всё ещё нет (или запрос отвалился по таймауту) — прекращаем проход,
+          // попробуем при следующем триггере. retryCount не трогаем:
+          // сетевые сбои не должны приводить к потере данных
+          if (isNetworkError(error)) {
+            console.log('[Sync] Сеть недоступна, проход синхронизации прерван')
+            break
           }
 
-          await db.pendingRequests.update(request.id!, updatedRequest)
-
-          // Если это не ошибка авторизации, ждем перед следующей попыткой
-          if (error.message !== 'Unauthorized') {
-            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY))
-          } else {
-            // Ошибка авторизации - удаляем запрос
+          // Ошибка авторизации — удаляем запрос (повтор бессмысленен)
+          if (error.message === 'Unauthorized') {
             await db.pendingRequests.delete(request.id!)
             this.notifyListeners()
+            continue
           }
+
+          // Сервер ответил ошибкой (например, 400 валидация) — считаем попытки,
+          // после MAX_RETRY_COUNT удаляем, чтобы битый запрос не висел в очереди вечно
+          const retryCount = request.retryCount + 1
+          if (retryCount >= MAX_RETRY_COUNT) {
+            console.error(
+              `[Sync] Запрос ${request.method} ${request.url} отклонён сервером ${retryCount} раз(а), удаляем из очереди:`,
+              error.response?.data || error.message,
+            )
+            await db.pendingRequests.delete(request.id!)
+          } else {
+            await db.pendingRequests.update(request.id!, {
+              retryCount,
+              lastError: error.message || 'Unknown error',
+            })
+          }
+          this.notifyListeners()
         }
       }
     } catch (error) {
@@ -204,11 +211,15 @@ class RequestQueue {
 // Экспортируем singleton
 export const requestQueue = new RequestQueue()
 
-// Сетевая ошибка (нет соединения / сервер недоступен) — от неё имеет смысл
+// Сетевая ошибка (нет соединения / сервер недоступен / таймаут) — от неё имеет смысл
 // уходить в офлайн-режим. Ответы с HTTP-статусом сетевой ошибкой не считаем.
 export const isNetworkError = (error: any): boolean =>
   error?.response?.status === undefined &&
-  (!navigator.onLine || error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error'))
+  (!navigator.onLine ||
+    error?.code === 'ERR_NETWORK' ||
+    error?.code === 'ECONNABORTED' ||
+    error?.message?.includes('Network Error') ||
+    error?.message?.includes('timeout'))
 
 // Текст-маркер ошибки «запрос поставлен в очередь» — UI может показать
 // мягкое уведомление вместо ошибки
@@ -246,6 +257,24 @@ export const initSync = (): void => {
     console.log('Интернет восстановлен, начинаем синхронизацию...')
     requestQueue.processQueue()
   })
+
+  // PWA: событие online может не прийти (приложение было свёрнуто) —
+  // обрабатываем очередь при возврате в приложение
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      requestQueue.processQueue()
+    }
+  })
+
+  // Фоновая проверка: если очередь не пуста и сеть есть — пробуем отправить.
+  // Подстраховка на случай, когда события не сработали или проход был прерван
+  setInterval(() => {
+    if (navigator.onLine) {
+      requestQueue.getQueueLength().then((count) => {
+        if (count > 0) requestQueue.processQueue()
+      })
+    }
+  }, SYNC_INTERVAL)
 
   // Обрабатываем очередь при загрузке страницы (если есть интернет)
   if (navigator.onLine) {
