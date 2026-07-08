@@ -5,8 +5,8 @@ import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
 import { ComplaintCreateData, ParsedComplaintData, ParsedProduct } from '../../types/complaints'
 import { ProductionSite, ComplaintReason } from '../../types/complaints'
-import { Order } from '../../types/orders'
-import { OPENING_TYPE_SHORT } from '../../types/orders'
+import { Order, AddonKind } from '../../types/orders'
+import { OPENING_TYPE_SHORT, ADDON_KIND_DISPLAY } from '../../types/orders'
 import { User } from '../../types/auth'
 import { useAuthStore } from '../../store/authStore'
 import Button from '../../components/common/Button'
@@ -266,6 +266,16 @@ const ComplaintCreate = () => {
       opening_type: it.opening_type ? (OPENING_TYPE_SHORT[it.opening_type] || it.opening_type) : '',
       problem_description: '',
     }))
+    // Дополнительные позиции (короба, наличники, ручки, услуги...) — тоже на выбор
+    const addons = order.addons || []
+    asProducts.push(...addons.map((a) => ({
+      product_name: [ADDON_KIND_DISPLAY[a.kind as AddonKind] || a.kind_display || a.kind, a.name]
+        .filter(Boolean).join(': '),
+      quantity: String(a.quantity ?? ''),
+      size: a.size || '',
+      opening_type: a.opening_type ? (OPENING_TYPE_SHORT[a.opening_type] || a.opening_type) : '',
+      problem_description: '',
+    })))
     setOrderResults([])
     setOrderSearched(false)
     if (asProducts.length > 0) {

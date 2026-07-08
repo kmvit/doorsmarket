@@ -446,8 +446,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         Поиск заказа по номеру (KP или id) для создания рекламации из заказа (Фаза 6).
         GET /complaints/find-order/?order_number=XXX
         Возвращает список подходящих заказов с позициями (для выбора галочками).
+        Область видимости — как в списке заказов (ACL): СМ/руководитель — свой город,
+        менеджер — свой салон, admin — всё.
         """
-        from orders.models import Order
+        from orders.api_views import get_orders_queryset_for_user
         from orders.serializers import OrderDetailSerializer
 
         query = (request.query_params.get('order_number') or '').strip()
@@ -462,9 +464,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             lookup = lookup | Q(id=int(query))
 
         orders = (
-            Order.objects.filter(lookup)
-            .select_related('salon', 'salon__city', 'manager')
-            .prefetch_related('items', 'addons')
+            get_orders_queryset_for_user(request.user)
+            .filter(lookup)
             .order_by('-created_at')[:10]
         )
         data = OrderDetailSerializer(orders, many=True, context={'request': request}).data
