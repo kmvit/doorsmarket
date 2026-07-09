@@ -17,5 +17,8 @@ urlpatterns = [
     # Публичный PDF-бланк замера по токену (без авторизации, для клиента по ссылке).
     path('public/measurements/<uuid:token>/pdf/', api_views.PublicMeasurementPdfView.as_view(),
          name='public-measurement-pdf'),
+    # Публичный PDF «Рекомендации» по токену (для отправки клиенту, только обработанный замер).
+    path('public/measurements/<uuid:token>/recommendations/', api_views.PublicRecommendationsPdfView.as_view(),
+         name='public-measurement-recommendations'),
     path('', include(router.urls)),
 ]

@@ -11,9 +11,12 @@ import HScrollSync from '../../components/common/HScrollSync'
 interface Props {
   salons: Salon[]
   defaultSalonId: number
+  // Режим замены КП: id существующего заказа. Вместо создания нового заказа
+  // данные распарсенного КП заменяют шапку и позиции этого заказа.
+  replaceOrderId?: number
 }
 
-const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
+const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedKpData | null>(null)
@@ -115,8 +118,28 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
     parsed && setParsed({ ...parsed, [field]: value })
   }
 
+  const handleReplace = async () => {
+    if (!parsed || !replaceOrderId) return
+    if (!window.confirm(
+      `Заменить КП в заказе #${replaceOrderId}?\n\n` +
+      'Шапка и все позиции заказа будут заменены данными нового КП. ' +
+      'Замер и его проёмы сохранятся, но связки проёмов с позициями КП сбросятся — их нужно будет привязать заново.',
+    )) return
+    setIsCreating(true)
+    setError(null)
+    try {
+      await ordersAPI.replaceFromParsed(replaceOrderId, { ...parsed, comment: comment || undefined } as any)
+      navigate(`/orders/${replaceOrderId}`)
+    } catch (err: any) {
+      const detail = err.response?.data
+      setError(typeof detail === 'object' ? Object.values(detail).flat().join(', ') : (err.message || 'Ошибка замены КП'))
+      setIsCreating(false)
+    }
+  }
+
   const handleCreate = async () => {
     if (!parsed) return
+    if (replaceOrderId) return handleReplace()
     if (!salonId) { setError('Выберите салон'); return }
     if (!nextActionText.trim() || !nextActionDueAt) {
       setNextActionError(true)
@@ -180,13 +203,15 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">2. Шапка (можно поправить)</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Салон *</label>
-                <select value={salonId} onChange={(e) => setSalonId(Number(e.target.value))} className={inputCls} required>
-                  <option value={0}>— Выберите салон —</option>
-                  {salons.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.city_name})</option>)}
-                </select>
-              </div>
+              {!replaceOrderId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Салон *</label>
+                  <select value={salonId} onChange={(e) => setSalonId(Number(e.target.value))} className={inputCls} required>
+                    <option value={0}>— Выберите салон —</option>
+                    {salons.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.city_name})</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Номер КП</label>
                 <input type="text" value={parsed.kp_number} onChange={(e) => updateHeader('kp_number', e.target.value)} className={inputCls} />
@@ -383,7 +408,8 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
             )}
           </div>
 
-          {/* Следующее действие (обязательно) */}
+          {/* Следующее действие (обязательно; при замене КП заказ уже существует — не требуется) */}
+          {!replaceOrderId && (
           <div
             ref={nextActionRef}
             className={`rounded-xl shadow-sm p-5 ${nextActionError ? 'bg-red-50 border-2 border-red-400' : 'bg-amber-50 border border-amber-200'}`}
@@ -420,15 +446,18 @@ const KpUploadTab = ({ salons, defaultSalonId }: Props) => {
               </div>
             </div>
           </div>
+          )}
 
           <div className="flex justify-end">
             <button
               type="button"
               onClick={handleCreate}
-              disabled={isCreating || !salonId}
+              disabled={isCreating || (!replaceOrderId && !salonId)}
               className="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50"
             >
-              {isCreating ? 'Создание...' : 'Создать заказ'}
+              {isCreating
+                ? (replaceOrderId ? 'Заменяем…' : 'Создание...')
+                : (replaceOrderId ? `Заменить КП в заказе #${replaceOrderId}` : 'Создать заказ')}
             </button>
           </div>
         </>

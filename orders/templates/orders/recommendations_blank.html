@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 12mm 12mm;
+    @bottom-center {
+      content: "Рекомендации к замеру №" "{{ m.id }}" " · стр. " counter(page) " из " counter(pages);
+      font-size: 8pt; color: #888;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Arial", sans-serif; font-size: 9pt; color: #1a1a1a; }
+  h1 { font-size: 14pt; margin: 0 0 1mm; text-align: center; }
+  .muted { color: #666; }
+  .small { font-size: 8pt; }
+  .subtitle { text-align: center; font-style: italic; color: #666; font-size: 8.5pt; margin-bottom: 4mm; }
+  .kv { border-collapse: collapse; margin-bottom: 4mm; }
+  .kv td { border: 0.4pt solid #999; padding: 1.2mm 2.5mm; }
+  .kv td.k { color: #444; min-width: 55mm; }
+  .kv td.v { font-weight: 600; min-width: 30mm; text-align: center; }
+  table.openings { width: 100%; border-collapse: collapse; font-size: 7pt; table-layout: fixed; }
+  table.openings th, table.openings td { border: 0.4pt solid #999; padding: 1mm 1mm; text-align: center; vertical-align: top; overflow-wrap: break-word; }
+  table.openings th { background: #eef2f7; font-weight: 700; }
+  table.openings td.left { text-align: left; }
+  .warn { color: #b91c1c; font-weight: 600; }
+  .conditions { margin-top: 5mm; font-size: 8.6pt; line-height: 1.5; }
+  .conditions .head { font-weight: 700; text-decoration: underline; }
+  ol.cond-list { margin: 1.5mm 0 0; padding-left: 6mm; }
+  ol.cond-list li { margin-bottom: 0.6mm; }
+  .liability { margin-top: 3mm; font-weight: 700; text-decoration: underline; font-size: 8.6pt; line-height: 1.5; }
+  .sign-line { margin-top: 8mm; font-size: 9pt; }
+</style>
+</head>
+<body>
+
+  <h1>Рекомендации по подготовке дверных проёмов к договору № {{ order.kp_number|default:"__________" }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% else %} от __________{% endif %}</h1>
+  <div class="subtitle">номер и дата заполняется по данным из КП</div>
+
+  <table class="kv">
+    <tr><td class="k">Покупатель</td><td class="v" colspan="2">{{ order.client_name|default:"—" }}</td></tr>
+    <tr><td class="k">Адрес</td><td class="v" colspan="2">{{ order.address|default:"—" }}</td></tr>
+    <tr><td class="k"></td><td class="v small" style="font-weight:400;">да</td><td class="v small" style="font-weight:400;">нет</td></tr>
+    <tr><td class="k">Возможен ли подъём на лифте?</td>
+        <td class="v">{% if order.lift_available is True %}✓{% endif %}</td>
+        <td class="v">{% if order.lift_available is False %}✓{% endif %}</td></tr>
+    <tr><td class="k">Возможен ли подъём по лестнице?</td>
+        <td class="v">{% if order.stairs_available is True %}✓{% endif %}</td>
+        <td class="v">{% if order.stairs_available is False %}✓{% endif %}</td></tr>
+    <tr><td class="k">Готовность пола</td><td class="v" colspan="2">{{ order.floor_readiness|default:"—" }}</td></tr>
+  </table>
+
+  <table class="openings">
+    <colgroup>
+      <col style="width:3.5%"><col style="width:7%"><col style="width:9%"><col style="width:7%">
+      <col style="width:7%"><col style="width:7%"><col style="width:7.5%"><col style="width:8%">
+      <col style="width:7.5%"><col style="width:4.5%"><col style="width:6%"><col style="width:6%">
+      <col style="width:5.5%"><col style="width:14.5%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>№<br>проёма</th>
+        <th>Название<br>комнаты</th>
+        <th>Полотно<br>(наименование из КП)</th>
+        <th>ВЫСОТА<br>проёма<br>фактическая</th>
+        <th>ШИРИНА<br>проёма<br>фактическая</th>
+        <th>ГЛУБИНА<br>проёма<br>фактическая</th>
+        <th>Выбранный<br>размер двери</th>
+        <th>Необходимый<br>размер ПРОЁМА</th>
+        <th>Открывание</th>
+        <th>Добор</th>
+        <th>Наличник<br>лицев.</th>
+        <th>Наличник<br>обор.</th>
+        <th>Порог</th>
+        <th>Рекомендации</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.op.opening_number }}</td>
+        <td class="left">{{ row.op.room_name|default:"—" }}</td>
+        <td class="left">{{ row.panel_name|default:"—" }}</td>
+        <td>{{ row.op.actual_height|default:"—" }}</td>
+        <td>{{ row.op.actual_width|default:"—" }}</td>
+        <td>{{ row.op.actual_depth|default:"—" }}</td>
+        <td>{{ row.door_h|default:"—" }}×{{ row.door_w|default:"—" }}</td>
+        <td>{{ row.op.recommended_opening_height|default:"—" }}×{{ row.op.recommended_opening_width|default:"—" }}</td>
+        <td>{{ row.op.get_opening_type_display|default:"—" }}</td>
+        <td>{{ row.op.addon_width|default:"—" }}</td>
+        <td class="left">{{ row.op.face_trim_qty|floatformat:"-2"|default:"—" }}{% if row.op.face_trim_comment %} ({{ row.op.face_trim_comment }}){% endif %}</td>
+        <td class="left">{{ row.op.back_trim_qty|floatformat:"-2"|default:"—" }}{% if row.op.back_trim_comment %} ({{ row.op.back_trim_comment }}){% endif %}</td>
+        <td class="left">{{ row.op.threshold|default:"—" }}</td>
+        <td class="left">{% if row.rec_text %}<span class="warn">{{ row.rec_text }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="14" class="muted">Проёмы не заполнены</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="conditions">
+    <div class="head">Своей подписью Покупатель подтверждает, что нижеследующие пункты ему разъяснены и будут им выполнены:</div>
+    <ol class="cond-list">
+      <li>Рекомендации по подготовке проёмов получил(а) и ознакомлен(а).</li>
+      <li>Стены отделаны «по уровню», не имеют отклонений от вертикальной и горизонтальной осей.</li>
+      <li>Напольное покрытие уложено до монтажа, по уровню, в одной плоскости (ровное).</li>
+      <li>Стены для стеновых панелей выровнены, загрунтованы.</li>
+      <li>Стыки напольных покрытий выполнены под полотном двери.</li>
+    </ol>
+    <div class="warn" style="margin-top:2mm;">Рекомендуемые размеры проёма даны от «ЧИСТОГО» ПОЛА!!!!</div>
+  </div>
+
+  <div class="liability">
+    Если с момента замера до монтажа Покупатель внесёт изменения в размеры дверных проёмов, не соответствующие
+    рекомендациям, или не выполнит рекомендации, вся ответственность и все последствия, в т.ч. материальные,
+    ложатся на Покупателя.
+  </div>
+
+  <div class="sign-line">
+    Покупатель с рекомендациями ознакомлен и согласен (Ф.И.О., подпись) ________________________________
+    &nbsp;&nbsp;М.П.&nbsp;&nbsp; Дата ________________
+  </div>
+
+</body>
+</html>

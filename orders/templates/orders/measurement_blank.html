@@ -22,8 +22,8 @@
   .kv td.k { color: #666; width: 32mm; white-space: nowrap; }
   .kv td.v { font-weight: 600; }
   .section-title { font-size: 11pt; font-weight: 700; margin: 4mm 0 2mm; border-left: 3px solid #2563eb; padding-left: 2.5mm; }
-  table.openings { width: 100%; border-collapse: collapse; font-size: 7.6pt; }
-  table.openings th, table.openings td { border: 0.4pt solid #bbb; padding: 1.2mm 1.4mm; text-align: center; vertical-align: top; }
+  table.openings { width: 100%; border-collapse: collapse; font-size: 6.2pt; table-layout: fixed; }
+  table.openings th, table.openings td { border: 0.4pt solid #bbb; padding: 0.8mm 0.7mm; text-align: center; vertical-align: top; overflow-wrap: break-word; }
   table.openings th { background: #eef2f7; font-weight: 700; }
   table.openings td.left { text-align: left; }
   .warn { color: #b91c1c; font-weight: 600; }
@@ -70,6 +70,12 @@
 
   <div class="section-title">Проёмы</div>
   <table class="openings">
+    <colgroup>
+      <col style="width:2.5%"><col style="width:7.5%"><col style="width:6.5%"><col style="width:9%">
+      <col style="width:6.5%"><col style="width:6.5%"><col style="width:6.5%"><col style="width:10%">
+      <col style="width:9%"><col style="width:5%"><col style="width:6.5%"><col style="width:6.5%">
+      <col style="width:7.5%"><col style="width:4.5%"><col style="width:6%">
+    </colgroup>
     <thead>
       <tr>
         <th>№</th>
@@ -79,7 +85,12 @@
         <th>Рек. дверь<br>В×Ш</th>
         <th>Желаемая дверь<br>В×Ш</th>
         <th>Рек. проём<br>В×Ш</th>
+        <th>Доработать<br>размеры проёмов</th>
         <th>Открывание</th>
+        <th>Добор</th>
+        <th>Наличник<br>лицев.</th>
+        <th>Наличник<br>обор.</th>
+        <th>Доп.<br>фурнитура</th>
         <th>Порог</th>
         <th>Примечания</th>
       </tr>
@@ -94,12 +105,17 @@
         <td>{{ op.recommended_door_height|default:"—" }}×{{ op.recommended_door_width|default:"—" }}</td>
         <td>{{ op.desired_door_height|default:"—" }}×{{ op.desired_door_width|default:"—" }}</td>
         <td>{{ op.recommended_opening_height|default:"—" }}×{{ op.recommended_opening_width|default:"—" }}</td>
+        <td>{% if op.needs_rework %}<span class="warn">доработать проём до рекомендуемого размера</span>{% else %}—{% endif %}</td>
         <td>{{ op.get_opening_type_display|default:"—" }}</td>
+        <td>{{ op.addon_width|default:"—" }}</td>
+        <td class="left">{{ op.face_trim_qty|floatformat:"-2"|default:"—" }}{% if op.face_trim_comment %} ({{ op.face_trim_comment }}){% endif %}</td>
+        <td class="left">{{ op.back_trim_qty|floatformat:"-2"|default:"—" }}{% if op.back_trim_comment %} ({{ op.back_trim_comment }}){% endif %}</td>
+        <td class="left">{{ op.extra_hardware|default:"—" }}</td>
         <td class="left">{{ op.threshold|default:"—" }}</td>
         <td class="left">{{ op.notes|default:"—" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="10" class="muted">Проёмы не заполнены</td></tr>
+      <tr><td colspan="15" class="muted">Проёмы не заполнены</td></tr>
       {% endfor %}
     </tbody>
   </table>

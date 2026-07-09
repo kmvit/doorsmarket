@@ -127,6 +127,15 @@ export const ordersAPI = {
     return requestWithQueue('POST', '/orders/create_from_parsed/', data)
   },
 
+  // Замена КП в существующем заказе (повторная загрузка): шапка обновляется,
+  // позиции пересоздаются, замер сохраняется (связки проёмов сбрасываются).
+  replaceFromParsed: async (
+    orderId: number,
+    data: ParsedKpData & { comment?: string },
+  ): Promise<Order> => {
+    return requestWithQueue('POST', `/orders/${orderId}/replace_from_parsed/`, data)
+  },
+
   getMeasurementRequest: async (orderId: number): Promise<MeasurementRequest | null> => {
     return withOfflineFallback({
       cacheKey: `order_measurement_request_${orderId}`,

@@ -219,6 +219,30 @@ export const measurementsAPI = {
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   },
 
+  // PDF «Рекомендации» — финальный бланк менеджера (после обработки замера).
+  downloadRecommendationsPdf: async (id: number): Promise<Blob> => {
+    const response = await apiClient.get(`/measurements/${id}/download_recommendations_pdf/`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  openRecommendationsPdf: async (id: number): Promise<void> => {
+    const blob = await measurementsAPI.downloadRecommendationsPdf(id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `rekomendacii_${id}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  },
+
+  // Публичная ссылка на PDF «Рекомендации» (для отправки клиенту).
+  getRecommendationsLink: (m: { client_access_token: string }): string =>
+    `${window.location.origin}/api/v1/public/measurements/${m.client_access_token}/recommendations/`,
+
   // Публичная ссылка на PDF для клиента (без авторизации).
   getPublicPdfUrl: (clientAccessToken: string): string =>
     `${window.location.origin}/api/v1/public/measurements/${clientAccessToken}/pdf/`,

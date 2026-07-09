@@ -353,6 +353,79 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = OrderDetailSerializer(order, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'])
+    def replace_from_parsed(self, request, pk=None):
+        """
+        Заменяет КП в существующем заказе данными нового распарсенного КП
+        (если первое КП было загружено неверно или клиенту выставили новое).
+        Шапка обновляется, позиции и сопутствующие пересоздаются. Замер и его
+        проёмы сохраняются; связки проёмов с позициями КП сбрасываются
+        (order_item → NULL), их нужно привязать заново.
+        """
+        from django.db import transaction
+        order = self.get_object()
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        items = data.pop('items', []) or []
+        addons = data.pop('addons', []) or []
+
+        with transaction.atomic():
+            order.client_name = (data.get('client_name') or '').strip()[:255] or order.client_name
+            order.contact_phone = (data.get('contact_phone') or '')[:50] or order.contact_phone
+            order.address = (data.get('address') or '')[:500] or order.address
+            order.kp_number = (data.get('kp_number') or '')[:100] or order.kp_number
+            order.kp_date = data.get('kp_date') or order.kp_date
+            if data.get('comment'):
+                order.comment = data['comment']
+
+            # Позиции пересоздаём: у проёмов замера order_item обнулится (SET_NULL),
+            # сами проёмы и данные замера не трогаем.
+            order.items.all().delete()
+            order.addons.all().delete()
+
+            for idx, item in enumerate(items):
+                OrderItem.objects.create(
+                    order=order,
+                    opening_number=int(item.get('opening_number') or (idx + 1)),
+                    room_name=(item.get('room_name') or '')[:255],
+                    model_name=(item.get('model_name') or '')[:500],
+                    quantity=int(item.get('quantity') or 1),
+                    price=item.get('price') or None,
+                    amount=item.get('amount') or None,
+                    door_type=item.get('door_type') or '',
+                    opening_type=item.get('opening_type') or '',
+                    door_height=item.get('door_height') or None,
+                    door_width=item.get('door_width') or None,
+                    recommended_opening_height=item.get('recommended_opening_height') or None,
+                    recommended_opening_width=item.get('recommended_opening_width') or None,
+                    notes=(item.get('notes') or ''),
+                    position=idx,
+                )
+
+            for idx, addon in enumerate(addons):
+                OrderAddon.objects.create(
+                    order=order,
+                    kind=addon.get('kind') or 'extra',
+                    name=(addon.get('name') or '')[:500],
+                    quantity=addon.get('quantity') or 1,
+                    size=(addon.get('size') or '')[:100],
+                    opening_type=addon.get('opening_type') or '',
+                    price=addon.get('price') or None,
+                    amount=addon.get('amount') or None,
+                    comment=(addon.get('comment') or ''),
+                    position=idx,
+                )
+
+            order.touch_activity(ActivityKind.ITEMS_CHANGED, save=False)
+            order.save()
+            order.log_activity(
+                ActivityKind.ITEMS_CHANGED,
+                actor=request.user,
+                description=f'Заменено КП (повторная загрузка): № {order.kp_number or "—"}',
+            )
+
+        serializer = OrderDetailSerializer(order, context={'request': request})
+        return Response(serializer.data)
+
     # ---------- Phase 2: Заявка на замер ----------
 
     @action(
@@ -983,6 +1056,31 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         resp['Content-Disposition'] = f'inline; filename="measurement_{m.id}.pdf"'
         return resp
 
+    # ---- PDF «Рекомендации» — финальный бланк менеджера ----
+    @action(detail=True, methods=['get'], url_path='download_recommendations_pdf')
+    def download_recommendations_pdf(self, request, pk=None):
+        """Генерирует и отдаёт PDF «Рекомендации». Доступен после обработки замера."""
+        from django.http import HttpResponse
+        from .pdf_blank import render_recommendations_blank
+        m = self.get_object()
+        if not m.is_processed:
+            return Response(
+                {'detail': 'Бланк «Рекомендации» доступен только после обработки замера.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            pdf = render_recommendations_blank(m)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception('Ошибка генерации PDF рекомендаций #%s: %s', m.id, exc)
+            return Response(
+                {'detail': 'Не удалось сгенерировать PDF рекомендаций.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="recommendations_{m.id}.pdf"'
+        return resp
+
     @action(detail=True, methods=['post'], url_path='upload_signature',
             parser_classes=[MultiPartParser, FormParser])
     def upload_signature(self, request, pk=None):
@@ -1046,6 +1144,41 @@ class PublicMeasurementPdfView(APIView):
             )
         resp = HttpResponse(pdf, content_type='application/pdf')
         resp['Content-Disposition'] = f'inline; filename="measurement_{m.id}.pdf"'
+        return resp
+
+
+class PublicRecommendationsPdfView(APIView):
+    """
+    Публичный доступ к PDF «Рекомендации» по client_access_token — без авторизации
+    (чтобы менеджер мог отправить клиенту ссылку). Только для обработанных замеров.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request, token):
+        from django.http import HttpResponse, Http404
+        from .pdf_blank import render_recommendations_blank
+        try:
+            m = Measurement.objects.select_related(
+                'request__order', 'service_manager'
+            ).get(client_access_token=token)
+        except Measurement.DoesNotExist:
+            raise Http404('Замер не найден')
+        if not m.is_processed:
+            raise Http404('Рекомендации ещё не сформированы')
+        try:
+            pdf = render_recommendations_blank(m)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Ошибка генерации публичного PDF рекомендаций #%s: %s', m.id, exc
+            )
+            return Response(
+                {'detail': 'Не удалось сгенерировать PDF.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="recommendations_{m.id}.pdf"'
         return resp
 
 

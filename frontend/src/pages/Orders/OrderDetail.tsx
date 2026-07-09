@@ -29,6 +29,7 @@ const OrderDetail = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [recPdfGenerating, setRecPdfGenerating] = useState(false)
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
@@ -122,6 +123,29 @@ const OrderDetail = () => {
       alert('Не удалось сформировать PDF замера')
     } finally {
       setPdfGenerating(false)
+    }
+  }
+
+  const handleDownloadRecommendationsPdf = async () => {
+    if (!measurement || recPdfGenerating) return
+    setRecPdfGenerating(true)
+    try {
+      await measurementsAPI.openRecommendationsPdf(measurement.id)
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Не удалось сформировать PDF рекомендаций')
+    } finally {
+      setRecPdfGenerating(false)
+    }
+  }
+
+  const handleCopyRecommendationsLink = async () => {
+    if (!measurement?.client_access_token) return
+    const url = measurementsAPI.getRecommendationsLink(measurement)
+    try {
+      await navigator.clipboard.writeText(url)
+      alert('Ссылка на рекомендации скопирована:\n' + url)
+    } catch {
+      window.prompt('Ссылка на рекомендации (скопируйте):', url)
     }
   }
 
@@ -248,6 +272,16 @@ const OrderDetail = () => {
                 {pdfGenerating ? 'Формируем PDF…' : 'Скачать замер PDF'}
               </button>
             )}
+            <Link
+              to={`/orders/${order.id}/replace-kp`}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-xl transition-all"
+              title="Загрузить другое КП через парсинг: шапка и позиции будут заменены, замер сохранится"
+            >
+              <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Заменить КП
+            </Link>
             <button
               onClick={() => setShowMrModal(true)}
               className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"
@@ -591,6 +625,26 @@ const OrderDetail = () => {
                     className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
                   >
                     🔗 Ссылка для клиента
+                  </button>
+                </>
+              )}
+              {/* Финальный бланк «Рекомендации» — только после обработки замера менеджером */}
+              {measurement && measurement.is_processed && canEdit && (
+                <>
+                  <button
+                    onClick={handleDownloadRecommendationsPdf}
+                    disabled={recPdfGenerating}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                    title="Скачать/распечатать бланк «Рекомендации по подготовке дверных проёмов»"
+                  >
+                    {recPdfGenerating ? '⏳ Формируем…' : '📋 Рекомендации PDF'}
+                  </button>
+                  <button
+                    onClick={handleCopyRecommendationsLink}
+                    className="px-3 py-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg"
+                    title="Скопировать ссылку на рекомендации для отправки клиенту"
+                  >
+                    🔗 Отправить рекомендации
                   </button>
                 </>
               )}
