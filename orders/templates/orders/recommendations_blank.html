@@ -87,7 +87,7 @@
         <td>{{ row.op.actual_width|default:"—" }}</td>
         <td>{{ row.op.actual_depth|default:"—" }}</td>
         <td>{{ row.door_h|default:"—" }}×{{ row.door_w|default:"—" }}</td>
-        <td>{{ row.op.recommended_opening_height|default:"—" }}×{{ row.op.recommended_opening_width|default:"—" }}</td>
+        <td>{{ row.opening_h|default:"—" }}×{{ row.opening_w|default:"—" }}</td>
         <td>{{ row.op.get_opening_type_display|default:"—" }}</td>
         <td>{{ row.op.addon_width|default:"—" }}</td>
         <td class="left">{{ row.op.face_trim_qty|floatformat:"-2"|default:"—" }}{% if row.op.face_trim_comment %} ({{ row.op.face_trim_comment }}){% endif %}</td>

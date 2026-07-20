@@ -35,10 +35,11 @@ def render_measurement_blank(measurement) -> bytes:
     openings = list(measurement.openings.all().order_by('opening_number'))
 
     # Пометка «доработать проём»: рек. размеры проёма не совпадают с фактическими.
+    # По высоте допускается отклонение до 10 мм включительно — доработка не требуется.
     for op in openings:
         op.needs_rework = bool(
             (op.recommended_opening_height and op.actual_height
-             and op.recommended_opening_height != op.actual_height)
+             and abs(op.recommended_opening_height - op.actual_height) > 10)
             or (op.recommended_opening_width and op.actual_width
                 and op.recommended_opening_width != op.actual_width)
         )
@@ -101,13 +102,27 @@ def render_recommendations_blank(measurement) -> bytes:
 
     rows = []
     for op in openings:
-        door_h = op.desired_door_height or op.recommended_door_height
-        door_w = op.desired_door_width or op.recommended_door_width
+        item = op.order_item
+        if item and (item.door_height or item.door_width):
+            # Размеры берём из КП (позиции заказа) — независимо от замера.
+            # Правки менеджера в рабочей форме КП автоматически попадают сюда.
+            door_h = item.door_height
+            door_w = item.door_width
+            opening_h = item.recommended_opening_height or (door_h + 70 if door_h else None)
+            opening_w = item.recommended_opening_width or (door_w + 100 if door_w else None)
+        else:
+            # Проём не привязан к позиции КП — фолбэк на данные замера
+            door_h = op.recommended_door_height
+            door_w = op.recommended_door_width
+            opening_h = op.recommended_opening_height
+            opening_w = op.recommended_opening_width
         rows.append({
             'op': op,
-            'panel_name': op.order_item.model_name if op.order_item else '',
+            'panel_name': item.model_name if item else '',
             'door_h': door_h,
             'door_w': door_w,
+            'opening_h': opening_h,
+            'opening_w': opening_w,
             'rec_text': build_recommendation_text(
                 op.actual_height, op.actual_width, door_h, door_w,
             ),

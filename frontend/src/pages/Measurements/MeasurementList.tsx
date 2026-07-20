@@ -9,11 +9,12 @@ const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: 'unscheduled', label: 'Назначить замер', color: 'bg-blue-100 text-blue-700' },
   { key: 'scheduled', label: 'Запланированные', color: 'bg-cyan-100 text-cyan-700' },
   { key: 'today', label: 'Сегодня замер', color: 'bg-amber-100 text-amber-700' },
+  { key: 'drafts', label: 'Черновики', color: 'bg-yellow-100 text-yellow-700' },
   { key: 'done', label: 'Выполненные', color: 'bg-green-100 text-green-700' },
   { key: 'mine', label: 'Мои', color: 'bg-purple-100 text-purple-700' },
 ]
 
-const VALID_FOLDERS: MeasurementFolder[] = ['', 'unscheduled', 'scheduled', 'today', 'done', 'mine']
+const VALID_FOLDERS: MeasurementFolder[] = ['', 'unscheduled', 'scheduled', 'today', 'drafts', 'done', 'mine']
 
 const MeasurementList = () => {
   const navigate = useNavigate()
@@ -157,9 +158,16 @@ const MeasurementList = () => {
                     </td>
                     <td className="px-3 py-2 text-gray-700 text-xs">{m.service_manager_name || '—'}</td>
                     <td className="px-3 py-2">
-                      <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[m.order_status]}`}>
-                        {m.order_status_display}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[m.order_status]}`}>
+                          {m.order_status_display}
+                        </span>
+                        {m.is_draft && !m.is_done && (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
+                            📝 Черновик
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

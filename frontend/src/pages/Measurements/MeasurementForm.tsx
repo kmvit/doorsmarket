@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import {
   measurementsAPI,
@@ -23,6 +23,7 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 
 const MeasurementForm = () => {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [m, setM] = useState<Measurement | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -35,6 +36,7 @@ const MeasurementForm = () => {
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [savingConditions, setSavingConditions] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [draftNotice, setDraftNotice] = useState<string | null>(null)
 
   const canEditOpenings = !m?.is_done && (
     user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
@@ -63,14 +65,20 @@ const MeasurementForm = () => {
       openings: m.openings.map((o) => {
         if (o.id !== openingId) return o
         const next = { ...o, [field]: value }
-        // Рек. дверь = желаемый размер (если задан клиентом), иначе факт. проём − 70/100
-        const h = next.actual_height ? Number(next.actual_height) : null
-        const w = next.actual_width ? Number(next.actual_width) : null
-        next.recommended_door_height = next.desired_door_height || (h ? h - 70 : null)
-        next.recommended_door_width = next.desired_door_width || (w ? w - 100 : null)
-        // Рек. проём = рек. дверь (уже с учётом желаемой) + 70/100
-        next.recommended_opening_height = next.recommended_door_height ? next.recommended_door_height + 70 : null
-        next.recommended_opening_width = next.recommended_door_width ? next.recommended_door_width + 100 : null
+        // СМ редактирует рек. дверь → ручной режим (пустые значения возвращают авторасчёт)
+        if (field === 'recommended_door_height' || field === 'recommended_door_width') {
+          next.recommended_door_is_manual = Boolean(next.recommended_door_height || next.recommended_door_width)
+        }
+        // Рек. дверь = факт. проём − 70/100, если СМ не задал её вручную
+        if (!next.recommended_door_is_manual) {
+          const h = next.actual_height ? Number(next.actual_height) : null
+          const w = next.actual_width ? Number(next.actual_width) : null
+          next.recommended_door_height = h ? h - 70 : null
+          next.recommended_door_width = w ? w - 100 : null
+        }
+        // Рек. проём = рек. дверь + 70/100
+        next.recommended_opening_height = next.recommended_door_height ? Number(next.recommended_door_height) + 70 : null
+        next.recommended_opening_width = next.recommended_door_width ? Number(next.recommended_door_width) + 100 : null
         return next
       }),
     })
@@ -86,8 +94,6 @@ const MeasurementForm = () => {
         actual_height: op.actual_height,
         actual_width: op.actual_width,
         actual_depth: op.actual_depth,
-        desired_door_height: op.desired_door_height,
-        desired_door_width: op.desired_door_width,
         opening_type: op.opening_type,
         addon_width: op.addon_width,
         face_trim_qty: op.face_trim_qty,
@@ -98,11 +104,34 @@ const MeasurementForm = () => {
         threshold: op.threshold,
         notes: op.notes,
       }
+      // Рек. размер двери передаём только в ручном режиме — иначе сервер считает его сам.
+      // Пустые значения в ручном режиме возвращают проём к авторасчёту.
+      if (op.recommended_door_is_manual) {
+        payload.recommended_door_height = op.recommended_door_height
+        payload.recommended_door_width = op.recommended_door_width
+      }
       const updated = await measurementOpeningsAPI.update(op.id, payload)
       // Обновляем только этот проём из ответа сервера — без спиннера и скролла
       setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? updated : o) } : prev)
     } catch {
       alert('Не удалось сохранить проём')
+    } finally {
+      setSavingOpeningId(null)
+    }
+  }
+
+  // Сохранение рек. размера двери: поля передаются всегда (в т.ч. пустые) —
+  // непустые включают ручной режим, пустые возвращают авторасчёт от факт. проёма.
+  const saveRecommendedDoor = async (op: MeasurementOpening, patch?: { h?: number | null; w?: number | null }) => {
+    setSavingOpeningId(op.id)
+    try {
+      const updated = await measurementOpeningsAPI.update(op.id, {
+        recommended_door_height: patch ? (patch.h ?? null) : op.recommended_door_height,
+        recommended_door_width: patch ? (patch.w ?? null) : op.recommended_door_width,
+      })
+      setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? updated : o) } : prev)
+    } catch {
+      alert('Не удалось сохранить рекомендуемый размер двери')
     } finally {
       setSavingOpeningId(null)
     }
@@ -134,8 +163,13 @@ const MeasurementForm = () => {
         actual_height: op.actual_height,
         actual_width: op.actual_width,
         actual_depth: op.actual_depth,
-        desired_door_height: op.desired_door_height,
-        desired_door_width: op.desired_door_width,
+        // Ручной рек. размер двери переносим в копию (сервер включит ручной режим)
+        ...(op.recommended_door_is_manual
+          ? {
+              recommended_door_height: op.recommended_door_height,
+              recommended_door_width: op.recommended_door_width,
+            }
+          : {}),
         opening_type: op.opening_type,
         addon_width: op.addon_width,
         face_trim_qty: op.face_trim_qty,
@@ -183,9 +217,27 @@ const MeasurementForm = () => {
     }
   }
 
+  const handleSaveDraft = async () => {
+    if (!m) return
+    setActionError(null)
+    setDraftNotice(null)
+    try {
+      const updated = await measurementsAPI.saveDraft(m.id)
+      setM(updated)
+      setDraftNotice('Замер сохранён в черновиках. Вы можете вернуться к нему позже, проверить данные и нажать «Замер выполнен».')
+    } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: замер сохранён в черновиках и будет синхронизирован при появлении интернета.')
+        return
+      }
+      setActionError(err.response?.data?.detail || 'Не удалось сохранить черновик')
+    }
+  }
+
   const handleMarkDone = async () => {
     if (!m) return
     setActionError(null)
+    setDraftNotice(null)
     try {
       const updated = await measurementsAPI.markDone(m.id)
       setM(updated)
@@ -200,6 +252,12 @@ const MeasurementForm = () => {
 
   const handleDownloadPdf = async () => {
     if (!m || pdfGenerating) return
+    // Офлайн: серверный PDF недоступен — открываем печатную версию бланка,
+    // она рендерится из локальных данных и печатается через системный диалог.
+    if (!navigator.onLine) {
+      navigate(`/measurements/${m.id}/print`)
+      return
+    }
     setActionError(null)
     setPdfGenerating(true)
     try {
@@ -228,7 +286,13 @@ const MeasurementForm = () => {
     }
   }
 
-  const saveConditions = async (patch: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string }) => {
+  const saveConditions = async (patch: {
+    lift_available?: boolean | null
+    stairs_available?: boolean | null
+    carry_to_entrance?: boolean | null
+    floor_number?: string
+    floor_readiness?: string
+  }) => {
     if (!m) return
     // Оптимистично обновляем локально
     setM({ ...m, ...patch } as Measurement)
@@ -309,6 +373,9 @@ const MeasurementForm = () => {
                 Дата не назначена
               </span>
             )}
+            {m.is_draft && !m.is_done && (
+              <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-medium">📝 Черновик</span>
+            )}
             {m.is_done && (
               <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 font-medium">✓ Выполнен</span>
             )}
@@ -324,6 +391,14 @@ const MeasurementForm = () => {
               className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl"
             >
               {m.measurement_date ? 'Перенести' : 'Назначить дату'}
+            </button>
+          )}
+          {canMarkDone && (
+            <button
+              onClick={handleSaveDraft}
+              className="px-4 py-1.5 text-sm font-medium text-yellow-800 bg-yellow-100 hover:bg-yellow-200 rounded-xl"
+            >
+              📝 Сохранить в черновик
             </button>
           )}
           {canMarkDone && (
@@ -349,6 +424,13 @@ const MeasurementForm = () => {
           >
             {pdfGenerating ? '⏳ Формируем PDF…' : '📄 Бланк PDF'}
           </button>
+          <button
+            onClick={() => navigate(`/measurements/${m.id}/print`)}
+            title="Печатная версия бланка — работает без интернета"
+            className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl"
+          >
+            🖨 Печать бланка
+          </button>
           {(user?.role === 'service_manager' || user?.role === 'admin') && (
             <label className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer">
               {m.signature_photo_url ? '↻ Заменить фото подписи' : '✍ Загрузить фото подписи'}
@@ -360,6 +442,12 @@ const MeasurementForm = () => {
 
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{actionError}</div>
+      )}
+      {draftNotice && (
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4 flex items-center justify-between gap-3">
+          <span>📝 {draftNotice}</span>
+          <button onClick={() => setDraftNotice(null)} className="text-green-700 hover:text-green-900 text-sm font-medium shrink-0">✕</button>
+        </div>
       )}
       {offlineNotice && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4 flex items-center justify-between gap-3">
@@ -502,6 +590,32 @@ const MeasurementForm = () => {
               <option value="true">Да</option>
               <option value="false">Нет</option>
             </select>
+          </div>
+          <div>
+            <label className={labelCls}>Нужен пронос до подъезда?</label>
+            <select
+              value={m.carry_to_entrance === null || m.carry_to_entrance === undefined ? '' : String(m.carry_to_entrance)}
+              onChange={(e) => saveConditions({ carry_to_entrance: e.target.value === '' ? null : e.target.value === 'true' })}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+            >
+              <option value="">— не указано —</option>
+              <option value="true">Нужен</option>
+              <option value="false">Не нужен</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Этаж <span className="text-red-600">*</span></label>
+            <input
+              type="text"
+              defaultValue={m.floor_number || ''}
+              onBlur={(e) => { if (e.target.value !== (m.floor_number || '')) saveConditions({ floor_number: e.target.value }) }}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+              placeholder="Например: 5"
+              maxLength={20}
+              required
+            />
           </div>
           <div>
             <label className={labelCls}>Готовность пола</label>
@@ -657,57 +771,61 @@ const MeasurementForm = () => {
               </div>
             </div>
 
-            {/* Авто-рекомендации */}
+            {/* Рекомендации: рек. дверь редактируется СМ, рек. проём считается от неё */}
             <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div className="p-3 bg-blue-50 rounded-lg">
-                <div className="text-xs font-medium text-blue-700 uppercase mb-1">Рекомендуемый размер двери</div>
-                <div className="text-blue-900">
-                  Высота: <strong>{op.recommended_door_height ?? '—'}</strong> · Ширина: <strong>{op.recommended_door_width ?? '—'}</strong>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs font-medium text-blue-700 uppercase">Рекомендуемый размер двери</div>
+                  {op.recommended_door_is_manual && (
+                    <button
+                      type="button"
+                      onClick={() => saveRecommendedDoor(op, { h: null, w: null })}
+                      disabled={!canEditOpenings}
+                      title="Вернуть авторасчёт (проём −70 / −100)"
+                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      ↺ авто
+                    </button>
+                  )}
                 </div>
-                <div className="text-xs text-blue-600 mt-1">(проём −70 / −100)</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={op.recommended_door_height ?? ''}
+                    onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_height', e.target.value ? Number(e.target.value) : null)}
+                    onBlur={() => saveRecommendedDoor(op)}
+                    disabled={!canEditOpenings}
+                    className={fieldCls}
+                    placeholder="Высота, мм"
+                  />
+                  <input
+                    type="number"
+                    value={op.recommended_door_width ?? ''}
+                    onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_width', e.target.value ? Number(e.target.value) : null)}
+                    onBlur={() => saveRecommendedDoor(op)}
+                    disabled={!canEditOpenings}
+                    className={fieldCls}
+                    placeholder="Ширина, мм"
+                  />
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  {op.recommended_door_is_manual
+                    ? '✎ задан вручную — рекомендации считаются от этого размера'
+                    : 'авторасчёт: проём −70 / −100. Можно отредактировать'}
+                </div>
               </div>
               <div className="p-3 bg-cyan-50 rounded-lg">
                 <div className="text-xs font-medium text-cyan-700 uppercase mb-1">Рекомендуемый размер проёма</div>
                 <div className="text-cyan-900">
                   Высота: <strong>{op.recommended_opening_height ?? '—'}</strong> · Ширина: <strong>{op.recommended_opening_width ?? '—'}</strong>
                 </div>
-                <div className="text-xs text-cyan-600 mt-1">(дверь +70 / +100)</div>
+                <div className="text-xs text-cyan-600 mt-1">(рек. дверь +70 / +100)</div>
               </div>
             </div>
 
-            {/* Желаемый размер двери (опционально) — задаёт СМ если хочет конкретный размер */}
-            <div className="mb-3">
-              <label className={labelCls}>Желаемый размер двери (если нужен конкретный)</label>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  value={op.desired_door_height ?? ''}
-                  onChange={(e) => updateOpeningLocal(op.id, 'desired_door_height', e.target.value ? Number(e.target.value) : null)}
-                  onBlur={() => saveOpening(op)}
-                  disabled={!canEditOpenings}
-                  className={fieldCls}
-                  placeholder="Высота, мм"
-                />
-                <input
-                  type="number"
-                  value={op.desired_door_width ?? ''}
-                  onChange={(e) => updateOpeningLocal(op.id, 'desired_door_width', e.target.value ? Number(e.target.value) : null)}
-                  onBlur={() => saveOpening(op)}
-                  disabled={!canEditOpenings}
-                  className={fieldCls}
-                  placeholder="Ширина, мм"
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Если задано — рек. проём считается от желаемой двери (иначе — от рекомендованной).
-              </p>
-            </div>
-
-            {/* Текст рекомендации — от желаемой двери (если есть) или от рек. двери */}
+            {/* Текст рекомендации — от рекомендуемой двери */}
             {(() => {
-              const doorH = op.desired_door_height || op.recommended_door_height
-              const doorW = op.desired_door_width || op.recommended_door_width
-              const text = buildRecommendationText(op.actual_height, op.actual_width, doorH, doorW)
+              const text = buildRecommendationText(op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width)
               if (!text) return null
               return (
                 <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">

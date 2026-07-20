@@ -192,8 +192,6 @@ export interface MeasurementData {
   recommended_door_width: number | null
   recommended_opening_height: number | null
   recommended_opening_width: number | null
-  desired_door_height: number | null
-  desired_door_width: number | null
   opening_type: string
   notes: string
   recommendation_text: string

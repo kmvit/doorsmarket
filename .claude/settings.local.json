@@ -71,7 +71,8 @@
       "Bash(venv/bin/python manage.py shell -c ' *)",
       "Bash(venv/bin/python manage.py check_moscow_service_overdue)",
       "Bash(venv/bin/python manage.py cleanup_old_complaint_files --dry-run)",
-      "Bash(venv/bin/python manage.py cleanup_old_complaint_files)"
+      "Bash(venv/bin/python manage.py cleanup_old_complaint_files)",
+      "Bash(venv/bin/python manage.py test orders)"
     ]
   }
 }

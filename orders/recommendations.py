@@ -41,21 +41,6 @@ def calculate_opening_recommendation(
     return rec_h, rec_w
 
 
-def calculate_opening_recommendation_with_desired(
-    desired_h: Optional[int],
-    desired_w: Optional[int],
-    rec_door_h: Optional[int],
-    rec_door_w: Optional[int],
-) -> Tuple[Optional[int], Optional[int]]:
-    """
-    Рек. проём с учётом желаемого размера двери.
-    Если СМ ввёл «желаемый размер двери» — считаем от него; иначе — от рассчитанной рек. двери.
-    """
-    h_source = desired_h or rec_door_h
-    w_source = desired_w or rec_door_w
-    return calculate_opening_recommendation(h_source, w_source)
-
-
 # --- Текстовые рекомендации (Лист 7 ТЗ) ---
 
 def build_recommendation_text(
@@ -65,7 +50,8 @@ def build_recommendation_text(
     door_w: Optional[int],
 ) -> str:
     """
-    Строит человекочитаемые рекомендации для проёма.
+    Строит рекомендации для проёма в кратком виде:
+    «Увеличить проём по высоте до 2570, уменьшить проём по ширине до 900».
     Пороги по ТЗ (Лист 7):
         - высота: проём не превышает дверь на 60 мм → увеличить
         - высота: проём превышает дверь на 80 мм → уменьшить
@@ -77,34 +63,21 @@ def build_recommendation_text(
     if opening_h is not None and door_h is not None:
         delta_h = opening_h - door_h
         if delta_h < 60:
-            parts.append(
-                f'Высота проёма ({opening_h} мм) недостаточна. '
-                f'Увеличьте проём до {door_h + 70} (дверь +70) '
-                f'или уменьшите дверь до {opening_h - 70} (проём −70).'
-            )
+            parts.append(f'увеличить проём по высоте до {door_h + 70}')
         elif delta_h > 80:
-            parts.append(
-                f'Высота проёма ({opening_h} мм) избыточна. '
-                f'Уменьшите проём до {door_h + 70} (дверь +70) '
-                f'или увеличьте дверь до {opening_h - 70} (проём −70).'
-            )
+            parts.append(f'уменьшить проём по высоте до {door_h + 70}')
 
     if opening_w is not None and door_w is not None:
         delta_w = opening_w - door_w
         if delta_w < 90:
-            parts.append(
-                f'Ширина проёма ({opening_w} мм) недостаточна. '
-                f'Увеличьте проём до {door_w + 100} (дверь +100) '
-                f'или уменьшите дверь до {opening_w - 100} (проём −100).'
-            )
+            parts.append(f'увеличить проём по ширине до {door_w + 100}')
         elif delta_w > 105:
-            parts.append(
-                f'Ширина проёма ({opening_w} мм) избыточна. '
-                f'Уменьшите проём до {door_w + 100} (дверь +100) '
-                f'или увеличьте дверь до {opening_w - 100} (проём −100).'
-            )
+            parts.append(f'уменьшить проём по ширине до {door_w + 100}')
 
-    return ' '.join(parts)
+    if not parts:
+        return ''
+    text = ', '.join(parts)
+    return text[0].upper() + text[1:]
 
 
 # --- Валидации ---
@@ -115,11 +88,7 @@ def validate_lift_required(openings: List[Dict[str, Any]]) -> bool:
     Возвращает True, если требуется указание лифта.
     """
     for op in openings:
-        h = (
-            op.get('actual_height')
-            or op.get('desired_door_height')
-            or op.get('recommended_door_height')
-        )
+        h = op.get('actual_height') or op.get('recommended_door_height')
         if h and int(h) > 2300:
             return True
     return False

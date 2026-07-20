@@ -17,7 +17,7 @@ const OrderCreate = () => {
   const [salons, setSalons] = useState<Salon[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<CreateTab>('manual')
+  const [tab, setTab] = useState<CreateTab>('kp')
   const [nextActionText, setNextActionText] = useState('')
   const [nextActionDueAt, setNextActionDueAt] = useState('')
   const [nextActionError, setNextActionError] = useState(false)
@@ -106,17 +106,17 @@ const OrderCreate = () => {
       <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-6 max-w-md">
         <button
           type="button"
-          onClick={() => setTab('manual')}
-          className={`flex-1 px-3 py-2 rounded-lg transition-all ${tab === 'manual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Вручную
-        </button>
-        <button
-          type="button"
           onClick={() => setTab('kp')}
           className={`flex-1 px-3 py-2 rounded-lg transition-all ${tab === 'kp' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
           Загрузить КП
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('manual')}
+          className={`flex-1 px-3 py-2 rounded-lg transition-all ${tab === 'manual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Вручную
         </button>
       </div>
 

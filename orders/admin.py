@@ -70,7 +70,7 @@ class OrderActionReminderAdmin(admin.ModelAdmin):
 class MeasurementOpeningInline(admin.TabularInline):
     model = MeasurementOpening
     extra = 0
-    fields = ('opening_number', 'room_name', 'door_type', 'actual_height', 'actual_width', 'actual_depth', 'opening_type', 'desired_door_height', 'desired_door_width')
+    fields = ('opening_number', 'room_name', 'door_type', 'actual_height', 'actual_width', 'actual_depth', 'opening_type', 'recommended_door_height', 'recommended_door_width')
 
 
 class MeasurementAttachmentInline(admin.TabularInline):

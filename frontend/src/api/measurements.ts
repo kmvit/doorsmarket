@@ -33,10 +33,9 @@ const emptyOpening = (measurementId: number, data: Partial<MeasurementOpening>):
   actual_depth: null,
   recommended_door_height: null,
   recommended_door_width: null,
+  recommended_door_is_manual: false,
   recommended_opening_height: null,
   recommended_opening_width: null,
-  desired_door_height: null,
-  desired_door_width: null,
   opening_type: '' as MeasurementOpening['opening_type'],
   opening_type_display: '',
   addon_width: null,
@@ -149,6 +148,10 @@ export const measurementsAPI = {
     })
   },
 
+  saveDraft: async (id: number): Promise<Measurement> => {
+    return requestWithQueue('POST', `/measurements/${id}/save_draft/`)
+  },
+
   markDone: async (id: number): Promise<Measurement> => {
     return requestWithQueue('POST', `/measurements/${id}/mark_done/`)
   },
@@ -165,7 +168,13 @@ export const measurementsAPI = {
 
   setSiteConditions: async (
     id: number,
-    data: { lift_available?: boolean | null; stairs_available?: boolean | null; floor_readiness?: string },
+    data: {
+      lift_available?: boolean | null
+      stairs_available?: boolean | null
+      carry_to_entrance?: boolean | null
+      floor_number?: string
+      floor_readiness?: string
+    },
   ): Promise<Measurement> => {
     try {
       const response = await apiClient.post(`/measurements/${id}/set_site_conditions/`, data)
@@ -398,40 +407,27 @@ export const calculateOpeningRecommendation = (
   w: doorW ? doorW + 100 : null,
 })
 
-// Рек. проём с учётом «желаемого размера двери»: если desired задан — от него,
-// иначе — от рекомендованной двери.
-export const calculateOpeningRecommendationWithDesired = (
-  desiredH: number | null,
-  desiredW: number | null,
-  recDoorH: number | null,
-  recDoorW: number | null,
-): { h: number | null; w: number | null } => {
-  const h = desiredH || recDoorH
-  const w = desiredW || recDoorW
-  return {
-    h: h ? h + 70 : null,
-    w: w ? w + 100 : null,
-  }
-}
-
 export const buildRecommendationText = (
   openingH: number | null,
   openingW: number | null,
   doorH: number | null,
   doorW: number | null,
 ): string => {
+  // Краткий формат: «Увеличить проём по высоте до 2570, уменьшить проём по ширине до 900»
   const parts: string[] = []
   if (openingH != null && doorH != null) {
     const d = openingH - doorH
-    if (d < 60) parts.push(`Высота проёма (${openingH} мм) недостаточна. Увеличьте проём до ${doorH + 70} (дверь +70) или уменьшите дверь до ${openingH - 70} (проём −70).`)
-    else if (d > 80) parts.push(`Высота проёма (${openingH} мм) избыточна. Уменьшите проём до ${doorH + 70} (дверь +70) или увеличьте дверь до ${openingH - 70} (проём −70).`)
+    if (d < 60) parts.push(`увеличить проём по высоте до ${doorH + 70}`)
+    else if (d > 80) parts.push(`уменьшить проём по высоте до ${doorH + 70}`)
   }
   if (openingW != null && doorW != null) {
     const d = openingW - doorW
-    if (d < 90) parts.push(`Ширина проёма (${openingW} мм) недостаточна. Увеличьте проём до ${doorW + 100} (дверь +100) или уменьшите дверь до ${openingW - 100} (проём −100).`)
-    else if (d > 105) parts.push(`Ширина проёма (${openingW} мм) избыточна. Уменьшите проём до ${doorW + 100} (дверь +100) или увеличьте дверь до ${openingW - 100} (проём −100).`)
+    if (d < 90) parts.push(`увеличить проём по ширине до ${doorW + 100}`)
+    else if (d > 105) parts.push(`уменьшить проём по ширине до ${doorW + 100}`)
   }
-  return parts.join(' ')
+  if (parts.length === 0) return ''
+  const text = parts.join(', ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 export const isInverso = (openingType: string): boolean =>
@@ -440,11 +436,10 @@ export const isInverso = (openingType: string): boolean =>
 export const validateLiftRequired = (
   openings: {
     actual_height: number | null
-    desired_door_height?: number | null
     recommended_door_height?: number | null
   }[],
 ): boolean =>
   openings.some((o) => {
-    const h = o.actual_height || o.desired_door_height || o.recommended_door_height
+    const h = o.actual_height || o.recommended_door_height
     return h != null && Number(h) > 2300
   })

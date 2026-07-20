@@ -25,11 +25,9 @@ export interface MeasurementOpening {
 
   recommended_door_height: number | null
   recommended_door_width: number | null
+  recommended_door_is_manual: boolean
   recommended_opening_height: number | null
   recommended_opening_width: number | null
-
-  desired_door_height: number | null
-  desired_door_width: number | null
 
   opening_type: OpeningType
   opening_type_display: string
@@ -59,6 +57,8 @@ export interface Measurement {
   signature_photo_url: string | null
   client_access_token: string
   short_code: string | null
+  is_draft: boolean
+  draft_saved_at: string | null
   is_done: boolean
   done_at: string | null
   is_processed: boolean
@@ -81,7 +81,11 @@ export interface Measurement {
   order_status: OrderStatus
   lift_available: boolean | null
   stairs_available: boolean | null
+  carry_to_entrance: boolean | null
+  floor_number: string
   floor_readiness: string
+  kp_number?: string | null
+  kp_date?: string | null
 }
 
 export interface MeasurementListItem {
@@ -95,6 +99,7 @@ export interface MeasurementListItem {
   desired_date: string | null
   payer_display: string
   measurement_date: string | null
+  is_draft: boolean
   is_done: boolean
   done_at: string | null
   is_processed: boolean
@@ -107,4 +112,4 @@ export interface MeasurementListItem {
   created_at: string
 }
 
-export type MeasurementFolder = 'unscheduled' | 'scheduled' | 'today' | 'done' | 'mine' | ''
+export type MeasurementFolder = 'unscheduled' | 'scheduled' | 'today' | 'drafts' | 'done' | 'mine' | ''

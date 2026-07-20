@@ -506,8 +506,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 item.door_type = op.door_type
             if op.opening_type and not item.opening_type:
                 item.opening_type = op.opening_type
-            new_h = op.desired_door_height or op.recommended_door_height
-            new_w = op.desired_door_width or op.recommended_door_width
+            new_h = op.recommended_door_height
+            new_w = op.recommended_door_width
             if new_h and not item.door_height:
                 item.door_height = new_h
             if new_w and not item.door_width:
@@ -812,6 +812,7 @@ MEASUREMENT_FOLDERS = [
     ('unscheduled', 'Назначить замер'),
     ('scheduled', 'Замер запланирован'),
     ('today', 'Сегодня замер'),
+    ('drafts', 'Черновики'),
     ('done', 'Замер выполнен'),
 ]
 
@@ -824,6 +825,8 @@ def apply_measurement_folder(qs, folder, user):
         return qs.filter(measurement_date__isnull=False, is_done=False)
     if folder == 'today':
         return qs.filter(measurement_date__date=timezone.localdate(), is_done=False)
+    if folder == 'drafts':
+        return qs.filter(is_draft=True, is_done=False)
     if folder == 'done':
         return qs.filter(is_done=True)
     if folder == 'mine':
@@ -837,7 +840,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['is_done', 'is_processed', 'service_manager']
+    filterset_fields = ['is_done', 'is_processed', 'is_draft', 'service_manager']
     search_fields = [
         'id', 'request__order__id', 'request__order__client_name',
         'request__order__address', 'request__order__kp_number',
@@ -970,9 +973,35 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             order.lift_available = data.get('lift_available')
         if 'stairs_available' in data:
             order.stairs_available = data.get('stairs_available')
+        if 'carry_to_entrance' in data:
+            order.carry_to_entrance = data.get('carry_to_entrance')
+        if 'floor_number' in data:
+            order.floor_number = (data.get('floor_number') or '')[:20]
         if 'floor_readiness' in data:
             order.floor_readiness = data.get('floor_readiness') or ''
-        order.save(update_fields=['lift_available', 'stairs_available', 'floor_readiness', 'updated_at'])
+        order.save(update_fields=[
+            'lift_available', 'stairs_available', 'carry_to_entrance',
+            'floor_number', 'floor_readiness', 'updated_at',
+        ])
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- Сохранить в черновиках (СМ) ----
+    @action(detail=True, methods=['post'])
+    def save_draft(self, request, pk=None):
+        """
+        СМ сохраняет замер в черновиках: данные уже сохранены автосохранением,
+        замер помечается черновиком, чтобы проверить и отредактировать позже.
+        SMS клиенту не отправляется, статус заказа не меняется.
+        """
+        m = self.get_object()
+        if m.is_done:
+            return Response(
+                {'detail': 'Замер уже выполнен — черновик недоступен.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m.is_draft = True
+        m.draft_saved_at = timezone.now()
+        m.save(update_fields=['is_draft', 'draft_saved_at', 'updated_at'])
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
     # ---- Отметить выполненным (СМ) ----
@@ -985,9 +1014,16 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 {'detail': 'Перед закрытием замера приложите план открывания.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Валидация: этаж обязателен
+        if not (m.request.order.floor_number or '').strip():
+            return Response(
+                {'detail': 'Перед закрытием замера укажите этаж в условиях объекта.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         m.is_done = True
         m.done_at = timezone.now()
-        m.save(update_fields=['is_done', 'done_at', 'updated_at'])
+        m.is_draft = False
+        m.save(update_fields=['is_done', 'done_at', 'is_draft', 'updated_at'])
         order = m.request.order
         order.status = OrderStatus.MEASUREMENT_DONE
         order.touch_activity(ActivityKind.MEASUREMENT_DONE, save=False)
@@ -1212,30 +1248,40 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
             ).order_by('-opening_number').first()
             serializer.validated_data['opening_number'] = (last.opening_number + 1) if last else 1
         instance = serializer.save()
-        self._recalc_recommendations(instance)
+        self._recalc_recommendations(instance, manual_door=self._door_edited_manually())
 
     def perform_update(self, serializer):
         instance = serializer.save()
-        self._recalc_recommendations(instance)
+        self._recalc_recommendations(instance, manual_door=self._door_edited_manually())
 
-    def _recalc_recommendations(self, op: MeasurementOpening):
+    def _door_edited_manually(self):
+        """Запрос содержит рек. размер двери — СМ редактирует его вручную."""
+        data = self.request.data or {}
+        return 'recommended_door_height' in data or 'recommended_door_width' in data
+
+    def _recalc_recommendations(self, op: MeasurementOpening, manual_door=False):
         """
         Авто-расчёт рекомендуемых размеров двери и проёма.
-        - Рек. дверь  = желаемый размер двери (если указан), иначе факт. проём − 70/−100.
-          Желаемые размеры — это то, что захотел клиент, поэтому именно они должны
-          попадать в «рек. дверь» и далее в заказ, а рекомендации — считаться под них.
-        - Рек. проём = рек. дверь + 70/+100.
+        - Рек. дверь = факт. проём − 70/−100, но СМ может отредактировать её вручную —
+          тогда авторасчёт двери отключается (пока СМ не очистит поля).
+        - Рек. проём = рек. дверь + 70/+100 — всегда от актуальной рек. двери.
         """
-        rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
-        op.recommended_door_height = op.desired_door_height or rec_dh
-        op.recommended_door_width = op.desired_door_width or rec_dw
+        if manual_door:
+            # СМ прислал рек. размер двери: непустой → ручной режим, пустой → снова авто
+            op.recommended_door_is_manual = bool(
+                op.recommended_door_height or op.recommended_door_width
+            )
+        if not op.recommended_door_is_manual:
+            rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
+            op.recommended_door_height = rec_dh
+            op.recommended_door_width = rec_dw
         rec_oh, rec_ow = calculate_opening_recommendation(
             op.recommended_door_height, op.recommended_door_width,
         )
         op.recommended_opening_height = rec_oh
         op.recommended_opening_width = rec_ow
         op.save(update_fields=[
-            'recommended_door_height', 'recommended_door_width',
+            'recommended_door_height', 'recommended_door_width', 'recommended_door_is_manual',
             'recommended_opening_height', 'recommended_opening_width',
         ])
 

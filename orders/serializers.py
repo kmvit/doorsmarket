@@ -130,8 +130,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if op is None:
             return None
         from .recommendations import build_recommendation_text
-        door_h = op.desired_door_height or op.recommended_door_height
-        door_w = op.desired_door_width or op.recommended_door_width
         return {
             'opening_id': op.id,
             'opening_number': op.opening_number,
@@ -144,12 +142,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'recommended_door_width': op.recommended_door_width,
             'recommended_opening_height': op.recommended_opening_height,
             'recommended_opening_width': op.recommended_opening_width,
-            'desired_door_height': op.desired_door_height,
-            'desired_door_width': op.desired_door_width,
             'opening_type': op.opening_type,
             'notes': op.notes,
             'recommendation_text': build_recommendation_text(
-                op.actual_height, op.actual_width, door_h, door_w,
+                op.actual_height, op.actual_width,
+                op.recommended_door_height, op.recommended_door_width,
             ),
         }
 
@@ -230,7 +227,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
-            'lift_available', 'stairs_available', 'floor_readiness', 'comment',
+            'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number',
+            'floor_readiness', 'comment',
             'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
             'attachments',
             'production_start_date', 'production_deadline', 'is_overdue',
@@ -269,7 +267,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'salon', 'kp_number', 'kp_date', 'client_name', 'contact_phone',
-            'address', 'lift_available', 'stairs_available', 'floor_readiness',
+            'address', 'lift_available', 'stairs_available', 'carry_to_entrance',
+            'floor_number', 'floor_readiness',
             'comment', 'status', 'items', 'addons',
             'production_start_date', 'production_deadline',
             'next_action_text', 'next_action_due_at',
@@ -507,9 +506,8 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'id', 'measurement', 'order_item', 'opening_number', 'room_name',
             'door_type', 'door_type_display',
             'actual_height', 'actual_width', 'actual_depth',
-            'recommended_door_height', 'recommended_door_width',
+            'recommended_door_height', 'recommended_door_width', 'recommended_door_is_manual',
             'recommended_opening_height', 'recommended_opening_width',
-            'desired_door_height', 'desired_door_width',
             'opening_type', 'opening_type_display',
             'addon_width',
             'face_trim_qty', 'face_trim_comment',
@@ -517,7 +515,7 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'extra_hardware', 'threshold', 'notes',
             'attachments', 'inverso_warning', 'recommendation_text',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'recommended_door_is_manual']
 
     def get_inverso_warning(self, obj):
         from .recommendations import validate_inverso_warning, inverso_warning_text
@@ -525,10 +523,9 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
 
     def get_recommendation_text(self, obj):
         from .recommendations import build_recommendation_text
-        door_h = obj.desired_door_height or obj.recommended_door_height
-        door_w = obj.desired_door_width or obj.recommended_door_width
         return build_recommendation_text(
-            obj.actual_height, obj.actual_width, door_h, door_w,
+            obj.actual_height, obj.actual_width,
+            obj.recommended_door_height, obj.recommended_door_width,
         )
 
 
@@ -542,7 +539,6 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
             'actual_height', 'actual_width', 'actual_depth',
             'recommended_door_height', 'recommended_door_width',
             'recommended_opening_height', 'recommended_opening_width',
-            'desired_door_height', 'desired_door_width',
             'opening_type', 'addon_width',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
@@ -567,9 +563,13 @@ class MeasurementSerializer(serializers.ModelSerializer):
     lift_impossible_warning = serializers.SerializerMethodField()
     order_status = serializers.CharField(source='request.order.status', read_only=True)
     order_attachments = serializers.SerializerMethodField()
+    kp_number = serializers.CharField(source='request.order.kp_number', read_only=True)
+    kp_date = serializers.DateField(source='request.order.kp_date', read_only=True)
     # Условия объекта (хранятся в заказе, заполняет СМ при замере)
     lift_available = serializers.BooleanField(source='request.order.lift_available', read_only=True, allow_null=True)
     stairs_available = serializers.BooleanField(source='request.order.stairs_available', read_only=True, allow_null=True)
+    carry_to_entrance = serializers.BooleanField(source='request.order.carry_to_entrance', read_only=True, allow_null=True)
+    floor_number = serializers.CharField(source='request.order.floor_number', read_only=True, allow_blank=True)
     floor_readiness = serializers.CharField(source='request.order.floor_readiness', read_only=True, allow_blank=True)
 
     class Meta:
@@ -577,15 +577,18 @@ class MeasurementSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'request', 'order_id', 'service_manager', 'service_manager_name',
             'measurement_date', 'signature_photo', 'signature_photo_url',
-            'client_access_token', 'short_code', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'client_access_token', 'short_code', 'is_draft', 'draft_saved_at',
+            'is_done', 'done_at', 'is_processed', 'processed_at',
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
             'opening_plan_url', 'lift_required', 'lift_impossible_warning', 'order_status',
-            'lift_available', 'stairs_available', 'floor_readiness',
+            'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number', 'floor_readiness',
+            'kp_number', 'kp_date',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
+            'is_draft', 'draft_saved_at',
             'is_processed', 'processed_at', 'client_access_token', 'short_code',
             'service_manager',
         ]
@@ -613,7 +616,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
     def get_lift_required(self, obj):
         from .recommendations import validate_lift_required
         ops = list(obj.openings.values(
-            'actual_height', 'desired_door_height', 'recommended_door_height',
+            'actual_height', 'recommended_door_height',
         ))
         return validate_lift_required(ops)
 
@@ -653,7 +656,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
             'id', 'order_id', 'client_name', 'address',
             'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer_display',
-            'measurement_date', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',
         ]

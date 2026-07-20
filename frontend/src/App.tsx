@@ -26,6 +26,7 @@ import OrderReplaceKp from './pages/Orders/OrderReplaceKp'
 import Workshop from './pages/Orders/Workshop'
 import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
+import MeasurementBlankPrint from './pages/Measurements/MeasurementBlankPrint'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import Layout from './components/layout/Layout'
 
@@ -286,6 +287,14 @@ function App() {
                     <Layout>
                       <MeasurementForm />
                     </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/measurements/:id/print"
+                element={
+                  <ProtectedRoute>
+                    <MeasurementBlankPrint />
                   </ProtectedRoute>
                 }
               />

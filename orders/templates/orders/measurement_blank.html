@@ -64,6 +64,8 @@
         <td class="k">Телефон</td><td class="v">{{ req.contact_phone|default:"—" }}</td></tr>
     <tr><td class="k">Лифт</td><td class="v">{% if order.lift_available is True %}есть{% elif order.lift_available is False %}нет{% else %}—{% endif %}</td>
         <td class="k">Лестница</td><td class="v">{% if order.stairs_available is True %}есть{% elif order.stairs_available is False %}нет{% else %}—{% endif %}</td></tr>
+    <tr><td class="k">Пронос до подъезда</td><td class="v">{% if order.carry_to_entrance is True %}нужен{% elif order.carry_to_entrance is False %}не нужен{% else %}—{% endif %}</td>
+        <td class="k">Этаж</td><td class="v">{{ order.floor_number|default:"—" }}</td></tr>
     <tr><td class="k">Готовность пола</td><td class="v">{{ order.floor_readiness|default:"—" }}</td>
         <td class="k">Проёмов</td><td class="v">{{ openings|length }}</td></tr>
   </table>
@@ -71,10 +73,10 @@
   <div class="section-title">Проёмы</div>
   <table class="openings">
     <colgroup>
-      <col style="width:2.5%"><col style="width:7.5%"><col style="width:6.5%"><col style="width:9%">
-      <col style="width:6.5%"><col style="width:6.5%"><col style="width:6.5%"><col style="width:10%">
-      <col style="width:9%"><col style="width:5%"><col style="width:6.5%"><col style="width:6.5%">
-      <col style="width:7.5%"><col style="width:4.5%"><col style="width:6%">
+      <col style="width:2.5%"><col style="width:8%"><col style="width:7%"><col style="width:9.5%">
+      <col style="width:7.5%"><col style="width:7.5%"><col style="width:10.5%">
+      <col style="width:9.5%"><col style="width:5%"><col style="width:7%"><col style="width:7%">
+      <col style="width:8%"><col style="width:5%"><col style="width:6%">
     </colgroup>
     <thead>
       <tr>
@@ -83,7 +85,6 @@
         <th>Тип двери</th>
         <th>Факт. проём<br>В×Ш×Гл, мм</th>
         <th>Рек. дверь<br>В×Ш</th>
-        <th>Желаемая дверь<br>В×Ш</th>
         <th>Рек. проём<br>В×Ш</th>
         <th>Доработать<br>размеры проёмов</th>
         <th>Открывание</th>
@@ -103,7 +104,6 @@
         <td>{{ op.get_door_type_display|default:"—" }}</td>
         <td>{{ op.actual_height|default:"—" }}×{{ op.actual_width|default:"—" }}{% if op.actual_depth %}×{{ op.actual_depth }}{% endif %}</td>
         <td>{{ op.recommended_door_height|default:"—" }}×{{ op.recommended_door_width|default:"—" }}</td>
-        <td>{{ op.desired_door_height|default:"—" }}×{{ op.desired_door_width|default:"—" }}</td>
         <td>{{ op.recommended_opening_height|default:"—" }}×{{ op.recommended_opening_width|default:"—" }}</td>
         <td>{% if op.needs_rework %}<span class="warn">доработать проём до рекомендуемого размера</span>{% else %}—{% endif %}</td>
         <td>{{ op.get_opening_type_display|default:"—" }}</td>
@@ -115,7 +115,7 @@
         <td class="left">{{ op.notes|default:"—" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="15" class="muted">Проёмы не заполнены</td></tr>
+      <tr><td colspan="14" class="muted">Проёмы не заполнены</td></tr>
       {% endfor %}
     </tbody>
   </table>

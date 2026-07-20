@@ -70,7 +70,7 @@ class Phase35FlowTest(TestCase):
         op1 = MeasurementOpening.objects.get(id=op1_id)
         self.assertEqual(op1.recommended_door_height, 2080 - 70)   # 2010
         self.assertEqual(op1.recommended_door_width, 910 - 100)    # 810
-        # без desired — рек.проём от рек.двери: 2010+70=2080, 810+100=910
+        # авторасчёт — рек.проём от рек.двери: 2010+70=2080, 810+100=910
         self.assertEqual(op1.recommended_opening_height, 2080)
         self.assertEqual(op1.recommended_opening_width, 910)
 
@@ -82,14 +82,42 @@ class Phase35FlowTest(TestCase):
         self.assertEqual(r.data['opening_number'], 2)
         op2_id = r.data['id']
 
-        # 4. Желаемый размер двери на op1 → рек.проём считается от него
+        # 4. СМ вручную редактирует рек. размер двери на op1 → рек.проём считается от него,
+        #    авторасчёт двери отключается
         r = sm_client.patch(f'/api/v1/measurement-openings/{op1_id}/', {
-            'desired_door_height': 1900, 'desired_door_width': 700,
+            'recommended_door_height': 1900, 'recommended_door_width': 700,
         }, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         op1.refresh_from_db()
+        self.assertTrue(op1.recommended_door_is_manual)
+        self.assertEqual(op1.recommended_door_height, 1900)
+        self.assertEqual(op1.recommended_door_width, 700)
         self.assertEqual(op1.recommended_opening_height, 1900 + 70)  # 1970
         self.assertEqual(op1.recommended_opening_width, 700 + 100)   # 800
+
+        # 4b. Изменение факт. размеров НЕ затирает ручную рек. дверь
+        r = sm_client.patch(f'/api/v1/measurement-openings/{op1_id}/', {
+            'actual_height': 2090,
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        op1.refresh_from_db()
+        self.assertEqual(op1.recommended_door_height, 1900, 'ручная рек. дверь сохраняется')
+
+        # 4c. Очистка рек. двери возвращает авторасчёт (от факта 2090×910)
+        r = sm_client.patch(f'/api/v1/measurement-openings/{op1_id}/', {
+            'recommended_door_height': None, 'recommended_door_width': None,
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        op1.refresh_from_db()
+        self.assertFalse(op1.recommended_door_is_manual)
+        self.assertEqual(op1.recommended_door_height, 2090 - 70)  # 2020
+        self.assertEqual(op1.recommended_door_width, 910 - 100)   # 810
+
+        # возвращаем ручной размер для дальнейших шагов теста
+        sm_client.patch(f'/api/v1/measurement-openings/{op1_id}/', {
+            'recommended_door_height': 1900, 'recommended_door_width': 700,
+        }, format='json')
+        op1.refresh_from_db()
 
         # 5. СМ закрывает замер (нужен план открывания → приложим через mark_done validation;
         #    у MR нет opening_plan, поэтому отметим вручную, имитируя наличие вложения)
@@ -119,7 +147,7 @@ class Phase35FlowTest(TestCase):
         r = mgr_client.post(f'/api/v1/orders/{self.order.id}/apply_measurement_to_items/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.item1.refresh_from_db()
-        # door_height = desired(1900) ?? rec_door; door_width = desired(700)
+        # door = рек. дверь из замера (заданная СМ вручную)
         self.assertEqual(self.item1.door_height, 1900)
         self.assertEqual(self.item1.door_width, 700)
         self.assertEqual(self.item1.door_type, 'interior')  # тип из замера перезаписал
@@ -127,7 +155,7 @@ class Phase35FlowTest(TestCase):
         self.assertEqual(self.item1.recommended_opening_height, 1970)
         self.assertEqual(self.item1.recommended_opening_width, 800)
 
-        # item2: desired не задан → door = recommended_door (2100-70=2030, 950-100=850)
+        # item2: рек. дверь автоматическая (2100-70=2030, 950-100=850)
         self.item2.refresh_from_db()
         self.assertEqual(self.item2.door_height, 2030)
         self.assertEqual(self.item2.door_width, 850)
@@ -137,7 +165,7 @@ class Phase35FlowTest(TestCase):
         items = {i['opening_number']: i for i in r.data['items']}
         md = items[1]['measurement_data']
         self.assertIsNotNone(md)
-        self.assertEqual(md['actual_height'], 2080)
+        self.assertEqual(md['actual_height'], 2090)
         self.assertEqual(md['opening_id'], op1_id)
 
         # 9. Точечный PATCH позиции через /order-items/ (кнопка «Изменить размер двери»)

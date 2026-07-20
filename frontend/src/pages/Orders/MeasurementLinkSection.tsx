@@ -313,10 +313,10 @@ const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }:
                       Факт. проём: {op.actual_height ?? '—'}×{op.actual_width ?? '—'}
                       {op.actual_depth ? `×${op.actual_depth}` : ''} мм
                     </div>
-                    <div>Рек. дверь: {op.recommended_door_height ?? '—'}×{op.recommended_door_width ?? '—'} мм</div>
-                    {(op.desired_door_height || op.desired_door_width) && (
-                      <div>Желаемая дверь: {op.desired_door_height ?? '—'}×{op.desired_door_width ?? '—'} мм</div>
-                    )}
+                    <div>
+                      Рек. дверь: {op.recommended_door_height ?? '—'}×{op.recommended_door_width ?? '—'} мм
+                      {op.recommended_door_is_manual ? ' (задана СМ)' : ''}
+                    </div>
                     <div>
                       Открывание: {op.opening_type_display || op.opening_type || '—'}
                       {op.door_type_display ? ` · ${op.door_type_display}` : ''}

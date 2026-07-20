@@ -98,6 +98,8 @@ class Order(models.Model):
     address = models.CharField(max_length=500, blank=True, verbose_name='Адрес')
     lift_available = models.BooleanField(null=True, blank=True, verbose_name='Есть лифт')
     stairs_available = models.BooleanField(null=True, blank=True, verbose_name='Есть лестница')
+    carry_to_entrance = models.BooleanField(null=True, blank=True, verbose_name='Нужен пронос до подъезда')
+    floor_number = models.CharField(max_length=20, blank=True, verbose_name='Этаж')
     floor_readiness = models.TextField(blank=True, verbose_name='Готовность пола')
     comment = models.TextField(blank=True, verbose_name='Комментарий')
     status = models.CharField(
@@ -514,6 +516,12 @@ class Measurement(models.Model):
         verbose_name='Короткий код для SMS-ссылки',
         help_text='Короткая ссылка /z/{код} → PDF-бланк (для SMS клиенту)',
     )
+    is_draft = models.BooleanField(
+        default=False,
+        verbose_name='Черновик',
+        help_text='СМ сохранил замер в черновиках, чтобы проверить и отправить позже',
+    )
+    draft_saved_at = models.DateTimeField(null=True, blank=True, verbose_name='Сохранён в черновиках')
     is_done = models.BooleanField(default=False, verbose_name='Замер выполнен')
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
@@ -576,15 +584,17 @@ class MeasurementOpening(models.Model):
     actual_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая ширина, мм')
     actual_depth = models.PositiveIntegerField(null=True, blank=True, verbose_name='Фактическая глубина, мм')
 
-    # Авто-рекомендации (рассчитываются на сервере и клиенте)
+    # Рекомендации: рек. дверь считается автоматически (проём −70/−100),
+    # но СМ может отредактировать её вручную — тогда авторасчёт двери отключается,
+    # а рек. проём и все рекомендации считаются от размера, заданного СМ.
     recommended_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота двери')
     recommended_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина двери')
+    recommended_door_is_manual = models.BooleanField(
+        default=False,
+        verbose_name='Рек. размер двери задан СМ вручную',
+    )
     recommended_opening_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота проёма')
     recommended_opening_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина проёма')
-
-    # Желаемый размер двери (вводит СМ — заменяет старую логику change_target+new_door_*)
-    desired_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Желаемая высота двери')
-    desired_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Желаемая ширина двери')
 
     # Открывание (может переопределять КП-открывание)
     opening_type = models.CharField(
