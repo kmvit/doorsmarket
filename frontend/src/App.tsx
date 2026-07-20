@@ -12,6 +12,7 @@ import ComplaintHistory from './pages/Complaints/ComplaintHistory'
 import InstallerTasks from './pages/InstallerTasks'
 import ShippingRegistryPage from './pages/ShippingRegistry'
 import ShippingRegistryDetail from './pages/ShippingRegistryDetail'
+import ReturnRegistryPage from './pages/ReturnRegistry'
 import ManagerProduction from './pages/ManagerProduction'
 import Notifications from './pages/Notifications'
 import Users from './pages/Users'
@@ -154,6 +155,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <ShippingRegistryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/return-registry"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ReturnRegistryPage />
                     </Layout>
                   </ProtectedRoute>
                 }

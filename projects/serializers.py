@@ -6,6 +6,7 @@ from .models import (
     ComplaintAttachment,
     ComplaintComment,
     ShippingRegistry,
+    ReturnRegistry,
     Notification,
     ProductionSite,
     ComplaintReason,
@@ -166,6 +167,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
             'planned_installation_date',
             'planned_shipping_date',
             'production_deadline',
+            'moscow_service_deadline',
         ]
 
 
@@ -288,13 +290,27 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             
             # Реестр отгрузки
             'added_to_shipping_registry_at',
-            
+
+            # Возврат товара на фабрику
+            'return_required',
+            'return_product_name',
+            'return_requested_at',
+            'return_planned_date',
+
+            # Сервисная заявка Москва
+            'moscow_service_at',
+            'moscow_service_deadline',
+
             # Вложенные объекты
             'defective_products',
             'attachments',
             'comments',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at',
+            'return_required', 'return_product_name', 'return_requested_at', 'return_planned_date',
+            'moscow_service_at', 'moscow_service_deadline',
+        ]
     
     def get_commercial_offer_url(self, obj):
         """Возвращает URL коммерческого предложения"""
@@ -523,6 +539,31 @@ class ShippingRegistrySerializer(serializers.ModelSerializer):
             'actual_shipping_date',
         ]
         read_only_fields = ['id', 'created_at']
+
+
+class ReturnRegistrySerializer(serializers.ModelSerializer):
+    """Сериализатор для реестра на возврат"""
+    complaint = ComplaintListSerializer(read_only=True)
+    manager = UserSerializer(read_only=True)
+    return_status_display = serializers.CharField(source='get_return_status_display', read_only=True)
+
+    class Meta:
+        model = ReturnRegistry
+        fields = [
+            'id',
+            'complaint',
+            'created_at',
+            'order_number',
+            'manager',
+            'client_name',
+            'product_name',
+            'return_status',
+            'return_status_display',
+            'planned_return_date',
+            'actual_return_date',
+            'comments',
+        ]
+        read_only_fields = ['id', 'created_at', 'complaint', 'order_number', 'manager', 'client_name']
 
 
 class NotificationSerializer(serializers.ModelSerializer):

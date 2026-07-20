@@ -57,7 +57,9 @@ class ComplaintStatus(models.TextChoices):
     FACTORY_REJECTED = 'factory_rejected', 'Отказ'
     SM_RESPONSE_OVERDUE = 'sm_response_overdue', 'СМ просрочил ответ'
     UNDER_SM_REVIEW = 'under_sm_review', 'На проверке у СМ'
-    
+    MOSCOW_SERVICE = 'moscow_service', 'Сервисная заявка Москва'
+    MOSCOW_SERVICE_OVERDUE = 'moscow_service_overdue', 'Просрочка сервиса Москва'
+
     # Планирование
     WAITING_INSTALLER_DATE = 'waiting_installer_date', 'Ожидает дату от монтажника'
     NEEDS_PLANNING = 'needs_planning', 'Нужно запланировать'
@@ -248,7 +250,40 @@ class Complaint(models.Model):
         null=True,
         verbose_name='Добавлено в реестр на отгрузку'
     )
-    
+
+    # Сервисная заявка Москва
+    moscow_service_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Дата создания сервисной заявки Москва'
+    )
+    moscow_service_deadline = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Срок решения по сервисной заявке Москва'
+    )
+
+    # Возврат товара на фабрику
+    return_required = models.BooleanField(
+        default=False,
+        verbose_name='Требуется возврат товара'
+    )
+    return_product_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name='Наименование товара на возврат'
+    )
+    return_requested_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Дата запроса возврата'
+    )
+    return_planned_date = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Запланированная дата отгрузки возврата'
+    )
+
     class Meta:
         verbose_name = 'Рекламация'
         verbose_name_plural = 'Рекламации'
@@ -1227,6 +1262,147 @@ class Complaint(models.Model):
                     exc_info=True,
                 )
     
+    def set_moscow_service(self, deadline=None):
+        """ОР переводит рекламацию в сервисную заявку Москва (без производства и отгрузки)"""
+        is_new_request = self.status not in (
+            ComplaintStatus.MOSCOW_SERVICE,
+            ComplaintStatus.MOSCOW_SERVICE_OVERDUE,
+        )
+
+        if not self.moscow_service_at:
+            self.moscow_service_at = timezone.now()
+
+        # Если дата не указана — срок по умолчанию 2 недели с момента нажатия кнопки
+        self.moscow_service_deadline = deadline or (timezone.now() + timedelta(days=14))
+
+        # Если срок в будущем — заявка активна (в т.ч. снимаем просрочку при переносе даты)
+        if self.moscow_service_deadline > timezone.now():
+            self.status = ComplaintStatus.MOSCOW_SERVICE
+        else:
+            self.status = ComplaintStatus.MOSCOW_SERVICE_OVERDUE
+
+        self.save(update_fields=['status', 'moscow_service_at', 'moscow_service_deadline'])
+
+        if is_new_request:
+            deadline_str = self.moscow_service_deadline.strftime('%d.%m.%Y')
+            for recipient in {self.initiator, self._get_service_manager()}:
+                if recipient:
+                    self._create_notification(
+                        recipient=recipient,
+                        notification_type='pc',
+                        title='Сервисная заявка Москва',
+                        message=f'По рекламации #{self.id} (заказ {self.order_number}) оформлена сервисная заявка Москва. Срок решения: {deadline_str}. Производство и отгрузка не требуются.'
+                    )
+
+    def check_moscow_service_overdue(self):
+        """Проверка просрочки сервисной заявки Москва (вызывается из API и cron)"""
+        if not self.moscow_service_deadline:
+            return False
+
+        now = timezone.now()
+
+        if self.status == ComplaintStatus.MOSCOW_SERVICE and self.moscow_service_deadline < now:
+            self.status = ComplaintStatus.MOSCOW_SERVICE_OVERDUE
+            self.save(update_fields=['status'])
+
+            # Уведомляем всех сотрудников ОР о просрочке
+            from users.models import User
+            for or_user in User.objects.filter(role='complaint_department'):
+                self._create_notification(
+                    recipient=or_user,
+                    notification_type='pc',
+                    title='⚠️ Просрочка сервиса Москва',
+                    message=f'Рекламация #{self.id} (заказ {self.order_number}): сервисная заявка Москва не решена в срок ({self.moscow_service_deadline.strftime("%d.%m.%Y")}). Клиент: {self.client_name}'
+                )
+            return True
+
+        # Дату перенесли в будущее — снимаем просрочку
+        if self.status == ComplaintStatus.MOSCOW_SERVICE_OVERDUE and self.moscow_service_deadline >= now:
+            self.status = ComplaintStatus.MOSCOW_SERVICE
+            self.save(update_fields=['status'])
+            return True
+
+        return False
+
+    def resolve_moscow_service(self):
+        """ОР отмечает сервисную заявку Москва решённой"""
+        self.status = ComplaintStatus.COMPLETED
+        self.completion_date = timezone.now()
+        self.save(update_fields=['status', 'completion_date'])
+
+        for recipient in {self.initiator, self._get_service_manager()}:
+            if recipient:
+                self._create_notification(
+                    recipient=recipient,
+                    notification_type='pc',
+                    title='Сервисная заявка Москва решена',
+                    message=f'По рекламации #{self.id} (заказ {self.order_number}) проблема решена сервисом Москва'
+                )
+
+    def request_return(self, product_name):
+        """ОР отмечает, что требуется возврат товара на фабрику"""
+        self.return_required = True
+        self.return_product_name = product_name
+        self.return_requested_at = timezone.now()
+        self.save(update_fields=['return_required', 'return_product_name', 'return_requested_at'])
+
+        # Задача менеджеру: отправить товар на фабрику
+        if self.manager:
+            self._create_notification(
+                recipient=self.manager,
+                notification_type='pc',
+                title='Требуется возврат товара на фабрику',
+                message=f'По рекламации #{self.id} (заказ {self.order_number}) требуется отправить товар на фабрику: {product_name}. Запланируйте отгрузку.'
+            )
+            self._create_notification(
+                recipient=self.manager,
+                notification_type='push',
+                title='Возврат товара на фабрику',
+                message=f'Рекламация #{self.id}: отправьте товар на фабрику ({product_name})'
+            )
+
+    def plan_return_shipping(self, return_date):
+        """Менеджер планирует отгрузку возврата — рекламация попадает в реестр на возврат"""
+        self.return_planned_date = return_date
+        self.save(update_fields=['return_planned_date'])
+
+        entry = self.add_to_return_registry()
+
+        # Уведомляем инициатора запроса возврата (ОР)
+        if self.recipient and self.recipient != self.manager:
+            self._create_notification(
+                recipient=self.recipient,
+                notification_type='pc',
+                title='Отгрузка возврата запланирована',
+                message=f'По рекламации #{self.id} (заказ {self.order_number}) менеджер запланировал отгрузку возврата на {return_date.strftime("%d.%m.%Y")}'
+            )
+
+        return entry
+
+    def add_to_return_registry(self):
+        """Добавляет рекламацию в реестр на возврат"""
+        from .models import ReturnRegistry
+
+        # Проверяем, нет ли уже записи
+        try:
+            entry = self.return_entry
+            # Обновляем дату, если менеджер перепланировал отгрузку
+            if entry.planned_return_date != self.return_planned_date:
+                entry.planned_return_date = self.return_planned_date
+                entry.save(update_fields=['planned_return_date'])
+            return entry
+        except ReturnRegistry.DoesNotExist:
+            pass
+
+        return ReturnRegistry.objects.create(
+            complaint=self,
+            order_number=self.order_number,
+            manager=self.manager,
+            client_name=self.client_name,
+            product_name=self.return_product_name,
+            planned_return_date=self.return_planned_date,
+        )
+
     def plan_installation_by_sm(self, installer, installation_date):
         """СМ планирует монтаж"""
         self.installer_assigned = installer
@@ -1654,6 +1830,66 @@ class ShippingRegistry(models.Model):
         if self.complaint and not self.pk:
             self.order_type = self.OrderType.COMPLAINT
         super().save(*args, **kwargs)
+
+
+class ReturnRegistry(models.Model):
+    """Реестр на возврат товара на фабрику"""
+
+    class ReturnStatus(models.TextChoices):
+        """Статус возврата"""
+        PENDING = 'pending', 'Ожидает отправки'
+        SENT = 'sent', 'Отправлено на фабрику'
+        CANCELLED = 'cancelled', 'Отменено'
+
+    # Связь с рекламацией
+    complaint = models.OneToOneField(
+        'Complaint',
+        on_delete=models.CASCADE,
+        related_name='return_entry',
+        verbose_name='Рекламация'
+    )
+
+    # Основная информация
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата добавления в реестр')
+    order_number = models.CharField(max_length=100, verbose_name='Номер заказа')
+    manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='return_orders',
+        verbose_name='Менеджер',
+        limit_choices_to={'role': 'manager'}
+    )
+    client_name = models.CharField(max_length=255, verbose_name='Клиент')
+    product_name = models.CharField(max_length=255, verbose_name='Наименование товара')
+
+    # Статус и даты
+    return_status = models.CharField(
+        max_length=20,
+        choices=ReturnStatus.choices,
+        default=ReturnStatus.PENDING,
+        verbose_name='Статус возврата'
+    )
+    planned_return_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Запланированная дата отгрузки возврата'
+    )
+    actual_return_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Фактическая дата отгрузки возврата'
+    )
+
+    # Дополнительно
+    comments = models.TextField(blank=True, verbose_name='Комментарии')
+
+    class Meta:
+        verbose_name = 'Запись в реестре возврата'
+        verbose_name_plural = 'Реестр на возврат'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Возврат {self.order_number} - {self.product_name}"
 
 
 class Notification(models.Model):

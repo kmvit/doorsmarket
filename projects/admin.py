@@ -7,6 +7,7 @@ from .models import (
     ComplaintAttachment,
     ComplaintComment,
     ShippingRegistry,
+    ReturnRegistry,
     Notification
 )
 
@@ -265,6 +266,35 @@ class ShippingRegistryAdmin(admin.ModelAdmin):
         }),
         ('Доставка', {
             'fields': ('planned_shipping_date', 'actual_shipping_date', 'delivery_status', 'client_rating')
+        }),
+        ('Дополнительно', {
+            'fields': ('comments',)
+        }),
+    )
+
+
+@admin.register(ReturnRegistry)
+class ReturnRegistryAdmin(admin.ModelAdmin):
+    list_display = (
+        'order_number',
+        'manager',
+        'client_name',
+        'product_name',
+        'return_status',
+        'planned_return_date',
+        'created_at'
+    )
+    list_filter = ('return_status', 'created_at')
+    search_fields = ('order_number', 'client_name', 'product_name')
+    readonly_fields = ('created_at',)
+    ordering = ('-created_at',)
+
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('complaint', 'order_number', 'manager', 'client_name', 'product_name')
+        }),
+        ('Возврат', {
+            'fields': ('return_status', 'planned_return_date', 'actual_return_date')
         }),
         ('Дополнительно', {
             'fields': ('comments',)

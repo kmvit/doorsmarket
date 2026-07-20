@@ -35,6 +35,9 @@ const ComplaintDetail = () => {
     approve?: boolean
     reschedule?: boolean
     requestReorder?: boolean
+    requestReturn?: boolean
+    moscowService?: boolean
+    moscowServiceReschedule?: boolean
   }>({})
   const [formData, setFormData] = useState<{
     installationDate?: string
@@ -47,6 +50,9 @@ const ComplaintDetail = () => {
     rejectReason?: string
     approveComment?: string
     reorderComment?: string
+    returnProductName?: string
+    returnDate?: string
+    moscowServiceDeadline?: string
   }>({})
   const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
 
@@ -95,8 +101,10 @@ const ComplaintDetail = () => {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-yellow-100 text-yellow-800'
     } else if (status === 'resolved') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-purple-100 text-purple-800'
-    } else if (['factory_response_overdue', 'sm_response_overdue', 'shipping_overdue'].includes(status)) {
+    } else if (['factory_response_overdue', 'sm_response_overdue', 'shipping_overdue', 'moscow_service_overdue'].includes(status)) {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-red-100 text-red-800'
+    } else if (status === 'moscow_service') {
+      return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-blue-100 text-blue-800'
     } else {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-gray-100 text-gray-800'
     }
@@ -321,6 +329,43 @@ const ComplaintDetail = () => {
           await complaintsAPI.agreeClient(Number(id), formData.productionDeadline)
           setShowForms({ ...showForms, clientAgreement: false })
           setFormData({ ...formData, productionDeadline: '' })
+          break
+        case 'moscow_service':
+          if (!confirm('Оформить сервисную заявку Москва? Запуск в производство и отгрузка не потребуются.' + (formData.moscowServiceDeadline ? '' : ' Срок решения будет установлен автоматически — 2 недели.'))) return
+          await complaintsAPI.setMoscowService(Number(id), formData.moscowServiceDeadline)
+          setShowForms({ ...showForms, moscowService: false })
+          setFormData({ ...formData, moscowServiceDeadline: '' })
+          break
+        case 'moscow_service_reschedule':
+          if (!formData.moscowServiceDeadline) {
+            alert('Укажите новый срок решения')
+            return
+          }
+          await complaintsAPI.setMoscowService(Number(id), formData.moscowServiceDeadline)
+          setShowForms({ ...showForms, moscowServiceReschedule: false })
+          setFormData({ ...formData, moscowServiceDeadline: '' })
+          break
+        case 'moscow_service_resolve':
+          if (!confirm('Подтвердите, что проблема по сервисной заявке Москва решена?')) return
+          await complaintsAPI.resolveMoscowService(Number(id))
+          break
+        case 'request_return':
+          if (!formData.returnProductName || !formData.returnProductName.trim()) {
+            alert('Укажите наименование товара для возврата')
+            return
+          }
+          if (!confirm('Создать менеджеру задачу на отправку товара на фабрику?')) return
+          await complaintsAPI.requestReturn(Number(id), formData.returnProductName.trim())
+          setShowForms({ ...showForms, requestReturn: false })
+          setFormData({ ...formData, returnProductName: '' })
+          break
+        case 'plan_return_shipping':
+          if (!formData.returnDate) {
+            alert('Укажите дату отгрузки возврата')
+            return
+          }
+          await complaintsAPI.planReturnShipping(Number(id), formData.returnDate)
+          setFormData({ ...formData, returnDate: '' })
           break
         case 'dispute_decision':
           if (!formData.disputeArguments) {
@@ -766,6 +811,43 @@ const ComplaintDetail = () => {
                         {currentComplaint.installer_assigned.first_name && currentComplaint.installer_assigned.last_name
                           ? `${currentComplaint.installer_assigned.first_name} ${currentComplaint.installer_assigned.last_name}`
                           : currentComplaint.installer_assigned.username}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Возврат товара на фабрику */}
+            {currentComplaint.return_required && (
+              <div className="bg-gradient-to-br from-rose-50 to-orange-50 rounded-3xl shadow-2xl p-6 border border-rose-200">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <div className="h-10 w-10 bg-gradient-to-br from-rose-500 to-orange-500 rounded-xl flex items-center justify-center">
+                      <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <h3 className="text-sm font-semibold text-rose-900 mb-1">Требуется возврат товара на фабрику</h3>
+                    <p className="text-sm text-gray-900">
+                      Товар: <span className="font-semibold">{currentComplaint.return_product_name}</span>
+                    </p>
+                    {currentComplaint.return_planned_date ? (
+                      <p className="text-sm text-gray-700 mt-1">
+                        Отгрузка возврата запланирована на{' '}
+                        <span className="font-bold">{formatDateOnly(currentComplaint.return_planned_date)}</span>
+                        {' '}— рекламация в реестре на возврат
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-600 mt-1">
+                        Ожидает планирования отгрузки менеджером
+                      </p>
+                    )}
+                    {currentComplaint.return_requested_at && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Запрошено: {formatDate(currentComplaint.return_requested_at)}
                       </p>
                     )}
                   </div>
@@ -1245,9 +1327,137 @@ const ComplaintDetail = () => {
                             </div>
                           </div>
                         )}
+
+                        {!showForms.moscowService ? (
+                          <Button
+                            onClick={() => setShowForms({ ...showForms, moscowService: true })}
+                            className="w-full mt-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
+                          >
+                            <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            🔧 Сервисная заявка Москва
+                          </Button>
+                        ) : (
+                          <div className="mt-2 p-3 bg-white border-2 border-blue-200 rounded-xl">
+                            <p className="text-xs text-gray-700 mb-3">
+                              Проблема будет решаться сервисом Москвы — запуск в производство, склад и отгрузка не потребуются.
+                            </p>
+                            <div className="mb-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Срок решения проблемы</label>
+                              <input
+                                type="date"
+                                value={formData.moscowServiceDeadline || ''}
+                                onChange={(e) => setFormData({ ...formData, moscowServiceDeadline: e.target.value })}
+                                min={new Date().toISOString().split('T')[0]}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Если не указать дату, срок будет установлен автоматически — 2 недели с этого момента.
+                              </p>
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                onClick={() => handleAction('moscow_service')}
+                                disabled={isProcessing}
+                                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+                              >
+                                Оформить заявку
+                              </Button>
+                              <Button
+                                onClick={() => setShowForms({ ...showForms, moscowService: false })}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                Отмена
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     
+                    {/* Сервисная заявка Москва: управление (ОР) */}
+                    {['moscow_service', 'moscow_service_overdue'].includes(currentComplaint.status) && (
+                      <div className={`p-4 border-2 rounded-xl mb-3 ${
+                        currentComplaint.status === 'moscow_service_overdue'
+                          ? 'border-red-300 bg-gradient-to-br from-red-50 to-rose-50'
+                          : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50'
+                      }`}>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center">
+                          {currentComplaint.status === 'moscow_service_overdue' ? '🔴' : '🔧'}
+                          <span className="ml-2">Сервисная заявка Москва</span>
+                        </h4>
+                        <p className="text-xs text-gray-700 mb-3">
+                          {currentComplaint.status === 'moscow_service_overdue' ? (
+                            <>
+                              <span className="text-red-600 font-semibold">⚠️ Просрочка сервиса Москва!</span>
+                              {' '}Срок решения истёк{currentComplaint.moscow_service_deadline ? ` ${formatDateOnly(currentComplaint.moscow_service_deadline)}` : ''}.
+                              Решите проблему или перенесите срок.
+                            </>
+                          ) : (
+                            <>
+                              Срок решения проблемы:{' '}
+                              <span className="font-bold">{formatDateOnly(currentComplaint.moscow_service_deadline)}</span>
+                            </>
+                          )}
+                        </p>
+                        <Button
+                          onClick={() => handleAction('moscow_service_resolve')}
+                          disabled={isProcessing}
+                          className="w-full mb-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+                        >
+                          <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          ✓ Проблема решена
+                        </Button>
+                        {!showForms.moscowServiceReschedule ? (
+                          <Button
+                            onClick={() => setShowForms({ ...showForms, moscowServiceReschedule: true })}
+                            variant="outline"
+                            className="w-full border-blue-400 text-blue-700 hover:bg-blue-50"
+                          >
+                            <svg className="h-4 w-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            Перенести срок решения
+                          </Button>
+                        ) : (
+                          <div className="p-3 bg-white border-2 border-blue-200 rounded-xl">
+                            <div className="mb-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Новый срок решения <span className="text-red-500">*</span></label>
+                              <input
+                                type="date"
+                                value={formData.moscowServiceDeadline || ''}
+                                onChange={(e) => setFormData({ ...formData, moscowServiceDeadline: e.target.value })}
+                                required
+                                min={new Date().toISOString().split('T')[0]}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                onClick={() => handleAction('moscow_service_reschedule')}
+                                disabled={isProcessing}
+                                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+                              >
+                                Перенести
+                              </Button>
+                              <Button
+                                onClick={() => setShowForms({ ...showForms, moscowServiceReschedule: false })}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                Отмена
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Кнопка "Заказ на складе, можно забирать" для ОР */}
                     {currentComplaint.complaint_type === 'factory' && 
                      ['in_production', 'factory_approved', 'sm_response_overdue'].includes(currentComplaint.status) && (
@@ -1261,6 +1471,53 @@ const ComplaintDetail = () => {
                         </svg>
                         Заказ на складе, можно забирать
                       </Button>
+                    )}
+
+                    {/* Возврат товара на фабрику (ОР) */}
+                    {currentComplaint.complaint_type === 'factory' &&
+                     !currentComplaint.return_required &&
+                     !['closed', 'completed', 'resolved', 'rejected'].includes(currentComplaint.status) && (
+                      <div className="p-4 border-2 border-rose-200 rounded-xl bg-rose-50">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={!!showForms.requestReturn}
+                            onChange={(e) => setShowForms({ ...showForms, requestReturn: e.target.checked })}
+                            className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                          />
+                          Требуется возврат товара
+                        </label>
+                        {showForms.requestReturn && (
+                          <div className="mt-3 space-y-3">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Наименование товара <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.returnProductName || ''}
+                                onChange={(e) => setFormData({ ...formData, returnProductName: e.target.value })}
+                                required
+                                placeholder="Например: полотно 800x2000, наличники..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
+                              />
+                            </div>
+                            <p className="text-xs text-gray-600">
+                              Менеджеру рекламации будет поставлена задача отправить товар на фабрику.
+                            </p>
+                            <Button
+                              onClick={() => handleAction('request_return')}
+                              disabled={isProcessing}
+                              className="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white"
+                            >
+                              <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                              </svg>
+                              Создать задачу на возврат
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </>
                 )}
@@ -1512,6 +1769,41 @@ const ComplaintDetail = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           Отгрузка запланирована
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Возврат товара на фабрику: планирование отгрузки */}
+                    {currentComplaint.return_required && !currentComplaint.return_planned_date && (
+                      <div className="p-4 border-2 border-rose-200 rounded-xl bg-rose-50">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-2">Отправить товар на фабрику</h4>
+                        <p className="text-xs text-gray-700 mb-3">
+                          Отдел рекламаций запросил возврат товара:{' '}
+                          <span className="font-semibold">{currentComplaint.return_product_name}</span>.
+                          Запланируйте отгрузку — рекламация попадёт в реестр на возврат.
+                        </p>
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Дата отгрузки возврата <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={formData.returnDate || ''}
+                            onChange={(e) => setFormData({ ...formData, returnDate: e.target.value })}
+                            required
+                            min={new Date().toISOString().split('T')[0]}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
+                          />
+                        </div>
+                        <Button
+                          onClick={() => handleAction('plan_return_shipping')}
+                          disabled={isProcessing}
+                          className="w-full bg-gradient-to-r from-rose-500 to-orange-500 text-white"
+                        >
+                          <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          Запланировать отгрузку
                         </Button>
                       </div>
                     )}

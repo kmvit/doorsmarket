@@ -83,6 +83,8 @@ export type ComplaintStatus =
   | 'factory_rejected'
   | 'sm_response_overdue'
   | 'under_sm_review'
+  | 'moscow_service'
+  | 'moscow_service_overdue'
   | 'waiting_installer_date'
   | 'needs_planning'
   | 'installer_not_planned'
@@ -138,6 +140,12 @@ export interface Complaint {
   client_agreement_date: string | null
   completion_date: string | null
   added_to_shipping_registry_at: string | null
+  moscow_service_at: string | null
+  moscow_service_deadline: string | null
+  return_required: boolean
+  return_product_name: string
+  return_requested_at: string | null
+  return_planned_date: string | null
   defective_products?: DefectiveProduct[]
   attachments?: ComplaintAttachment[]
   comments?: ComplaintComment[]
@@ -165,6 +173,7 @@ export interface ComplaintListItem {
   planned_installation_date: string | null
   planned_shipping_date: string | null
   production_deadline?: string | null
+  moscow_service_deadline?: string | null
 }
 
 export interface ComplaintCreateData {
@@ -253,6 +262,38 @@ export interface ShippingRegistryStats {
   in_transit: number
   delivered: number
   complaints: number
+}
+
+// Return Registry types (реестр на возврат товара на фабрику)
+export type ReturnStatus = 'pending' | 'sent' | 'cancelled'
+
+export interface ReturnRegistry {
+  id: number
+  complaint: ComplaintListItem | null
+  created_at: string
+  order_number: string
+  manager: User
+  client_name: string
+  product_name: string
+  return_status: ReturnStatus
+  return_status_display: string
+  planned_return_date: string | null
+  actual_return_date: string | null
+  comments: string
+}
+
+export interface ReturnRegistryFilters {
+  return_status?: ReturnStatus
+  manager?: number
+  search?: string
+  ordering?: string
+  exclude_sent?: boolean
+}
+
+export interface ReturnRegistryStats {
+  total: number
+  pending: number
+  sent: number
 }
 
 // Данные, извлеченные из PDF

@@ -136,8 +136,27 @@ const ComplaintList = () => {
     const status = complaint.status
     const statusDisplay = complaint.status_display
 
+    // Просрочка сервиса Москва — горит красным
+    if (status === 'moscow_service_overdue') {
+      return (
+        <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-600 text-white border-2 border-red-800 animate-pulse">
+          🔴 {statusDisplay}
+        </span>
+      )
+    }
+
+    // Сервисная заявка Москва — синий со сроком решения
+    if (status === 'moscow_service') {
+      return (
+        <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+          🔧 {statusDisplay}
+          {complaint.moscow_service_deadline && ` до ${new Date(complaint.moscow_service_deadline).toLocaleDateString('ru-RU')}`}
+        </span>
+      )
+    }
+
     // Просроченные статусы - красный
-    if (['installer_not_planned', 'factory_response_overdue', 'factory_rejected', 'factory_dispute', 
+    if (['installer_not_planned', 'factory_response_overdue', 'factory_rejected', 'factory_dispute',
          'sm_response_overdue', 'shipping_overdue'].includes(status)) {
       return (
         <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
@@ -343,6 +362,8 @@ const ComplaintList = () => {
                   <option value="both_planned">Отгрузка и монтаж запланированы</option>
                   <option value="factory_response_overdue">Ответ фабрики просрочен</option>
                   <option value="sm_response_overdue">СМ просрочил ответ</option>
+                  <option value="moscow_service">Сервисная заявка Москва</option>
+                  <option value="moscow_service_overdue">Просрочка сервиса Москва</option>
                   <option value="under_sm_review">На проверке у СМ</option>
                   <option value="completed">Выполнена</option>
                   <option value="resolved">Решена</option>

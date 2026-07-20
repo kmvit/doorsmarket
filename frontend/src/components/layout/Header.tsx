@@ -203,6 +203,22 @@ const Header = () => {
                 </Link>
               )}
 
+              {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && (
+                <Link
+                  to="/return-registry"
+                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                    isActive('/return-registry')
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
+                  }`}
+                >
+                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                  </svg>
+                  Реестр на возврат
+                </Link>
+              )}
+
               {user.role === 'manager' && (
                 <Link
                   to="/manager/production"
@@ -451,6 +467,19 @@ const Header = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
                 Реестр на отгрузку
+              </Link>
+            )}
+
+            {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && (
+              <Link
+                to="/return-registry"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+              >
+                <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                </svg>
+                Реестр на возврат
               </Link>
             )}
 

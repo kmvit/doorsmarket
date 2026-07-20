@@ -16,6 +16,7 @@ from .models import (
     ComplaintAttachment,
     ComplaintComment,
     ShippingRegistry,
+    ReturnRegistry,
     Notification,
     ProductionSite,
     ComplaintReason,
@@ -30,6 +31,7 @@ from .serializers import (
     ComplaintAttachmentSerializer,
     ComplaintCommentSerializer,
     ShippingRegistrySerializer,
+    ReturnRegistrySerializer,
     NotificationSerializer,
     ProductionSiteSerializer,
     ComplaintReasonSerializer,
@@ -184,6 +186,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'in_progress': Q(manager=user, status='in_progress'),
                     'on_warehouse': Q(manager=user, status='on_warehouse'),
                     'shipping_overdue': Q(status='shipping_overdue'),
+                    'return_required': Q(manager=user, return_required=True, return_planned_date__isnull=True),
                 },
                 'service_manager': {
                     'in_work': Q(status__in=active_statuses),
@@ -196,6 +199,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'in_work': Q(complaint_type='factory', status__in=active_statuses),
                     'pending': Q(complaint_type='factory', status='sent'),
                     'overdue': Q(complaint_type='factory', status='factory_response_overdue'),
+                    'moscow_service_overdue': Q(complaint_type='factory') & (
+                        Q(status='moscow_service_overdue') |
+                        Q(status='moscow_service', moscow_service_deadline__lt=timezone.now())
+                    ),
                 },
                 'admin': {
                     'new': Q(status='new'),
@@ -252,7 +259,15 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         for complaint in installer_complaints:
             complaint.check_installer_overdue()
-        
+
+        # Проверяем просрочку сервисных заявок Москва
+        moscow_service_complaints = queryset.filter(
+            status__in=['moscow_service', 'moscow_service_overdue'],
+            moscow_service_deadline__isnull=False
+        )
+        for complaint in moscow_service_complaints:
+            complaint.check_moscow_service_overdue()
+
         # Возвращаем обновленный queryset через стандартный list
         response = super().list(request, *args, **kwargs)
         return response
@@ -272,6 +287,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             and complaint.status not in ('completed', 'resolved', 'closed')
         ):
             complaint.check_installer_overdue()
+            complaint.refresh_from_db()
+        if complaint.status in ('moscow_service', 'moscow_service_overdue'):
+            complaint.check_moscow_service_overdue()
             complaint.refresh_from_db()
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
@@ -1220,6 +1238,188 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
+    def moscow_service(self, request, pk=None):
+        """ОР оформляет сервисную заявку Москва (или переносит срок решения)"""
+        complaint = self.get_object()
+        user = request.user
+
+        if user.role not in ['complaint_department', 'admin']:
+            return Response(
+                {'error': 'Только отдел рекламаций может оформить сервисную заявку Москва'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if complaint.complaint_type != 'factory':
+            return Response(
+                {'error': 'Сервисная заявка Москва доступна только для фабричных рекламаций'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        allowed_statuses = (
+            'sent', 'factory_response_overdue', 'factory_dispute',
+            'moscow_service', 'moscow_service_overdue',
+        )
+        if complaint.status not in allowed_statuses:
+            return Response(
+                {'error': 'Сервисную заявку можно оформить только на этапе решения ОР или изменить срок по уже оформленной заявке'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        deadline = None
+        deadline_str = request.data.get('deadline')
+        if deadline_str:
+            try:
+                deadline = datetime.fromisoformat(deadline_str.replace('Z', '+00:00'))
+                # Дата без времени — считаем срок до конца дня
+                if len(deadline_str) <= 10:
+                    deadline = deadline.replace(hour=23, minute=59, second=59)
+                deadline = timezone.make_aware(deadline)
+            except (ValueError, AttributeError):
+                return Response(
+                    {'error': 'Неверный формат даты'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        is_new_request = complaint.status not in ('moscow_service', 'moscow_service_overdue')
+        complaint.set_moscow_service(deadline)
+
+        deadline_display = complaint.moscow_service_deadline.strftime('%d.%m.%Y')
+        if is_new_request:
+            comment_text = f'ОР оформил сервисную заявку Москва. Срок решения: {deadline_display}'
+        else:
+            comment_text = f'ОР перенёс срок решения по сервисной заявке Москва на {deadline_display}'
+        ComplaintComment.objects.create(
+            complaint=complaint,
+            author=user,
+            text=comment_text
+        )
+
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def moscow_service_resolve(self, request, pk=None):
+        """ОР отмечает сервисную заявку Москва решённой"""
+        complaint = self.get_object()
+        user = request.user
+
+        if user.role not in ['complaint_department', 'admin']:
+            return Response(
+                {'error': 'Только отдел рекламаций может завершить сервисную заявку Москва'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if complaint.status not in ('moscow_service', 'moscow_service_overdue'):
+            return Response(
+                {'error': 'Рекламация не находится в статусе сервисной заявки Москва'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        complaint.resolve_moscow_service()
+
+        ComplaintComment.objects.create(
+            complaint=complaint,
+            author=user,
+            text='Сервисная заявка Москва: проблема решена'
+        )
+
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def request_return(self, request, pk=None):
+        """ОР отмечает, что требуется возврат товара на фабрику"""
+        complaint = self.get_object()
+        user = request.user
+
+        if user.role not in ['complaint_department', 'admin']:
+            return Response(
+                {'error': 'Только отдел рекламаций может запросить возврат товара'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if complaint.complaint_type != 'factory':
+            return Response(
+                {'error': 'Возврат товара доступен только для фабричных рекламаций'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if complaint.return_required:
+            return Response(
+                {'error': 'Возврат товара уже запрошен по этой рекламации'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not complaint.manager:
+            return Response(
+                {'error': 'На рекламацию не назначен менеджер — некому поставить задачу на возврат'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        product_name = (request.data.get('product_name') or '').strip()
+        if not product_name:
+            return Response(
+                {'error': 'Необходимо указать наименование товара (product_name)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        complaint.request_return(product_name[:255])
+
+        ComplaintComment.objects.create(
+            complaint=complaint,
+            author=user,
+            text=f'ОР запросил возврат товара на фабрику: {product_name}'
+        )
+
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def plan_return_shipping(self, request, pk=None):
+        """Менеджер планирует отгрузку возврата на фабрику"""
+        complaint = self.get_object()
+        user = request.user
+
+        if not _manager_has_complaint_access(user, complaint) and user.role != 'admin':
+            return Response(
+                {'error': 'Только назначенный менеджер или менеджер из того же города может планировать отгрузку возврата'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not complaint.return_required:
+            return Response(
+                {'error': 'По этой рекламации возврат товара не запрошен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return_date_str = request.data.get('return_date')
+        if not return_date_str:
+            return Response(
+                {'error': 'Необходимо указать return_date'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            return_date = datetime.fromisoformat(return_date_str.replace('Z', '+00:00'))
+            return_date = timezone.make_aware(return_date)
+        except (ValueError, AttributeError):
+            return Response(
+                {'error': 'Неверный формат даты'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        complaint.plan_return_shipping(return_date)
+
+        ComplaintComment.objects.create(
+            complaint=complaint,
+            author=user,
+            text=f'Менеджер запланировал отгрузку возврата на фабрику на {return_date.strftime("%d.%m.%Y")}'
+        )
+
+        serializer = self.get_serializer(complaint)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
     def close(self, request, pk=None):
         """СМ закрывает рекламацию напрямую"""
         complaint = self.get_object()
@@ -1558,6 +1758,69 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         return Response(stats)
 
 
+class ReturnRegistryViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для реестра на возврат товара на фабрику
+
+    list: Список записей реестра с фильтрацией по ролям
+    retrieve: Детальная информация о записи
+    update/partial_update: Обновление записи (статус, фактическая дата, комментарии)
+    stats: Статистика по реестру
+    """
+    serializer_class = ReturnRegistrySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    search_fields = ['order_number', 'client_name', 'product_name']
+    ordering_fields = ['created_at', 'planned_return_date', 'return_status']
+    ordering = ['-created_at']
+    filterset_fields = ['return_status', 'manager']
+
+    def get_queryset(self):
+        """
+        Администратор, Руководитель и ОР видят все записи.
+        Менеджер и Сервис-менеджер видят записи только своего города.
+        """
+        user = self.request.user
+
+        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader']
+        if user.role not in allowed_roles:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("У вас нет прав для доступа к реестру на возврат")
+
+        queryset = ReturnRegistry.objects.select_related(
+            'complaint',
+            'manager'
+        )
+
+        if user.role in ['manager', 'service_manager']:
+            user_city = getattr(user, 'city', None)
+            if user_city:
+                queryset = queryset.filter(manager__city=user_city)
+            elif user.role == 'manager':
+                queryset = queryset.filter(manager=user)
+            else:
+                queryset = queryset.none()
+
+        exclude_sent = self.request.query_params.get('exclude_sent')
+        if exclude_sent in ('true', '1', 'True'):
+            queryset = queryset.exclude(return_status='sent')
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Статистика по реестру на возврат"""
+        queryset = self.filter_queryset(self.get_queryset())
+
+        stats = {
+            'total': queryset.count(),
+            'pending': queryset.filter(return_status='pending').count(),
+            'sent': queryset.filter(return_status='sent').count(),
+        }
+
+        return Response(stats)
+
+
 class ProductionSiteViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для производственных площадок"""
     queryset = ProductionSite.objects.filter(is_active=True)
@@ -1791,6 +2054,12 @@ class DashboardStatsView(APIView):
                 'Отгрузка просрочена',
                 Q(status='shipping_overdue') & city_filter
             )
+            add_stat(
+                'return_required',
+                'Отправить товар на фабрику',
+                Q(manager=user, return_required=True, return_planned_date__isnull=True)
+                & ~Q(status__in=['closed', 'completed', 'resolved'])
+            )
         elif user.role == 'service_manager':
             # Для СМ применяем фильтр: рекламации из его города ИЛИ созданные им
             user_city = getattr(user, 'city', None)
@@ -1843,6 +2112,14 @@ class DashboardStatsView(APIView):
                 'overdue',
                 'Просрочен ответ',
                 Q(complaint_type='factory', status='factory_response_overdue')
+            )
+            add_stat(
+                'moscow_service_overdue',
+                'Просрочка сервиса Москва',
+                Q(complaint_type='factory') & (
+                    Q(status='moscow_service_overdue') |
+                    Q(status='moscow_service', moscow_service_deadline__lt=timezone.now())
+                )
             )
         elif user.role == 'leader':
             user_city = getattr(user, 'city', None)

@@ -4,6 +4,7 @@ from .api_views import (
     ComplaintViewSet,
     NotificationViewSet,
     ShippingRegistryViewSet,
+    ReturnRegistryViewSet,
     ProductionSiteViewSet,
     ComplaintReasonViewSet,
     DefectiveProductViewSet,
@@ -16,6 +17,7 @@ router = DefaultRouter()
 router.register(r'complaints', ComplaintViewSet, basename='complaint')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'shipping-registry', ShippingRegistryViewSet, basename='shipping-registry')
+router.register(r'return-registry', ReturnRegistryViewSet, basename='return-registry')
 router.register(r'production-sites', ProductionSiteViewSet, basename='production-site')
 router.register(r'complaint-reasons', ComplaintReasonViewSet, basename='complaint-reason')
 router.register(r'defective-products', DefectiveProductViewSet, basename='defective-product')

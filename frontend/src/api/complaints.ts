@@ -378,6 +378,36 @@ export const complaintsAPI = {
     return response.data
   },
 
+  // ОР оформляет сервисную заявку Москва (deadline опционален — по умолчанию 2 недели)
+  setMoscowService: async (id: number, deadline?: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/moscow_service/`, {
+      deadline: deadline || undefined,
+    })
+    return response.data
+  },
+
+  // ОР отмечает сервисную заявку Москва решённой
+  resolveMoscowService: async (id: number): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/moscow_service_resolve/`)
+    return response.data
+  },
+
+  // ОР запрашивает возврат товара на фабрику
+  requestReturn: async (id: number, productName: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/request_return/`, {
+      product_name: productName,
+    })
+    return response.data
+  },
+
+  // Менеджер планирует отгрузку возврата на фабрику
+  planReturnShipping: async (id: number, returnDate: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/plan_return_shipping/`, {
+      return_date: returnDate,
+    })
+    return response.data
+  },
+
   // СМ закрывает рекламацию
   close: async (id: number, closureReason: string): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/close/`, {
