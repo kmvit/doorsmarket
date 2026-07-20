@@ -74,6 +74,25 @@ const applyOpeningsToLocalDetail = async (
   }
 }
 
+// Локальный пересчёт рекомендаций проёма — зеркало серверного _recalc_recommendations.
+// Нужен в офлайне: сервер недоступен, а рек. размеры и текст должны появляться сразу.
+const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial<MeasurementOpening>): T => {
+  // СМ прислал рек. размер двери → ручной режим (пустые значения возвращают авторасчёт)
+  if (patch && ('recommended_door_height' in patch || 'recommended_door_width' in patch)) {
+    op.recommended_door_is_manual = Boolean(op.recommended_door_height || op.recommended_door_width)
+  }
+  if (!op.recommended_door_is_manual) {
+    op.recommended_door_height = op.actual_height ? Number(op.actual_height) - 70 : null
+    op.recommended_door_width = op.actual_width ? Number(op.actual_width) - 100 : null
+  }
+  op.recommended_opening_height = op.recommended_door_height ? Number(op.recommended_door_height) + 70 : null
+  op.recommended_opening_width = op.recommended_door_width ? Number(op.recommended_door_width) + 100 : null
+  op.recommendation_text = buildRecommendationText(
+    op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width,
+  )
+  return op
+}
+
 // Найти id замера по id проёма (по локальным данным)
 const findMeasurementIdByOpening = async (openingId: number): Promise<number | null> => {
   const local = await db.measurementOpenings.get(openingId)
@@ -282,7 +301,10 @@ export const measurementOpeningsAPI = {
     if (id < 0) {
       const local = await getLocalOpening(id)
       const measurementId = local?.measurement || Number(data.measurement) || 0
-      const merged: LocalOpening = { ...emptyOpening(measurementId, {}), ...local, ...data, id }
+      const merged: LocalOpening = recalcOpeningLocal(
+        { ...emptyOpening(measurementId, {}), ...local, ...data, id },
+        data,
+      )
       if (local?._pendingRequestId) {
         const pending = await db.pendingRequests.get(local._pendingRequestId)
         if (pending) {
@@ -308,7 +330,10 @@ export const measurementOpeningsAPI = {
       await requestQueue.add('PATCH', `/measurement-openings/${id}/`, data)
       const local = await getLocalOpening(id)
       const measurementId = local?.measurement || (await findMeasurementIdByOpening(id)) || 0
-      const merged = { ...emptyOpening(measurementId, {}), ...local, ...data, id }
+      const merged = recalcOpeningLocal(
+        { ...emptyOpening(measurementId, {}), ...local, ...data, id },
+        data,
+      )
       await db.measurementOpenings.put(merged)
       if (measurementId) {
         await applyOpeningsToLocalDetail(measurementId, (ops) => ops.map((o) => (o.id === id ? merged : o)))
@@ -329,7 +354,10 @@ export const measurementOpeningsAPI = {
       if (!isNetworkError(error)) throw error
       // Офлайн: создаём проём локально с временным id, POST — в очередь синхронизации
       const pending = await requestQueue.add('POST', '/measurement-openings/', data)
-      const local: LocalOpening = { ...emptyOpening(measurementId, data), _pendingRequestId: pending.id }
+      const local: LocalOpening = recalcOpeningLocal(
+        { ...emptyOpening(measurementId, data), _pendingRequestId: pending.id },
+        data,
+      )
       await db.measurementOpenings.put(local)
       await applyOpeningsToLocalDetail(measurementId, (ops) => [...ops, local])
       return local

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
+import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 
 // Метки папок для баннера (folder может быть статусом или составной выборкой)
 const FOLDER_LABELS: Record<string, string> = {
@@ -75,6 +76,9 @@ const OrderList = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
+      {/* Переключатель Заказы / Замеры */}
+      <OrdersMeasurementsSwitch active="orders" />
+
       {/* Заголовок */}
       <div className="flex items-center justify-between mb-6">
         <div>

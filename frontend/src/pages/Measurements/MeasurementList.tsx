@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { measurementsAPI } from '../../api/measurements'
 import { MeasurementListItem, MeasurementFolder } from '../../types/measurements'
 import { ORDER_STATUS_COLOR } from '../../types/orders'
+import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 
 const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: '', label: 'Все', color: 'bg-gray-200 text-gray-800' },
@@ -53,6 +54,9 @@ const MeasurementList = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
+      {/* Переключатель Заказы / Замеры */}
+      <OrdersMeasurementsSwitch active="measurements" />
+
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Замеры</h1>
         <p className="text-sm text-gray-500 mt-1">Заявки на замер, запланированные и выполненные замеры</p>
@@ -77,7 +81,7 @@ const MeasurementList = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4">
         <input
           type="text"
-          placeholder="Поиск по любому полю: клиент, адрес, контакт, № КП, телефон…"
+          placeholder="Поиск: № замера, № заказа, клиент, адрес, контакт, № КП, телефон…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-lg border-gray-300 shadow-sm text-sm"
@@ -104,6 +108,7 @@ const MeasurementList = () => {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Замер</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Заказ</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент / адрес</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
@@ -120,6 +125,7 @@ const MeasurementList = () => {
                     className="hover:bg-primary-50 cursor-pointer"
                     onClick={() => navigate(`/measurements/${m.id}`)}
                   >
+                    <td className="px-3 py-2 font-medium text-gray-900">№ {m.id}</td>
                     <td className="px-3 py-2">
                       <Link
                         to={`/orders/${m.order_id}`}

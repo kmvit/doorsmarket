@@ -1014,10 +1014,20 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 {'detail': 'Перед закрытием замера приложите план открывания.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Валидация: этаж обязателен
-        if not (m.request.order.floor_number or '').strip():
+        # Валидация: условия объекта обязательны (лифт, лестница, пронос, этаж)
+        order = m.request.order
+        missing = []
+        if order.lift_available is None:
+            missing.append('возможен ли подъём на лифте')
+        if order.stairs_available is None:
+            missing.append('возможен ли подъём по лестнице')
+        if order.carry_to_entrance is None:
+            missing.append('нужен ли пронос до подъезда')
+        if not (order.floor_number or '').strip():
+            missing.append('этаж')
+        if missing:
             return Response(
-                {'detail': 'Перед закрытием замера укажите этаж в условиях объекта.'},
+                {'detail': f'Перед закрытием замера заполните условия объекта: {", ".join(missing)}.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         m.is_done = True

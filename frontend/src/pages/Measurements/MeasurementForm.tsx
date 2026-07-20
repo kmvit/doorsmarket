@@ -564,8 +564,8 @@ const MeasurementForm = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className={labelCls}>
-              Возможен подъём на лифте?
-              {liftRequired && <span className="text-red-600"> * (высота &gt; 2300)</span>}
+              Возможен подъём на лифте? <span className="text-red-600">*</span>
+              {liftRequired && <span className="text-red-600"> (высота &gt; 2300)</span>}
             </label>
             <select
               value={m.lift_available === null || m.lift_available === undefined ? '' : String(m.lift_available)}
@@ -579,7 +579,7 @@ const MeasurementForm = () => {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Возможен подъём по лестнице?</label>
+            <label className={labelCls}>Возможен подъём по лестнице? <span className="text-red-600">*</span></label>
             <select
               value={m.stairs_available === null || m.stairs_available === undefined ? '' : String(m.stairs_available)}
               onChange={(e) => saveConditions({ stairs_available: e.target.value === '' ? null : e.target.value === 'true' })}
@@ -592,7 +592,7 @@ const MeasurementForm = () => {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Нужен пронос до подъезда?</label>
+            <label className={labelCls}>Нужен пронос до подъезда? <span className="text-red-600">*</span></label>
             <select
               value={m.carry_to_entrance === null || m.carry_to_entrance === undefined ? '' : String(m.carry_to_entrance)}
               onChange={(e) => saveConditions({ carry_to_entrance: e.target.value === '' ? null : e.target.value === 'true' })}
