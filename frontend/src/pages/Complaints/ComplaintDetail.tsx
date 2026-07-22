@@ -183,6 +183,31 @@ const ComplaintDetail = () => {
     user.role === 'leader'
   )
 
+  // ОР-действия (сервисная заявка Москва, возврат товара) сервер разрешает
+  // только отделу рекламаций и админу — руководителю их показывать нельзя
+  const canDoComplaintDeptActions = user?.role === 'complaint_department' || user?.role === 'admin'
+
+  // Текст ошибки от сервера: DRF отдаёт 'error' в наших действиях, 'detail' —
+  // при отказе доступа/404/ошибке авторизации. Без разбора обоих пользователь
+  // видел безликое «Ошибка выполнения действия» и не понимал причину.
+  const getErrorMessage = (error: any, fallback: string): string => {
+    const data = error?.response?.data
+    if (typeof data === 'string' && data.trim() && !data.trim().startsWith('<')) {
+      return data.trim().slice(0, 300)
+    }
+    if (data && typeof data === 'object') {
+      const message =
+        data.error ||
+        data.detail ||
+        (Array.isArray(data.non_field_errors) ? data.non_field_errors[0] : null)
+      if (message) return String(message)
+    }
+    if (!error?.response) {
+      return 'Нет связи с сервером — действие не выполнено. Проверьте интернет и повторите.'
+    }
+    return `${fallback} (код ответа ${error.response.status})`
+  }
+
   const handleUpdateContact = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!id) return
@@ -199,7 +224,7 @@ const ComplaintDetail = () => {
       setShowEditContactForm(false)
       alert('Контактные данные успешно обновлены. Уведомления отправлены всем участникам.')
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Ошибка обновления контактных данных')
+      alert(getErrorMessage(error, 'Ошибка обновления контактных данных'))
     } finally {
       setIsUpdatingContact(false)
     }
@@ -381,7 +406,7 @@ const ComplaintDetail = () => {
       }
       await fetchComplaint(Number(id))
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Ошибка выполнения действия')
+      alert(getErrorMessage(error, 'Ошибка выполнения действия'))
     } finally {
       setIsProcessing(false)
     }
@@ -1328,7 +1353,7 @@ const ComplaintDetail = () => {
                           </div>
                         )}
 
-                        {!showForms.moscowService ? (
+                        {canDoComplaintDeptActions && (!showForms.moscowService ? (
                           <Button
                             onClick={() => setShowForms({ ...showForms, moscowService: true })}
                             className="w-full mt-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
@@ -1374,12 +1399,12 @@ const ComplaintDetail = () => {
                               </Button>
                             </div>
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
-                    
+
                     {/* Сервисная заявка Москва: управление (ОР) */}
-                    {['moscow_service', 'moscow_service_overdue'].includes(currentComplaint.status) && (
+                    {canDoComplaintDeptActions && ['moscow_service', 'moscow_service_overdue'].includes(currentComplaint.status) && (
                       <div className={`p-4 border-2 rounded-xl mb-3 ${
                         currentComplaint.status === 'moscow_service_overdue'
                           ? 'border-red-300 bg-gradient-to-br from-red-50 to-rose-50'
@@ -1474,7 +1499,8 @@ const ComplaintDetail = () => {
                     )}
 
                     {/* Возврат товара на фабрику (ОР) */}
-                    {currentComplaint.complaint_type === 'factory' &&
+                    {canDoComplaintDeptActions &&
+                     currentComplaint.complaint_type === 'factory' &&
                      !currentComplaint.return_required &&
                      !['closed', 'completed', 'resolved', 'rejected'].includes(currentComplaint.status) && (
                       <div className="p-4 border-2 border-rose-200 rounded-xl bg-rose-50">

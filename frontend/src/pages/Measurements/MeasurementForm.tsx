@@ -11,7 +11,7 @@ import {
 } from '../../api/measurements'
 import { Measurement, MeasurementOpening } from '../../types/measurements'
 import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
-import { isQueuedError } from '../../services/sync'
+import { isQueuedError, requestQueue } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
@@ -234,10 +234,40 @@ const MeasurementForm = () => {
     }
   }
 
+  // Те же условия закрытия замера, что проверяет сервер. Нужны на клиенте, потому что
+  // офлайн запрос уходит в очередь: без проверки СМ уверен, что замер выполнен, а при
+  // синхронизации сервер его отклоняет и замер навсегда остаётся в черновиках.
+  const validateCanMarkDone = async (): Promise<string | null> => {
+    if (!m) return null
+    // Файл, загруженный офлайн, ещё не виден в m.attachments — учитываем очередь синхронизации
+    const pendingUpload = (await requestQueue.getAll()).some((r) => {
+      if (!r.url.includes('/measurement-attachments/')) return false
+      const entries = r.data?.entries as [string, unknown][] | undefined
+      return entries?.some(([key, value]) => key === 'measurement' && String(value) === String(m.id)) ?? false
+    })
+    if (!m.opening_plan_url && m.attachments.length === 0 && !pendingUpload) {
+      return 'Перед закрытием замера приложите план открывания.'
+    }
+    const missing: string[] = []
+    if (m.lift_available === null || m.lift_available === undefined) missing.push('возможен ли подъём на лифте')
+    if (m.stairs_available === null || m.stairs_available === undefined) missing.push('возможен ли подъём по лестнице')
+    if (m.carry_to_entrance === null || m.carry_to_entrance === undefined) missing.push('нужен ли пронос до подъезда')
+    if (!(m.floor_number || '').trim()) missing.push('этаж')
+    if (missing.length) {
+      return `Перед закрытием замера заполните условия объекта: ${missing.join(', ')}.`
+    }
+    return null
+  }
+
   const handleMarkDone = async () => {
     if (!m) return
     setActionError(null)
     setDraftNotice(null)
+    const validationError = await validateCanMarkDone()
+    if (validationError) {
+      setActionError(validationError)
+      return
+    }
     try {
       const updated = await measurementsAPI.markDone(m.id)
       setM(updated)

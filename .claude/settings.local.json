@@ -72,7 +72,15 @@
       "Bash(venv/bin/python manage.py check_moscow_service_overdue)",
       "Bash(venv/bin/python manage.py cleanup_old_complaint_files --dry-run)",
       "Bash(venv/bin/python manage.py cleanup_old_complaint_files)",
-      "Bash(venv/bin/python manage.py test orders)"
+      "Bash(venv/bin/python manage.py test orders)",
+      "Bash(ls -la \"/Users/home/Downloads/44-316172-1_KP_OOO_Protek \\(1\\).pdf\" && grep -rn \"успешно заполнены\\\\|Изделия не найдены\" /Users/home/PycharmProjects/marketingdoors --include=\"*.py\" --include=\"*.tsx\" --include=\"*.ts\" -l)",
+      "Bash(venv/bin/pip list *)",
+      "Bash(venv/bin/python -)",
+      "Bash(venv/bin/python manage.py test projects orders)",
+      "Bash(sed -i '' '/^import/d' phone_compiled.mjs)",
+      "Bash(node phone_test.mjs)",
+      "Bash(python3 -)",
+      "Bash(/Users/home/PycharmProjects/marketingdoors/venv/bin/python -c ' *)"
     ]
   }
 }

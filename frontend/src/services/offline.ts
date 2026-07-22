@@ -16,6 +16,18 @@ export interface PendingRequest {
   lastError?: string
 }
 
+// Действие из очереди, которое сервер отклонил при синхронизации.
+// Раньше такие запросы просто удалялись, и пользователь не узнавал, что его
+// действие (например, «Замер выполнен») до сервера так и не дошло.
+export interface SyncFailure {
+  id?: number
+  title: string
+  reason: string
+  method: string
+  url: string
+  timestamp: number
+}
+
 // Интерфейс для кешированных данных
 export interface CachedData {
   id?: number
@@ -38,6 +50,7 @@ class OfflineDB extends Dexie {
   measurements!: Table<Measurement, number>
   measurementList!: Table<MeasurementListItem, number>
   measurementOpenings!: Table<MeasurementOpening, number>
+  syncFailures!: Table<SyncFailure, number>
 
   constructor() {
     super('MarketingDoorsDB')
@@ -58,6 +71,11 @@ class OfflineDB extends Dexie {
       measurements: 'id, status',
       measurementList: 'id, status',
       measurementOpenings: 'id, measurement',
+    })
+
+    // Версия 3: отклонённые сервером действия из очереди синхронизации
+    this.version(3).stores({
+      syncFailures: '++id, timestamp',
     })
   }
 }

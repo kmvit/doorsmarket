@@ -17,9 +17,14 @@ export function formatPhoneInput(raw: string): { display: string; value: string 
   if (tenDigits.length === 0) {
     return { display: '+7', value: '' }
   }
-  const formatted = `+7 (${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6, 8)}-${tenDigits.slice(8, 10)}`
-  const value = tenDigits.length >= 10 ? `+7${tenDigits}` : `+7${tenDigits}`
-  return { display: formatted, value }
+  // Разделители добавляем только перед уже введёнными цифрами — иначе backspace
+  // удаляет разделитель, цифры не меняются, и формат тут же возвращает его обратно
+  // (номер невозможно стереть дальше последней группы).
+  let formatted = `+7 (${tenDigits.slice(0, 3)}`
+  if (tenDigits.length > 3) formatted += `) ${tenDigits.slice(3, 6)}`
+  if (tenDigits.length > 6) formatted += `-${tenDigits.slice(6, 8)}`
+  if (tenDigits.length > 8) formatted += `-${tenDigits.slice(8, 10)}`
+  return { display: formatted, value: `+7${tenDigits}` }
 }
 
 /**

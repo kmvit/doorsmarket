@@ -3,7 +3,7 @@
 import { clientsClaim } from 'workbox-core'
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
-import { NetworkFirst, CacheFirst } from 'workbox-strategies'
+import { CacheFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: any[] }
@@ -14,6 +14,11 @@ clientsClaim()
 
 // Очищаем устаревшие кэши ПЕРЕД прекэшированием
 cleanupOutdatedCaches()
+
+// Удаляем старый API-кэш у уже установленных клиентов (маршрут /api/v1/ больше не кэшируется)
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.delete('api-cache'))
+})
 
 // Прекэшируем ресурсы
 precacheAndRoute(self.__WB_MANIFEST)
@@ -28,20 +33,12 @@ const navigationRoute = new NavigationRoute(
 )
 registerRoute(navigationRoute)
 
-registerRoute(
-  /^https:\/\/.*\/api\/v1\/.*/i,
-  new NetworkFirst({
-    cacheName: 'api-cache',
-    networkTimeoutSeconds: 10,
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 50,
-        maxAgeSeconds: 5 * 60,
-      }),
-    ],
-  }),
-  'GET',
-)
+// ВАЖНО: API (/api/v1/*) в service worker НЕ кэшируем.
+// NetworkFirst-кэш в оффлайне отдавал устаревший ответ сервера со статусом 200,
+// из-за чего withOfflineFallback считал запрос успешным и перезаписывал
+// локальные (ещё не синхронизированные) правки из IndexedDB устаревшими данными —
+// например, вручную заданный рек. размер двери откатывался к авторасчёту.
+// Оффлайн-чтение API обслуживает слой IndexedDB (services/offline.ts).
 
 registerRoute(
   /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,

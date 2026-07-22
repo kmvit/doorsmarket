@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
-import { requestQueue } from '../../services/sync'
+import { requestQueue, syncFailures } from '../../services/sync'
+import { SyncFailure } from '../../services/offline'
 
 const OfflineIndicator = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [queueLength, setQueueLength] = useState(0)
+  const [failedCount, setFailedCount] = useState(0)
+  const [failures, setFailures] = useState<SyncFailure[] | null>(null)
+
+  useEffect(() => {
+    const unsubscribeFailures = syncFailures.onChange(setFailedCount)
+    syncFailures.count().then(setFailedCount)
+    return unsubscribeFailures
+  }, [])
 
   useEffect(() => {
     // Обновляем статус при изменении онлайн/офлайн
@@ -28,12 +37,48 @@ const OfflineIndicator = () => {
     }
   }, [])
 
-  if (isOnline && queueLength === 0) {
+  if (isOnline && queueLength === 0 && failedCount === 0) {
     return null
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+      {/* Действия, которые сервер отклонил при синхронизации — молча терять их нельзя */}
+      {failedCount > 0 && (
+        <div className="bg-red-600 text-white rounded-lg shadow-lg max-w-sm">
+          <button
+            type="button"
+            onClick={async () => setFailures(failures ? null : await syncFailures.getAll())}
+            className="px-4 py-2 flex items-center gap-2 text-left w-full"
+          >
+            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-2.99l-6.93-12a2 2 0 00-3.48 0l-6.93 12A2 2 0 005.07 19z" />
+            </svg>
+            <span>Не отправлено действий: {failedCount}</span>
+          </button>
+          {failures && (
+            <div className="px-4 pb-3 space-y-2 border-t border-red-500">
+              {failures.map((f) => (
+                <div key={f.id} className="text-xs pt-2">
+                  <div className="font-semibold">{f.title}</div>
+                  <div className="opacity-90">{f.reason}</div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={async () => {
+                  await syncFailures.clear()
+                  setFailures(null)
+                }}
+                className="mt-2 w-full bg-white/20 hover:bg-white/30 rounded px-3 py-1 text-xs"
+              >
+                Понятно, скрыть
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {!isOnline ? (
         <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
           <svg

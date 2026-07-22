@@ -136,6 +136,15 @@ export const ordersAPI = {
     return requestWithQueue('POST', `/orders/${orderId}/replace_from_parsed/`, data)
   },
 
+  // Присоединение ещё одного КП к заказу: позиции дописываются к уже имеющимся
+  // (нумерация проёмов продолжается), ничего не удаляется, замер не затрагивается.
+  appendFromParsed: async (
+    orderId: number,
+    data: ParsedKpData,
+  ): Promise<Order & { kp_number_warning?: string }> => {
+    return requestWithQueue('POST', `/orders/${orderId}/append_from_parsed/`, data)
+  },
+
   getMeasurementRequest: async (orderId: number): Promise<MeasurementRequest | null> => {
     return withOfflineFallback({
       cacheKey: `order_measurement_request_${orderId}`,

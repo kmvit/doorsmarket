@@ -426,6 +426,107 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer = OrderDetailSerializer(order, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'])
+    def append_from_parsed(self, request, pk=None):
+        """
+        Присоединяет к существующему заказу позиции ещё одного КП.
+
+        В отличие от replace_from_parsed ничего не удаляет: нумерация проёмов и
+        порядок строк продолжаются с последних, поэтому связки проёмов замера
+        с позициями КП сохраняются. Номер нового КП дописывается к уже указанным.
+        Что именно добавлять, менеджер выбирает в превью — сюда приходят только
+        отмеченные позиции (так отсеиваются повторные услуги вроде доставки).
+        """
+        from django.db import transaction
+        from django.db.models import Max
+
+        order = self.get_object()
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        items = data.pop('items', []) or []
+        addons = data.pop('addons', []) or []
+
+        if not items and not addons:
+            return Response(
+                {'detail': 'Нечего добавлять: не выбрано ни одной позиции КП.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            last_opening = order.items.aggregate(v=Max('opening_number'))['v'] or 0
+            last_item_pos = order.items.aggregate(v=Max('position'))['v']
+            last_item_pos = -1 if last_item_pos is None else last_item_pos
+            last_addon_pos = order.addons.aggregate(v=Max('position'))['v']
+            last_addon_pos = -1 if last_addon_pos is None else last_addon_pos
+
+            for idx, item in enumerate(items):
+                OrderItem.objects.create(
+                    order=order,
+                    opening_number=last_opening + idx + 1,
+                    room_name=(item.get('room_name') or '')[:255],
+                    model_name=(item.get('model_name') or '')[:500],
+                    quantity=int(item.get('quantity') or 1),
+                    price=item.get('price') or None,
+                    amount=item.get('amount') or None,
+                    door_type=item.get('door_type') or '',
+                    opening_type=item.get('opening_type') or '',
+                    door_height=item.get('door_height') or None,
+                    door_width=item.get('door_width') or None,
+                    recommended_opening_height=item.get('recommended_opening_height') or None,
+                    recommended_opening_width=item.get('recommended_opening_width') or None,
+                    notes=(item.get('notes') or ''),
+                    position=last_item_pos + 1 + idx,
+                )
+
+            for idx, addon in enumerate(addons):
+                OrderAddon.objects.create(
+                    order=order,
+                    kind=addon.get('kind') or 'extra',
+                    name=(addon.get('name') or '')[:500],
+                    quantity=addon.get('quantity') or 1,
+                    size=(addon.get('size') or '')[:100],
+                    opening_type=addon.get('opening_type') or '',
+                    price=addon.get('price') or None,
+                    amount=addon.get('amount') or None,
+                    comment=(addon.get('comment') or ''),
+                    position=last_addon_pos + 1 + idx,
+                )
+
+            # Номера КП копим в существующем поле через запятую.
+            # Поле ограничено 100 символами: если новый номер не влезает, позиции
+            # всё равно добавляем, а номер не дописываем — обрезанный номер хуже, чем его отсутствие.
+            new_kp = (data.get('kp_number') or '').strip()
+            kp_numbers = [p.strip() for p in (order.kp_number or '').split(',') if p.strip()]
+            kp_number_skipped = False
+            if new_kp and new_kp not in kp_numbers:
+                candidate = ', '.join(kp_numbers + [new_kp])
+                if len(candidate) <= 100:
+                    order.kp_number = candidate
+                else:
+                    kp_number_skipped = True
+            # Дата КП в заказе одна — оставляем исходную, чтобы не терять дату первого КП
+            if not order.kp_date and data.get('kp_date'):
+                order.kp_date = data['kp_date']
+
+            order.touch_activity(ActivityKind.ITEMS_CHANGED, save=False)
+            order.save()
+            order.log_activity(
+                ActivityKind.ITEMS_CHANGED,
+                actor=request.user,
+                description=(
+                    f'Добавлено КП № {new_kp or "—"}: '
+                    f'позиций {len(items)}, сопутствующих {len(addons)}'
+                ),
+            )
+
+        serializer = OrderDetailSerializer(order, context={'request': request})
+        payload = serializer.data
+        if kp_number_skipped:
+            payload = dict(payload)
+            payload['kp_number_warning'] = (
+                'Позиции добавлены, но номер КП не поместился в поле «Номер КП» — впишите его вручную.'
+            )
+        return Response(payload)
+
     # ---------- Phase 2: Заявка на замер ----------
 
     @action(

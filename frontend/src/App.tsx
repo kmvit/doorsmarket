@@ -23,6 +23,7 @@ import OrderHistory from './pages/Orders/OrderHistory'
 import OrderCreate from './pages/Orders/OrderCreate'
 import OrderEdit from './pages/Orders/OrderEdit'
 import OrderReplaceKp from './pages/Orders/OrderReplaceKp'
+import OrderAppendKp from './pages/Orders/OrderAppendKp'
 import Workshop from './pages/Orders/Workshop'
 import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
@@ -256,6 +257,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <OrderReplaceKp />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:id/add-kp"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OrderAppendKp />
                     </Layout>
                   </ProtectedRoute>
                 }

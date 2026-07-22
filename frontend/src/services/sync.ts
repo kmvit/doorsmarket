@@ -1,4 +1,4 @@
-import { db, PendingRequest } from './offline'
+import { db, PendingRequest, SyncFailure } from './offline'
 import apiClient from '../api/client'
 import { AxiosRequestConfig } from 'axios'
 
@@ -40,6 +40,87 @@ const deserializeBody = (data: any): any => {
   }
   return data
 }
+
+// Человекопонятное название отложенного действия — чтобы в списке несинхронизированных
+// пользователь видел «Отметка "Замер выполнен"», а не «POST /measurements/12/mark_done/»
+const describeRequest = (method: string, url: string): string => {
+  const id = url.match(/\/(\d+)\//)?.[1] || ''
+  const suffix = id ? ` (замер #${id})` : ''
+  if (url.includes('/mark_done/')) return `Отметка «Замер выполнен»${suffix}`
+  if (url.includes('/save_draft/')) return `Сохранение замера в черновиках${suffix}`
+  if (url.includes('/mark_processed/')) return `Отметка «Замер обработан»${suffix}`
+  if (url.includes('/set_site_conditions/')) return `Условия объекта${suffix}`
+  if (url.includes('/measurement-attachments/')) return 'Загрузка файла к замеру'
+  if (url.includes('/measurement-openings/')) return 'Сохранение проёма замера'
+  if (url.includes('/measurements/')) return `Изменение замера${suffix}`
+  if (url.includes('/complaints/')) return `Действие по рекламации${suffix}`
+  if (url.includes('/orders/')) return `Изменение заказа${suffix}`
+  return `${method} ${url}`
+}
+
+// Текст причины отказа сервера (DRF отдаёт detail или error)
+const describeReason = (error: any): string => {
+  const data = error?.response?.data
+  if (data && typeof data === 'object') {
+    const message = data.detail || data.error
+    if (message) return String(message)
+  }
+  if (typeof data === 'string' && data.trim() && !data.trim().startsWith('<')) {
+    return data.trim().slice(0, 200)
+  }
+  return `Сервер отклонил запрос (код ${error?.response?.status ?? '—'})`
+}
+
+// Действия, отклонённые сервером при синхронизации. Их нельзя просто удалять:
+// пользователь считает, что действие выполнено, а на сервер оно не попало.
+class SyncFailureLog {
+  private listeners: Array<(count: number) => void> = []
+
+  onChange(listener: (count: number) => void): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const index = this.listeners.indexOf(listener)
+      if (index > -1) this.listeners.splice(index, 1)
+    }
+  }
+
+  private notify(): void {
+    db.syncFailures.count().then((count) => {
+      this.listeners.forEach((listener) => listener(count))
+    })
+  }
+
+  async add(request: PendingRequest, error: any): Promise<void> {
+    const failure: SyncFailure = {
+      title: describeRequest(request.method, request.url),
+      reason: describeReason(error),
+      method: request.method,
+      url: request.url,
+      timestamp: Date.now(),
+    }
+    try {
+      await db.syncFailures.add(failure)
+      this.notify()
+    } catch (e) {
+      console.warn('[Sync] Не удалось сохранить сведения об отклонённом запросе:', e)
+    }
+  }
+
+  async getAll(): Promise<SyncFailure[]> {
+    return await db.syncFailures.orderBy('timestamp').reverse().toArray()
+  }
+
+  async count(): Promise<number> {
+    return await db.syncFailures.count()
+  }
+
+  async clear(): Promise<void> {
+    await db.syncFailures.clear()
+    this.notify()
+  }
+}
+
+export const syncFailures = new SyncFailureLog()
 
 class RequestQueue {
   private isProcessing = false
@@ -161,13 +242,16 @@ class RequestQueue {
           }
 
           // Сервер ответил ошибкой (например, 400 валидация) — считаем попытки,
-          // после MAX_RETRY_COUNT удаляем, чтобы битый запрос не висел в очереди вечно
+          // после MAX_RETRY_COUNT удаляем, чтобы битый запрос не висел в очереди вечно.
+          // Но сначала записываем отказ: иначе действие пропадает молча и пользователь
+          // уверен, что оно выполнено (замер так и остаётся в черновиках).
           const retryCount = request.retryCount + 1
           if (retryCount >= MAX_RETRY_COUNT) {
             console.error(
               `[Sync] Запрос ${request.method} ${request.url} отклонён сервером ${retryCount} раз(а), удаляем из очереди:`,
               error.response?.data || error.message,
             )
+            await syncFailures.add(request, error)
             await db.pendingRequests.delete(request.id!)
           } else {
             await db.pendingRequests.update(request.id!, {

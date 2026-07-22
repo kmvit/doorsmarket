@@ -68,6 +68,10 @@ class IsAuthenticated(permissions.IsAuthenticated):
     pass
 
 
+# Завершённые статусы: по умолчанию скрыты в списке рекламаций
+CLOSED_STATUSES = ['closed', 'completed', 'resolved']
+
+
 class ComplaintViewSet(viewsets.ModelViewSet):
     """
     ViewSet для работы с рекламациями
@@ -230,9 +234,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
         
         # Исключаем закрытые рекламации только для списка, не для детального просмотра
-        # Это позволяет просматривать закрытые рекламации по ID (как в Django views)
+        # Это позволяет просматривать закрытые рекламации по ID (как в Django views).
+        # Если пользователь явно фильтрует по завершённому статусу, исключение не применяем —
+        # иначе выбор статуса «Закрыта»/«Решена»/«Выполнена» всегда давал пустой список.
         if self.action == 'list' and exclude_closed not in ['0', 'false', 'False']:
-            queryset = queryset.exclude(status__in=['closed', 'completed', 'resolved'])
+            requested_statuses = self.request.query_params.getlist('status')
+            if not any(s in CLOSED_STATUSES for s in requested_statuses):
+                queryset = queryset.exclude(status__in=CLOSED_STATUSES)
         
         # Фильтр по городу только для админа, staff и ОР (через query param)
         if city_id and (user.role in ['admin', 'complaint_department'] or getattr(user, 'is_staff', False)):

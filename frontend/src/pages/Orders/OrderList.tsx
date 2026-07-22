@@ -124,7 +124,13 @@ const OrderList = () => {
           <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
+            onChange={(e) => {
+              // Папка из дашборда — это тоже выборка по статусу. Если её не сбросить,
+              // она пересекается с выбранным статусом и список почти всегда пустой,
+              // из-за чего фильтр выглядит нерабочим.
+              if (e.target.value && folder) clearFolder()
+              setStatusFilter(e.target.value as OrderStatus | '')
+            }}
             className="rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
           >
             <option value="">Все статусы</option>
@@ -134,6 +140,9 @@ const OrderList = () => {
             <option value="measurement_scheduled">Замер запланирован</option>
             <option value="measurement_done">Замер выполнен</option>
             <option value="measurement_processed">Замер обработан</option>
+            <option value="measurement_not_planned">Замер не запланирован</option>
+            <option value="measurement_not_done">Замер не выполнен</option>
+            <option value="measurement_not_processed">Замер не обработан</option>
             <option value="paid">Оплачен</option>
             <option value="in_production">В производстве</option>
             <option value="on_warehouse">На складе</option>

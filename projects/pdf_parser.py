@@ -244,22 +244,74 @@ def _extract_address(text: str) -> str:
     return ''
 
 
-def _first_row_is_header(first_cell: str) -> bool:
-    """Проверяет, что первая строка — заголовок, а не продолжение данных со прошлой страницы."""
-    if not first_cell or len(first_cell) < 3:
+# Названия колонок таблиц КП (точное совпадение ячейки после нормализации)
+_HEADER_COLUMN_CELLS = {
+    '№', 'кол-во', 'кол во', 'колво', 'цена', 'сумма', 'размер',
+    'открывание', 'рек.проем', 'рек. проем', 'рек.проём', 'рек. проём',
+}
+# Маркеры колонки с наименованием изделия (секции, которые попадают в рекламацию).
+# «доп» — секция «Доп. к заказу»: в ней бывают реальные изделия (панели, доборы и т.п.).
+_NAME_COLUMN_MARKERS = ('модель', 'полотн', 'короб', 'наличник', 'добор', 'вид', 'артикул', 'доп')
+
+
+# Строки-услуги: в изделия рекламации не попадают (секция «Услуги» и её продолжения
+# на следующей странице, где заголовок секции недоступен)
+_SERVICE_ROW_RE = re.compile(r'^(доставка|подъем|подъём|занос|пронос|ручной пронос|разгрузка|монтаж|демонтаж)\b', re.IGNORECASE)
+
+
+def _row_looks_like_data(row) -> bool:
+    """
+    Строка данных таблицы изделий: есть числовые колонки (кол-во/цена/сумма).
+    Отличает продолжение таблицы изделий на новой странице от информационных
+    таблиц (реквизиты заказа, блок оплаты), где чисто числовых ячеек нет.
+    """
+    if not row:
         return False
-    cell = first_cell.lower().strip()
-    # Признаки строки данных (БЛОК 3..., Стеновые панели, SKY полотно и т.д.)
-    if any(x in cell[:120] for x in (
-        'блок ', 'блок.', 'стеновые панели', 'piana', 'sky полотно',
-        'шпонка', 'добор шириной', 'мдф без покрытия', 'мдф без отделки',
-        'кромка рал', 'алюминиевая кромка', 'сни '
-    )):
-        return False
-    # Заголовок: короткая ячейка с названием колонки
-    if any(x in cell for x in ('модель полотн', 'дверной короб', 'наличник', 'вид/артикул', 'механизм', 'петл')) and len(cell) < 100:
-        return True
-    return len(cell) < 60
+    numeric_cells = sum(
+        1 for c in row
+        if c is not None and re.fullmatch(r'\d+(?:[.,]\d+)?', str(c).strip())
+    )
+    return numeric_cells >= 2
+
+
+def _section_header_indices(row) -> Any:
+    """
+    Распознаёт строку-шапку секции таблицы КП («№ Модель полотна Кол-во …»,
+    «Добор Кол-во Размер …») и возвращает индексы колонок
+    (name_idx, qty_idx, size_idx, opening_idx).
+
+    В новом формате КП все секции (полотна, короба, петли, ручки, механизмы, услуги)
+    идут строками одной большой таблицы, поэтому шапки нужно ловить на любой строке
+    и переключать колонки на ходу.
+
+    Возвращает: кортеж индексов; 'skip' — шапка секции без изделий (Услуги, Стекло и т.п.),
+    её строки в рекламацию не берём; None — обычная строка данных.
+    """
+    if not row:
+        return None
+    cells = [re.sub(r'\s+', ' ', str(c).strip().lower()) if c else '' for c in row]
+    # Шапка = минимум три ячейки с точными названиями колонок
+    column_cells = sum(1 for c in cells if c in _HEADER_COLUMN_CELLS)
+    if column_cells < 3:
+        return None
+    name_idx = None
+    for i, c in enumerate(cells):
+        if c and c not in _HEADER_COLUMN_CELLS and len(c) < 60 and any(m in c for m in _NAME_COLUMN_MARKERS):
+            name_idx = i
+            break
+    if name_idx is None:
+        return 'skip'
+    qty_idx = size_idx = opening_idx = None
+    for i, c in enumerate(cells):
+        if i == name_idx or not c:
+            continue
+        if qty_idx is None and c.startswith('кол'):
+            qty_idx = i
+        elif size_idx is None and 'размер' in c:
+            size_idx = i
+        elif opening_idx is None and 'открыва' in c:
+            opening_idx = i
+    return (name_idx, qty_idx, size_idx, opening_idx)
 
 
 def _normalize_product_text(value: str) -> str:
@@ -416,87 +468,84 @@ def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
                     if len(table) < 1:
                         continue
                     first_row = table[0]
-                    first_cell = str(first_row[0]).strip() if first_row and first_row[0] else ''
-                    has_header = _first_row_is_header(first_cell)
-                    rows = table[1:] if has_header else table
-                    name_idx = None
-                    qty_idx = None
-                    size_idx = None
-                    opening_idx = None
 
-                    if has_header:
-                        headers = [str(c).lower() if c else '' for c in first_row]
-                        for i, h in enumerate(headers):
-                            hl = h.lower() if h else ''
-                            if any(x in hl for x in ('модель', 'полотн', 'короб', 'наличник', 'добор', 'вид', 'артикул')):
-                                name_idx = i
-                            elif 'кол' in hl and ('во' in hl or '-' in hl):
-                                qty_idx = i
-                            elif 'размер' in hl:
-                                size_idx = i
-                            elif 'открыва' in hl:
-                                opening_idx = i
-                    else:
-                        # Для продолжений таблиц без заголовка используем стандартную структуру колонок.
+                    # Текущие индексы колонок (name, qty, size, opening); None — строки пропускаем
+                    # (информационные таблицы и секции без изделий).
+                    current_idx = None
+                    if _section_header_indices(first_row) is None and _row_looks_like_data(first_row):
+                        # Продолжение таблицы изделий с прошлой страницы (первая строка — данные) —
+                        # используем стандартную структуру колонок.
                         n = len(first_row) if first_row else 0
-                        name_idx = 0 if n > 0 else None
-                        qty_idx = 1 if n > 1 else None
-                        size_idx = 2 if n > 2 else None
-                        opening_idx = 4 if n > 4 else None
+                        current_idx = (
+                            0 if n > 0 else None,
+                            1 if n > 1 else None,
+                            2 if n > 2 else None,
+                            4 if n > 4 else None,
+                        )
 
-                    if name_idx is None and has_header:
-                        continue
+                    for row in table:
+                        if not row:
+                            continue
+                        # Шапка секции — переключаем колонки; строки секций без изделий пропускаем.
+                        header_idx = _section_header_indices(row)
+                        if header_idx is not None:
+                            current_idx = None if header_idx == 'skip' else header_idx
+                            continue
+                        if current_idx is None or current_idx[0] is None:
+                            continue
+                        name_idx, qty_idx, size_idx, opening_idx = current_idx
+                        if len(row) <= name_idx or not row[name_idx]:
+                            continue
+                        product_name = str(row[name_idx]).strip()
 
-                    if name_idx is not None:
-                        for row_idx, row in enumerate(rows):
-                            if row and len(row) > name_idx and row[name_idx]:
-                                product_name = str(row[name_idx]).strip()
+                        stop_patterns = [
+                            r'покупатель\s*\(',
+                            r'представитель',
+                            r'способ\s+оплаты',
+                            r'^дата\s+тип',
+                        ]
+                        product_name_lower = product_name.lower()
+                        should_stop = False
+                        for pattern in stop_patterns:
+                            if re.search(pattern, product_name_lower):
+                                should_stop = True
+                                break
 
-                                stop_patterns = [
-                                    r'покупатель\s*\(',
-                                    r'представитель',
-                                    r'способ\s+оплаты',
-                                    r'^дата\s+тип',
-                                ]
-                                product_name_lower = product_name.lower()
-                                should_stop = False
-                                for pattern in stop_patterns:
-                                    if re.search(pattern, product_name_lower):
-                                        should_stop = True
-                                        break
+                        if should_stop:
+                            break
 
-                                if should_stop:
-                                    break
+                        if _SERVICE_ROW_RE.match(product_name_lower):
+                            continue
 
-                                if product_name and len(product_name) > 5 and not product_name.startswith('Услуги'):
-                                    product_name = ' '.join(product_name.split())
+                        if product_name and len(product_name) > 5 and not product_name.startswith('Услуги'):
+                            product_name = ' '.join(product_name.split())
 
-                                    quantity = ''
-                                    if qty_idx is not None and qty_idx < len(row) and row[qty_idx]:
-                                        qty_str = str(row[qty_idx]).strip()
-                                        qty_match = re.search(r'(\d+)', qty_str)
-                                        if qty_match:
-                                            quantity = qty_match.group(1)
+                            quantity = ''
+                            if qty_idx is not None and qty_idx < len(row) and row[qty_idx]:
+                                qty_str = str(row[qty_idx]).strip()
+                                qty_match = re.search(r'(\d+)', qty_str)
+                                if qty_match:
+                                    quantity = qty_match.group(1)
 
-                                    size = ''
-                                    if size_idx is not None and size_idx < len(row) and row[size_idx]:
-                                        size = str(row[size_idx]).strip()
-                                        size = ' '.join(size.split())
+                            size = ''
+                            if size_idx is not None and size_idx < len(row) and row[size_idx]:
+                                size = str(row[size_idx]).strip()
+                                size = ' '.join(size.split())
 
-                                    opening = ''
-                                    if opening_idx is not None and opening_idx < len(row) and row[opening_idx]:
-                                        opening = str(row[opening_idx]).strip()
-                                        opening = ' '.join(opening.split())
+                            opening = ''
+                            if opening_idx is not None and opening_idx < len(row) and row[opening_idx]:
+                                opening = str(row[opening_idx]).strip()
+                                opening = ' '.join(opening.split())
 
-                                    product = {
-                                        'product_name': product_name,
-                                        'quantity': quantity if quantity else '1',
-                                        'size': size,
-                                        'opening_type': opening,
-                                        'problem_description': '',
-                                    }
-                                    product = {k: v if v and v != 'None' else '' for k, v in product.items()}
-                                    products.append(product)
+                            product = {
+                                'product_name': product_name,
+                                'quantity': quantity if quantity else '1',
+                                'size': size,
+                                'opening_type': opening,
+                                'problem_description': '',
+                            }
+                            product = {k: v if v and v != 'None' else '' for k, v in product.items()}
+                            products.append(product)
 
             # Дополнительный проход по "сырому" тексту страницы для строк,
             # которые разорваны на стыке страниц и теряются в extract_tables().

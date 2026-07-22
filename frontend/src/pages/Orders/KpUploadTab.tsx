@@ -14,9 +14,18 @@ interface Props {
   // Режим замены КП: id существующего заказа. Вместо создания нового заказа
   // данные распарсенного КП заменяют шапку и позиции этого заказа.
   replaceOrderId?: number
+  // Режим добавления КП: позиции дописываются к уже имеющимся в заказе.
+  appendOrderId?: number
+  // Наименования сопутствующих позиций, которые в заказе уже есть — подсвечиваем,
+  // чтобы менеджер не задвоил доставку и подъём из каждого КП.
+  existingAddonNames?: string[]
 }
 
-const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
+const normalizeName = (value: string): string => (value || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+const KpUploadTab = ({
+  salons, defaultSalonId, replaceOrderId, appendOrderId, existingAddonNames = [],
+}: Props) => {
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedKpData | null>(null)
@@ -137,9 +146,35 @@ const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
     }
   }
 
+  const handleAppend = async () => {
+    if (!parsed || !appendOrderId) return
+    if (!parsed.items.length && !parsed.addons.length) {
+      setError('Нечего добавлять: удалите лишнее, но хотя бы одна позиция должна остаться.')
+      return
+    }
+    if (!window.confirm(
+      `Добавить позиции этого КП в заказ #${appendOrderId}?\n\n` +
+      `Позиций — ${parsed.items.length}, сопутствующих — ${parsed.addons.length}. ` +
+      'Имеющиеся позиции заказа сохранятся, нумерация проёмов продолжится с последнего. ' +
+      'Лишние строки (например, повторную доставку) удалите до добавления.',
+    )) return
+    setIsCreating(true)
+    setError(null)
+    try {
+      const result = await ordersAPI.appendFromParsed(appendOrderId, parsed)
+      if (result?.kp_number_warning) alert(result.kp_number_warning)
+      navigate(`/orders/${appendOrderId}`)
+    } catch (err: any) {
+      const detail = err.response?.data
+      setError(typeof detail === 'object' ? Object.values(detail).flat().join(', ') : (err.message || 'Ошибка добавления КП'))
+      setIsCreating(false)
+    }
+  }
+
   const handleCreate = async () => {
     if (!parsed) return
     if (replaceOrderId) return handleReplace()
+    if (appendOrderId) return handleAppend()
     if (!salonId) { setError('Выберите салон'); return }
     if (!nextActionText.trim() || !nextActionDueAt) {
       setNextActionError(true)
@@ -363,8 +398,12 @@ const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {parsed.addons.map((addon, idx) => (
-                      <tr key={idx}>
+                    {parsed.addons.map((addon, idx) => {
+                      const isDuplicate = appendOrderId
+                        && existingAddonNames.some((n) => normalizeName(n) === normalizeName(addon.name))
+                      return (
+                      <tr key={idx} className={isDuplicate ? 'bg-amber-50' : undefined}
+                          title={isDuplicate ? 'Такая позиция в заказе уже есть — удалите строку, если добавлять её не нужно' : undefined}>
                         <td className="px-2 py-1.5 align-top">
                           <select value={addon.kind} onChange={(e) => updateAddon(idx, 'kind', e.target.value as AddonKind)} className="rounded border-gray-300 text-sm">
                             {(Object.keys(ADDON_KIND_DISPLAY) as AddonKind[]).map((k) => (
@@ -374,6 +413,9 @@ const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
                         </td>
                         <td className="px-2 py-1.5 align-top">
                           <AutoResizeTextarea value={addon.name} onChange={(e) => updateAddon(idx, 'name', e.target.value)} className="w-full min-w-[280px] rounded border-gray-300 text-sm" />
+                          {isDuplicate && (
+                            <p className="text-xs text-amber-700 mt-1">Уже есть в заказе</p>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={addon.quantity ?? ''} onChange={(e) => updateAddon(idx, 'quantity', e.target.value)} className="w-16 rounded border-gray-300 text-sm text-right" /></td>
                         <td className="px-2 py-1.5 align-top"><input type="text" value={addon.size} onChange={(e) => updateAddon(idx, 'size', e.target.value)} className="w-24 rounded border-gray-300 text-sm" /></td>
@@ -401,15 +443,16 @@ const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </HScrollSync>
             )}
           </div>
 
-          {/* Следующее действие (обязательно; при замене КП заказ уже существует — не требуется) */}
-          {!replaceOrderId && (
+          {/* Следующее действие (обязательно; при замене и добавлении КП заказ уже существует — не требуется) */}
+          {!replaceOrderId && !appendOrderId && (
           <div
             ref={nextActionRef}
             className={`rounded-xl shadow-sm p-5 ${nextActionError ? 'bg-red-50 border-2 border-red-400' : 'bg-amber-50 border border-amber-200'}`}
@@ -452,12 +495,14 @@ const KpUploadTab = ({ salons, defaultSalonId, replaceOrderId }: Props) => {
             <button
               type="button"
               onClick={handleCreate}
-              disabled={isCreating || (!replaceOrderId && !salonId)}
+              disabled={isCreating || (!replaceOrderId && !appendOrderId && !salonId)}
               className="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-sm disabled:opacity-50"
             >
               {isCreating
-                ? (replaceOrderId ? 'Заменяем…' : 'Создание...')
-                : (replaceOrderId ? `Заменить КП в заказе #${replaceOrderId}` : 'Создать заказ')}
+                ? (replaceOrderId ? 'Заменяем…' : appendOrderId ? 'Добавляем…' : 'Создание...')
+                : replaceOrderId ? `Заменить КП в заказе #${replaceOrderId}`
+                  : appendOrderId ? `Добавить в заказ #${appendOrderId}`
+                    : 'Создать заказ'}
             </button>
           </div>
         </>
