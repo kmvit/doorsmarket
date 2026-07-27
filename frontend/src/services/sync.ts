@@ -41,6 +41,72 @@ const deserializeBody = (data: any): any => {
   return data
 }
 
+// Постоянная карта «временный id → настоящий id». Проёмы (и другие сущности),
+// созданные офлайн, получают отрицательный временный id. Когда их POST наконец
+// синхронизируется, сервер выдаёт настоящий id — запоминаем связь здесь. Карта
+// переживает и перезапуск приложения, и разные проходы очереди, поэтому зависимый
+// запрос (например, вложение к офлайн-проёму) всегда найдёт настоящий id, даже
+// если проём синхронизировался в предыдущем проходе.
+const TEMP_ID_MAP_KEY = 'temp_id_map'
+
+const loadTempIdMap = (): Record<string, number> => {
+  try {
+    return JSON.parse(localStorage.getItem(TEMP_ID_MAP_KEY) || '{}') || {}
+  } catch {
+    return {}
+  }
+}
+
+const rememberTempId = (tempId: number, realId: number): void => {
+  try {
+    const map = loadTempIdMap()
+    map[String(tempId)] = realId
+    // Ограничиваем размер, чтобы карта не росла бесконечно (temp id уникальны на сессию)
+    const keys = Object.keys(map)
+    if (keys.length > 500) {
+      for (const k of keys.slice(0, keys.length - 500)) delete map[k]
+    }
+    localStorage.setItem(TEMP_ID_MAP_KEY, JSON.stringify(map))
+  } catch {
+    /* localStorage недоступен — не критично, есть и синхронный remap в проходе */
+  }
+}
+
+// Разрешить временные ссылки (opening / measurement) в теле запроса по карте.
+// Возвращает changed (что-то заменили — надо перезаписать в БД) и unresolved
+// (остались отрицательные ссылки без пары — зависимость ещё не синхронизирована).
+const resolveTempRefs = (
+  data: any,
+  map: Record<string, number>,
+): { changed: boolean; unresolved: boolean } => {
+  let changed = false
+  let unresolved = false
+  const fix = (raw: string | number): string | number => {
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n >= 0) return raw
+    const real = map[String(n)]
+    if (real != null) {
+      changed = true
+      return real
+    }
+    unresolved = true
+    return raw
+  }
+  if (!data || typeof data !== 'object') return { changed, unresolved }
+  if (data.__isFormData && Array.isArray(data.entries)) {
+    for (const entry of data.entries) {
+      if (entry[0] === 'opening' || entry[0] === 'measurement') {
+        entry[1] = String(fix(entry[1]))
+      }
+    }
+  } else {
+    for (const key of ['opening', 'measurement', 'measurement_opening_id']) {
+      if (key in data) data[key] = fix(data[key])
+    }
+  }
+  return { changed, unresolved }
+}
+
 // Человекопонятное название отложенного действия — чтобы в списке несинхронизированных
 // пользователь видел «Отметка "Замер выполнен"», а не «POST /measurements/12/mark_done/»
 const describeRequest = (method: string, url: string): string => {
@@ -224,6 +290,19 @@ class RequestQueue {
 
       for (const request of requests) {
         try {
+          // Перед отправкой разрешаем временные id (проём/замер, созданные офлайн)
+          // на настоящие по постоянной карте. Если зависимость ещё не получила
+          // настоящий id — откладываем запрос (не отправляем заведомо провальный,
+          // иначе сервер вернёт 400 и файл будет потерян). Попробуем в следующий
+          // проход, когда проём синхронизируется и карта пополнится.
+          const { changed, unresolved } = resolveTempRefs(request.data, loadTempIdMap())
+          if (changed) {
+            await db.pendingRequests.update(request.id!, { data: request.data })
+          }
+          if (unresolved) {
+            continue
+          }
+
           // Выполняем запрос
           const result = await this.executeRequest(request)
 
@@ -234,6 +313,7 @@ class RequestQueue {
           // временный id во всех запросах очереди, что на него ссылаются (вложения).
           // Без этого файл к офлайн-проёму уходил с несуществующим id и падал с 400.
           if (request.tempId != null && result && typeof result === 'object' && result.id != null) {
+            rememberTempId(request.tempId, result.id)
             await this.remapTempId(request.tempId, result.id, requests)
           }
           this.notifyListeners()

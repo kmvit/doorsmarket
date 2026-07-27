@@ -9,7 +9,7 @@ import {
   isInverso,
   validateLiftRequired,
 } from '../../api/measurements'
-import { Measurement, MeasurementOpening } from '../../types/measurements'
+import { Measurement, MeasurementOpening, MeasurementAttachment } from '../../types/measurements'
 import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
 import { isQueuedError, requestQueue } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
@@ -20,6 +20,11 @@ import LoadingOverlay from '../../components/common/LoadingOverlay'
 
 const fieldCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
+
+// Замерщики привычно вводят дробные значения через запятую («1,5»), но сервер
+// (Django DecimalField) принимает только точку. Нормализуем сразу при вводе,
+// чтобы «1,5» и «1.5» сохранялись одинаково и не ломали замер (в т.ч. офлайн).
+const normalizeDecimal = (value: string): string => value.replace(',', '.')
 
 const MeasurementForm = () => {
   const { id } = useParams<{ id: string }>()
@@ -230,6 +235,37 @@ const MeasurementForm = () => {
       }
     } finally {
       e.target.value = ''
+    }
+  }
+
+  const handleDeleteFile = async (openingId: number | null, a: MeasurementAttachment) => {
+    if (!m) return
+    if (!confirm(`Удалить файл «${a.name || 'файл'}»?`)) return
+    try {
+      await measurementAttachmentsAPI.delete(m.id, a.id)
+      setM((prev) => {
+        if (!prev) return prev
+        if (openingId) {
+          return {
+            ...prev,
+            openings: prev.openings.map((o) =>
+              o.id === openingId
+                ? { ...o, attachments: (o.attachments || []).filter((x) => x.id !== a.id) }
+                : o,
+            ),
+          }
+        }
+        return { ...prev, attachments: (prev.attachments || []).filter((x) => x.id !== a.id) }
+      })
+      if (!navigator.onLine) {
+        setOfflineNotice('Нет сети: файл убран локально, удаление на сервере произойдёт при появлении интернета.')
+      }
+    } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: удаление сохранено и выполнится при появлении интернета.')
+      } else {
+        alert('Не удалось удалить файл')
+      }
     }
   }
 
@@ -575,7 +611,7 @@ const MeasurementForm = () => {
               <span className="text-gray-500">Общие вложения замера ({m.attachments.length}):</span>
               <ul className="mt-1 space-y-0.5">
                 {m.attachments.filter((a) => !a.opening).map((a) => (
-                  <li key={a.id} className="text-xs">
+                  <li key={a.id} className="text-xs flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => a.file_url && setViewerFile({ url: a.file_url, name: a.name || 'Файл' })}
@@ -583,6 +619,16 @@ const MeasurementForm = () => {
                     >
                       {a.name || 'файл'}
                     </button>
+                    {canEditOpenings && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFile(null, a)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Удалить файл"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -937,8 +983,9 @@ const MeasurementForm = () => {
                 <label className={labelCls}>Наличник лицевой, кол-во (можно дробное)</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   value={op.face_trim_qty ?? ''}
-                  onChange={(e) => updateOpeningLocal(op.id, 'face_trim_qty', e.target.value)}
+                  onChange={(e) => updateOpeningLocal(op.id, 'face_trim_qty', normalizeDecimal(e.target.value))}
                   onBlur={() => saveOpening(op)}
                   disabled={!canEditOpenings}
                   className={fieldCls}
@@ -958,8 +1005,9 @@ const MeasurementForm = () => {
                 <label className={labelCls}>Наличник оборотный, кол-во</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   value={op.back_trim_qty ?? ''}
-                  onChange={(e) => updateOpeningLocal(op.id, 'back_trim_qty', e.target.value)}
+                  onChange={(e) => updateOpeningLocal(op.id, 'back_trim_qty', normalizeDecimal(e.target.value))}
                   onBlur={() => saveOpening(op)}
                   disabled={!canEditOpenings}
                   className={fieldCls}
@@ -1033,7 +1081,7 @@ const MeasurementForm = () => {
               <div className="text-xs font-medium text-gray-500 uppercase mb-1">Файлы / схемы по проёму ({op.attachments.length})</div>
               <ul className="space-y-0.5">
                 {op.attachments.map((a) => (
-                  <li key={a.id} className="text-xs">
+                  <li key={a.id} className="text-xs flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => a.file_url && setViewerFile({ url: a.file_url, name: a.name || 'Файл' })}
@@ -1041,6 +1089,16 @@ const MeasurementForm = () => {
                     >
                       {a.name || 'файл'}
                     </button>
+                    {canEditOpenings && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFile(op.id, a)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Удалить файл"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

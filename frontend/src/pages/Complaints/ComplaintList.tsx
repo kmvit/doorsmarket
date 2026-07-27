@@ -118,9 +118,19 @@ const ComplaintList = () => {
     setLocalFilters((prev) => ({ ...prev, [key]: value }))
   }
 
+  // «Папочные» параметры приходят из URL при заходе с дашборда (например,
+  // ?my_tasks=review — «Ожидают ответа»). Они сужают выборку и НЕ управляются
+  // панелью фильтров. При ручном применении/сбросе их нужно снять, иначе они
+  // залипают в localFilters и сторе (setFilters мержит) и любой выбранный фильтр
+  // не работает — список остаётся в рамках папки, пока не перезапустишь приложение.
+  const stripFolderScope = (f: ComplaintFilters): ComplaintFilters =>
+    ({ ...f, my_tasks: undefined, my_orders: undefined, needs_planning: undefined } as any)
+
   const handleApplyFilters = () => {
-    setFilters(localFilters)
-    fetchComplaints(localFilters)
+    const applied = stripFolderScope(localFilters)
+    setLocalFilters(applied)
+    setFilters(applied)
+    fetchComplaints(applied)
   }
 
   const handleResetFilters = () => {

@@ -109,6 +109,32 @@ const applyAttachmentToLocalDetail = async (
   }
 }
 
+const removeAttachmentFromLocalDetail = async (
+  measurementId: number,
+  attachmentId: number,
+): Promise<void> => {
+  try {
+    const cacheKey = `measurement_detail_${measurementId}`
+    const detail: Measurement | undefined =
+      (await measurementUtils.getDetail(measurementId)) ||
+      (await cacheUtils.getStale(cacheKey)) ||
+      undefined
+    if (!detail) return
+    const updated: Measurement = {
+      ...detail,
+      attachments: (detail.attachments || []).filter((a) => a.id !== attachmentId),
+      openings: (detail.openings || []).map((o) => ({
+        ...o,
+        attachments: (o.attachments || []).filter((a) => a.id !== attachmentId),
+      })),
+    }
+    await measurementUtils.saveDetail(updated)
+    await cacheUtils.set(cacheKey, updated)
+  } catch (e) {
+    console.warn('[Offline] Не удалось убрать вложение из локальной копии замера:', e)
+  }
+}
+
 // Локальный пересчёт рекомендаций проёма — зеркало серверного _recalc_recommendations.
 // Нужен в офлайне: сервер недоступен, а рек. размеры и текст должны появляться сразу.
 const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial<MeasurementOpening>): T => {
@@ -539,8 +565,22 @@ export const measurementAttachmentsAPI = {
     }
   },
 
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/measurement-attachments/${id}/`)
+  delete: async (measurementId: number, id: number): Promise<void> => {
+    // Вложение, созданное офлайн (временный отрицательный id), ещё не существует на
+    // сервере — удаляем только из локальной копии (POST на его создание уйдёт из
+    // очереди синхронизации; отдельная отмена не требуется для этого сценария).
+    if (id < 0) {
+      await removeAttachmentFromLocalDetail(measurementId, id)
+      return
+    }
+    try {
+      await apiClient.delete(`/measurement-attachments/${id}/`)
+    } catch (error: any) {
+      if (!isNetworkError(error)) throw error
+      // Офлайн: DELETE — в очередь синхронизации, локально убираем сразу
+      await requestQueue.add('DELETE', `/measurement-attachments/${id}/`)
+    }
+    await removeAttachmentFromLocalDetail(measurementId, id)
   },
 }
 

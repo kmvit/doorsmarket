@@ -1049,7 +1049,9 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 Q(contact_name__icontains=search) |
                 Q(contact_phone__icontains=search)
             )
-        return qs.order_by('-created_at')
+        # По номеру заказа (убывание), а не по дате создания заявки — иначе порядок
+        # выглядит хаотичным и не совпадает с видимыми в списке номерами
+        return qs.order_by('-order_id')
 
     def get_serializer_class(self):
         if self.action == 'list':
