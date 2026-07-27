@@ -1055,8 +1055,14 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 actor=request.user,
             )
 
-        # Если назначили дату при создании — статус scheduled
-        if m.measurement_date and mr.order.status == OrderStatus.MEASUREMENT_REQUESTED:
+        # Если назначили дату при создании — статус scheduled.
+        # Учитываем и measurement_not_planned: cron мог пометить заказ как «не
+        # запланирован» (>1 раб. дня без даты), а СМ затем создаёт замер сразу с датой —
+        # тогда статус тоже должен стать «запланирован», иначе в списке висело
+        # «Замер не запланирован» при уже назначенной дате.
+        if m.measurement_date and mr.order.status in (
+            OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_NOT_PLANNED,
+        ):
             mr.order.status = OrderStatus.MEASUREMENT_SCHEDULED
             mr.order.touch_activity(ActivityKind.MEASUREMENT_SCHEDULED, save=False)
             mr.order.save()
