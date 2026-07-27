@@ -89,7 +89,11 @@ export interface Measurement {
 }
 
 export interface MeasurementListItem {
-  id: number
+  // id замера; null для строк-заявок, по которым замер ещё не создан
+  id: number | null
+  // Заявка без созданного замера (папка «Назначить замер») — строка ведёт в заказ
+  is_request_only?: boolean
+  request_id?: number
   order_id: number
   client_name: string
   address: string

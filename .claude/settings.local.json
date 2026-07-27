@@ -80,7 +80,15 @@
       "Bash(sed -i '' '/^import/d' phone_compiled.mjs)",
       "Bash(node phone_test.mjs)",
       "Bash(python3 -)",
-      "Bash(/Users/home/PycharmProjects/marketingdoors/venv/bin/python -c ' *)"
+      "Bash(/Users/home/PycharmProjects/marketingdoors/venv/bin/python -c ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/api/v1/measurements/3/ -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzg1MjI4MTY2LCJpYXQiOjE3ODUxNDE3NjYsImp0aSI6ImRlYWFiODI3NWU3NDRjMmQ4ZjMwNDcxZjg5Y2M4MDRlIiwidXNlcl9pZCI6IjEifQ.Dv8NFI-ZZRTrR3NV7pj6hmq-y_CaGM9ue1Em2ToXXm4\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3005/api/v1/measurements/3/ -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzg1MjI4MTY2LCJpYXQiOjE3ODUxNDE3NjYsImp0aSI6ImRlYWFiODI3NWU3NDRjMmQ4ZjMwNDcxZjg5Y2M4MDRlIiwidXNlcl9pZCI6IjEifQ.Dv8NFI-ZZRTrR3NV7pj6hmq-y_CaGM9ue1Em2ToXXm4\")",
+      "Bash(lsof -nP -iTCP:8000 -sTCP:LISTEN)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 5 http://localhost:8000/api/v1/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 8 http://localhost:8000/api/v1/measurements/)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git restore *)"
     ]
   }
 }

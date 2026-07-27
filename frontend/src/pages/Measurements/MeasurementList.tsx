@@ -140,11 +140,14 @@ const MeasurementList = () => {
               <tbody className="divide-y divide-gray-100">
                 {measurements.map((m) => (
                   <tr
-                    key={m.id}
+                    key={m.id ?? `req-${m.request_id}`}
                     className="hover:bg-primary-50 cursor-pointer"
-                    onClick={() => navigate(`/measurements/${m.id}`)}
+                    // Заявка без замера ведёт в заказ (там СМ назначает дату), замер — на карточку замера
+                    onClick={() => navigate(m.is_request_only ? `/orders/${m.order_id}` : `/measurements/${m.id}`)}
                   >
-                    <td className="px-3 py-2 font-medium text-gray-900">№ {m.id}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900">
+                      {m.is_request_only ? <span className="text-xs text-amber-700">заявка</span> : `№ ${m.id}`}
+                    </td>
                     <td className="px-3 py-2">
                       <Link
                         to={`/orders/${m.order_id}`}

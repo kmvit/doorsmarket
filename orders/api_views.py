@@ -28,6 +28,7 @@ from .serializers import (
     WorkshopOrderSerializer,
     MeasurementSerializer,
     MeasurementListSerializer,
+    PendingMeasurementRequestListSerializer,
     MeasurementOpeningSerializer,
     MeasurementOpeningWriteSerializer,
     MeasurementAttachmentSerializer,
@@ -1006,6 +1007,49 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 'count': apply_measurement_folder(base, folder, request.user).count(),
             })
         return Response(result)
+
+    def list(self, request, *args, **kwargs):
+        """
+        Список замеров + строки-заявки, по которым замер ещё не создан.
+
+        В папке «Назначить замер» и «Все» дополнительно показываем заявки без
+        созданного замера (order.status = measurement_requested/not_planned) — иначе
+        СМ не видел бы в «Замерах» заявки, которые нужно взять в работу (они висели
+        только в «Заказах»). Такие строки помечены is_request_only и ведут в заказ.
+        """
+        qs = self.filter_queryset(self.get_queryset())
+        ctx = self.get_serializer_context()
+        rows = MeasurementListSerializer(qs, many=True, context=ctx).data
+
+        folder = request.query_params.get('folder')
+        if folder in (None, '', 'unscheduled'):
+            pending = self._pending_requests(request)
+            pending_rows = PendingMeasurementRequestListSerializer(pending, many=True, context=ctx).data
+            # Заявки без замера — сверху (их нужно взять в работу), затем существующие замеры
+            rows = list(pending_rows) + list(rows)
+
+        return Response(rows)
+
+    def _pending_requests(self, request):
+        """Заявки на замер по доступным заказам, у которых ещё нет объекта замера."""
+        accessible = get_orders_queryset_for_user(request.user).values_list('id', flat=True)
+        qs = MeasurementRequest.objects.filter(
+            order_id__in=list(accessible),
+            order__status__in=[OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_NOT_PLANNED],
+            measurement__isnull=True,
+        ).select_related('order', 'order__manager', 'order__salon')
+
+        search = (request.query_params.get('search') or '').strip()
+        if search:
+            qs = qs.filter(
+                Q(order__id__icontains=search) |
+                Q(order__client_name__icontains=search) |
+                Q(order__address__icontains=search) |
+                Q(order__kp_number__icontains=search) |
+                Q(contact_name__icontains=search) |
+                Q(contact_phone__icontains=search)
+            )
+        return qs.order_by('-created_at')
 
     def get_serializer_class(self):
         if self.action == 'list':

@@ -672,3 +672,78 @@ class MeasurementListSerializer(serializers.ModelSerializer):
         if not m:
             return None
         return f'{m.first_name} {m.last_name}'.strip() or m.username
+
+
+class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
+    """
+    Строка списка замеров для заявки, по которой замер ещё НЕ создан.
+    Даёт ту же форму, что MeasurementListSerializer, чтобы попасть в общий список
+    «Назначить замер»: у СМ видны заявки, которые нужно взять в работу.
+    id = null, is_request_only = true — фронт ведёт такую строку в заказ.
+    """
+    id = serializers.SerializerMethodField()
+    is_request_only = serializers.SerializerMethodField()
+    request_id = serializers.IntegerField(source='id', read_only=True)
+    order_id = serializers.IntegerField(read_only=True)
+    client_name = serializers.CharField(source='order.client_name', read_only=True)
+    address = serializers.CharField(source='order.address', read_only=True)
+    payer_display = serializers.CharField(source='get_payer_display', read_only=True)
+    order_status = serializers.CharField(source='order.status', read_only=True)
+    order_status_display = serializers.CharField(source='order.get_status_display', read_only=True)
+    manager_name = serializers.SerializerMethodField()
+    # Поля замера, которых у заявки нет — отдаём пустыми, чтобы форма списка не падала
+    measurement_date = serializers.SerializerMethodField()
+    is_draft = serializers.SerializerMethodField()
+    is_done = serializers.SerializerMethodField()
+    is_processed = serializers.SerializerMethodField()
+    done_at = serializers.SerializerMethodField()
+    processed_at = serializers.SerializerMethodField()
+    service_manager = serializers.SerializerMethodField()
+    service_manager_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MeasurementRequest
+        fields = [
+            'id', 'request_id', 'is_request_only', 'order_id', 'client_name', 'address',
+            'contact_name', 'contact_position', 'contact_phone',
+            'desired_date', 'payer_display',
+            'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'service_manager', 'service_manager_name',
+            'order_status', 'order_status_display', 'manager_name', 'created_at',
+        ]
+
+    def get_id(self, obj):
+        return None
+
+    def get_is_request_only(self, obj):
+        return True
+
+    def get_measurement_date(self, obj):
+        return None
+
+    def get_is_draft(self, obj):
+        return False
+
+    def get_is_done(self, obj):
+        return False
+
+    def get_is_processed(self, obj):
+        return False
+
+    def get_done_at(self, obj):
+        return None
+
+    def get_processed_at(self, obj):
+        return None
+
+    def get_service_manager(self, obj):
+        return None
+
+    def get_service_manager_name(self, obj):
+        return None
+
+    def get_manager_name(self, obj):
+        m = obj.order.manager if obj.order_id else None
+        if not m:
+            return None
+        return f'{m.first_name} {m.last_name}'.strip() or m.username

@@ -59,10 +59,11 @@ const OrderDetail = () => {
       return
     }
     try {
-      // Найдём замер этого заказа через список (фильтруем по order_id)
+      // Найдём замер этого заказа через список (фильтруем по order_id).
+      // Пропускаем строки-заявки без созданного замера (id === null).
       const list = await measurementsAPI.list({})
-      const found = list.find((x) => x.order_id === Number(id))
-      if (found) {
+      const found = list.find((x) => x.order_id === Number(id) && x.id != null)
+      if (found && found.id != null) {
         const full = await measurementsAPI.getById(found.id)
         setMeasurement(full)
       } else {
