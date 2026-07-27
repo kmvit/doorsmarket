@@ -371,6 +371,8 @@ export interface CreateMeasurementRequestData {
   desired_date?: string | null
   payer: MeasurementPayer
   comment?: string
+  // Адрес заказа: подтягивается из КП, менеджер может поправить; сохраняется в заказ
+  address?: string
 }
 
 export interface OrderActionReminder {

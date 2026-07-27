@@ -924,6 +924,7 @@ const OrderDetail = () => {
           orderId={order.id}
           defaultClientName={order.client_name}
           defaultPhone={order.contact_phone}
+          defaultAddress={order.address}
           existing={measurementRequest}
           onClose={() => setShowMrModal(false)}
           onSaved={(mr) => {

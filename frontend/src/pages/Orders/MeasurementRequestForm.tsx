@@ -6,12 +6,14 @@ interface Props {
   orderId: number
   defaultClientName?: string
   defaultPhone?: string
+  // Адрес заказа (из КП). Подставляется в форму; если пусто — менеджер вводит вручную.
+  defaultAddress?: string
   existing?: MeasurementRequest | null
   onClose: () => void
   onSaved: (mr: MeasurementRequest) => void
 }
 
-const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone = '', existing, onClose, onSaved }: Props) => {
+const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone = '', defaultAddress = '', existing, onClose, onSaved }: Props) => {
   const [form, setForm] = useState<CreateMeasurementRequestData>({
     contact_name: existing?.contact_name || defaultClientName,
     contact_position: existing?.contact_position || '',
@@ -19,6 +21,7 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
     desired_date: existing?.desired_date || null,
     payer: (existing?.payer as MeasurementPayer) || 'client',
     comment: existing?.comment || '',
+    address: defaultAddress,
   })
   const [openingPlan, setOpeningPlan] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -69,6 +72,10 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">ФИО контактного лица *</label>
             <input type="text" value={form.contact_name} onChange={(e) => setField('contact_name', e.target.value)} className={inputCls} required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Адрес</label>
+            <input type="text" value={form.address || ''} onChange={(e) => setField('address', e.target.value)} className={inputCls} placeholder="Адрес объекта (из КП или вручную)" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

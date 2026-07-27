@@ -577,10 +577,18 @@ class OrderViewSet(viewsets.ModelViewSet):
             order=order,
             created_by=request.user if is_create else instance.created_by,
         )
+        # Адрес относится к заказу, а не к заявке: подтягивается из КП в форму заявки,
+        # менеджер может поправить, и правка сохраняется в заказ. Поле не в сериализаторе
+        # заявки, поэтому пишем его в заказ вручную (только если ключ передан).
+        address_provided = 'address' in request.data
+        if address_provided:
+            order.address = (request.data.get('address') or '').strip()[:500]
         if is_create:
             order.status = OrderStatus.MEASUREMENT_REQUESTED
             order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED, save=False)
             order.save()
+        elif address_provided:
+            order.save(update_fields=['address', 'updated_at'])
         return Response(
             MeasurementRequestSerializer(instance, context={'request': request}).data,
             status=status.HTTP_201_CREATED if is_create else status.HTTP_200_OK,
