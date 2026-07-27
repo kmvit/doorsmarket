@@ -202,15 +202,31 @@ const MeasurementForm = () => {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      await measurementAttachmentsAPI.upload(m.id, file, openingId)
-      // Тихая перезагрузка без спиннера — нужна чтобы обновить список вложений
-      const data = await measurementsAPI.getById(m.id)
-      setM(data)
+      // upload возвращает вложение (с сервера онлайн, либо локальное с blob-ссылкой офлайн) —
+      // добавляем его в состояние сразу, чтобы файл был виден и офлайн, и онлайн.
+      const attachment = await measurementAttachmentsAPI.upload(m.id, file, openingId)
+      setM((prev) => {
+        if (!prev) return prev
+        if (openingId) {
+          return {
+            ...prev,
+            openings: prev.openings.map((o) =>
+              o.id === openingId
+                ? { ...o, attachments: [...(o.attachments || []), attachment] }
+                : o,
+            ),
+          }
+        }
+        return { ...prev, attachments: [...(prev.attachments || []), attachment] }
+      })
+      if (!navigator.onLine) {
+        setOfflineNotice('Нет сети: файл прикреплён локально и будет загружен на сервер при появлении интернета.')
+      }
     } catch (err: any) {
       if (isQueuedError(err)) {
         setOfflineNotice('Нет сети: файл сохранён и будет загружен при появлении интернета.')
       } else {
-      alert('Не удалось загрузить файл')
+        alert('Не удалось загрузить файл')
       }
     } finally {
       e.target.value = ''
@@ -221,6 +237,18 @@ const MeasurementForm = () => {
     if (!m) return
     setActionError(null)
     setDraftNotice(null)
+    // Черновик имеет смысл только для запланированного и ещё не выполненного замера.
+    // Не запланирован → замер не выполнялся → черновика быть не может. Проверяем на
+    // клиенте, чтобы заведомо невыполнимый запрос не уходил в очередь синхронизации
+    // (иначе он падал на сервере с «Замер уже выполнен» и висел среди неотправленных).
+    if (m.is_done) {
+      setActionError('Замер уже выполнен — черновик недоступен.')
+      return
+    }
+    if (!m.measurement_date) {
+      setActionError('Замер не запланирован — сохранить в черновик нельзя. Сначала запланируйте замер.')
+      return
+    }
     try {
       const updated = await measurementsAPI.saveDraft(m.id)
       setM(updated)
@@ -490,7 +518,7 @@ const MeasurementForm = () => {
           ⚠️ {m.lift_impossible_warning}
         </div>
       )}
-      {liftRequired && (
+      {liftRequired && (m.lift_available === null || m.lift_available === undefined) && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4">
           ⚠️ Высота хотя бы одного проёма больше 2300 — поле «лифт» в заказе обязательно к заполнению.
         </div>

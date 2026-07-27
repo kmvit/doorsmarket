@@ -74,6 +74,41 @@ const applyOpeningsToLocalDetail = async (
   }
 }
 
+// Добавить вложение в локальную копию замера (IndexedDB + кеш) — чтобы файл,
+// прикреплённый офлайн, сразу был виден в списке и пережил перезагрузку страницы.
+const applyAttachmentToLocalDetail = async (
+  measurementId: number,
+  attachment: MeasurementAttachment,
+): Promise<void> => {
+  try {
+    const cacheKey = `measurement_detail_${measurementId}`
+    const detail: Measurement | undefined =
+      (await measurementUtils.getDetail(measurementId)) ||
+      (await cacheUtils.getStale(cacheKey)) ||
+      undefined
+    if (!detail) return
+    let updated: Measurement
+    if (attachment.opening) {
+      // Вложение к проёму — кладём в attachments нужного проёма
+      updated = {
+        ...detail,
+        openings: (detail.openings || []).map((o) =>
+          o.id === attachment.opening
+            ? { ...o, attachments: [...(o.attachments || []), attachment] }
+            : o,
+        ),
+      }
+    } else {
+      // Общее вложение замера
+      updated = { ...detail, attachments: [...(detail.attachments || []), attachment] }
+    }
+    await measurementUtils.saveDetail(updated)
+    await cacheUtils.set(cacheKey, updated)
+  } catch (e) {
+    console.warn('[Offline] Не удалось добавить вложение в локальную копию замера:', e)
+  }
+}
+
 // Локальный пересчёт рекомендаций проёма — зеркало серверного _recalc_recommendations.
 // Нужен в офлайне: сервер недоступен, а рек. размеры и текст должны появляться сразу.
 const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial<MeasurementOpening>): T => {
@@ -112,6 +147,54 @@ const getLocalOpening = async (openingId: number): Promise<LocalOpening | undefi
   return detail?.openings?.find((o) => o.id === openingId) as LocalOpening | undefined
 }
 
+// Клиентский фильтр папки — зеркало серверного apply_measurement_folder.
+// Нужен офлайн: getList() отдаёт ВСЕ замеры из IndexedDB, без него во вкладке
+// «Черновики» показывались подряд и выполненные, и отгружённые.
+const filterMeasurementsByFolder = (
+  list: MeasurementListItem[],
+  folder?: MeasurementFolder,
+  currentUserId?: number | null,
+): MeasurementListItem[] => {
+  if (!folder) return list
+  const isToday = (d: string | null): boolean => {
+    if (!d) return false
+    const dt = new Date(d)
+    const now = new Date()
+    return dt.getFullYear() === now.getFullYear()
+      && dt.getMonth() === now.getMonth()
+      && dt.getDate() === now.getDate()
+  }
+  switch (folder) {
+    case 'unscheduled': return list.filter((m) => !m.measurement_date && !m.is_done)
+    case 'scheduled': return list.filter((m) => !!m.measurement_date && !m.is_done)
+    case 'today': return list.filter((m) => isToday(m.measurement_date) && !m.is_done)
+    case 'drafts': return list.filter((m) => m.is_draft && !m.is_done)
+    case 'done': return list.filter((m) => m.is_done)
+    case 'mine': return currentUserId != null ? list.filter((m) => m.service_manager === currentUserId) : list
+    default: return list
+  }
+}
+
+// Локальный поиск по тем же полям, что и серверный search_fields — чтобы офлайн
+// поиск внутри папки тоже работал, а не игнорировался
+const filterMeasurementsBySearch = (list: MeasurementListItem[], search?: string): MeasurementListItem[] => {
+  const q = (search || '').trim().toLowerCase()
+  if (!q) return list
+  return list.filter((m) => [
+    String(m.id), String(m.order_id ?? ''), m.client_name, m.address,
+    m.contact_name, m.contact_phone,
+  ].some((v) => (v || '').toLowerCase().includes(q)))
+}
+
+const currentUserIdFromStorage = (): number | null => {
+  try {
+    const raw = localStorage.getItem('user')
+    return raw ? (JSON.parse(raw)?.id ?? null) : null
+  } catch {
+    return null
+  }
+}
+
 export const measurementsAPI = {
   list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number }): Promise<MeasurementListItem[]> => {
     const queryParams: Record<string, any> = {}
@@ -125,7 +208,14 @@ export const measurementsAPI = {
         return Array.isArray(response.data) ? response.data : (response.data.results || [])
       },
       saveOffline: (list) => measurementUtils.saveList(list),
-      loadOffline: () => measurementUtils.getList(),
+      // Офлайн: в IndexedDB лежат все замеры — фильтруем по папке и поиску на клиенте
+      loadOffline: async () => {
+        const all = await measurementUtils.getList()
+        return filterMeasurementsBySearch(
+          filterMeasurementsByFolder(all, params?.folder, currentUserIdFromStorage()),
+          params?.search,
+        )
+      },
     })
   },
 
@@ -352,12 +442,17 @@ export const measurementOpeningsAPI = {
       return created
     } catch (error: any) {
       if (!isNetworkError(error)) throw error
-      // Офлайн: создаём проём локально с временным id, POST — в очередь синхронизации
-      const pending = await requestQueue.add('POST', '/measurement-openings/', data)
+      // Офлайн: создаём проём локально с временным id, POST — в очередь синхронизации.
+      // Временный id передаём в очередь как tempId — при синхронизации она заменит его
+      // на настоящий серверный id в запросах, ссылающихся на проём (вложения к нему).
       const local: LocalOpening = recalcOpeningLocal(
-        { ...emptyOpening(measurementId, data), _pendingRequestId: pending.id },
+        { ...emptyOpening(measurementId, data) },
         data,
       )
+      const pending = await requestQueue.add(
+        'POST', '/measurement-openings/', data, undefined, local.id,
+      )
+      local._pendingRequestId = pending.id
       await db.measurementOpenings.put(local)
       await applyOpeningsToLocalDetail(measurementId, (ops) => [...ops, local])
       return local
@@ -408,9 +503,34 @@ export const measurementAttachmentsAPI = {
     if (openingId) fd.append('opening', String(openingId))
     fd.append('file', file)
     fd.append('name', file.name)
-    return requestWithQueue('POST', '/measurement-attachments/', fd, {
-      'Content-Type': 'multipart/form-data',
-    })
+    try {
+      const response = await apiClient.post('/measurement-attachments/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const created: MeasurementAttachment = response.data
+      await applyAttachmentToLocalDetail(measurementId, created)
+      return created
+    } catch (error: any) {
+      if (!isNetworkError(error)) throw error
+      // Офлайн: POST — в очередь синхронизации. Если файл прикреплён к проёму,
+      // созданному офлайн (отрицательный id), очередь заменит его на настоящий
+      // серверный id после синхронизации проёма (см. RequestQueue.remapTempId).
+      await requestQueue.add('POST', '/measurement-attachments/', fd, {
+        'Content-Type': 'multipart/form-data',
+      })
+      // Локальный показ: сразу кладём вложение в локальную копию с временным id и
+      // blob-ссылкой, чтобы СМ видел, что файл прикреплён (раньше не появлялось ничего).
+      const localAttachment: MeasurementAttachment = {
+        id: nextTempId(),
+        measurement: measurementId,
+        opening: openingId ?? null,
+        file_url: URL.createObjectURL(file),
+        name: file.name,
+        created_at: new Date().toISOString(),
+      }
+      await applyAttachmentToLocalDetail(measurementId, localAttachment)
+      return localAttachment
+    }
   },
 
   delete: async (id: number): Promise<void> => {

@@ -149,7 +149,8 @@ class RequestQueue {
     method: PendingRequest['method'],
     url: string,
     data?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    tempId?: number,
   ): Promise<PendingRequest> {
     const request: PendingRequest = {
       method,
@@ -158,6 +159,7 @@ class RequestQueue {
       headers,
       timestamp: Date.now(),
       retryCount: 0,
+      ...(tempId != null ? { tempId } : {}),
     }
 
     const id = await db.pendingRequests.add(request)
@@ -186,9 +188,12 @@ class RequestQueue {
       const body = deserializeBody(request.data)
       config.data = body
       if (body instanceof FormData) {
-        // Убираем Content-Type — браузер сам выставит multipart/form-data с boundary
-        config.headers = { ...config.headers }
-        delete (config.headers as Record<string, any>)['Content-Type']
+        // ВАЖНО: ставим именно 'multipart/form-data' — axios сам подставит boundary.
+        // Раньше Content-Type удаляли, но дефолт axios-инстанса ('application/json')
+        // подставлялся обратно, и FormData уходила как JSON → сервер отвечал
+        // «Загруженный файл не является корректным файлом» (400). Из-за этого
+        // офлайн-вложения не загружались вообще.
+        config.headers = { ...config.headers, 'Content-Type': 'multipart/form-data' }
       }
     }
 
@@ -220,10 +225,17 @@ class RequestQueue {
       for (const request of requests) {
         try {
           // Выполняем запрос
-          await this.executeRequest(request)
+          const result = await this.executeRequest(request)
 
           // Успешно выполнен - удаляем из очереди
           await db.pendingRequests.delete(request.id!)
+
+          // Сущность (проём), созданная офлайн, получила настоящий id — заменяем
+          // временный id во всех запросах очереди, что на него ссылаются (вложения).
+          // Без этого файл к офлайн-проёму уходил с несуществующим id и падал с 400.
+          if (request.tempId != null && result && typeof result === 'object' && result.id != null) {
+            await this.remapTempId(request.tempId, result.id, requests)
+          }
           this.notifyListeners()
         } catch (error: any) {
           // Сети всё ещё нет (или запрос отвалился по таймауту) — прекращаем проход,
@@ -266,6 +278,42 @@ class RequestQueue {
       console.error('Ошибка обработки очереди запросов:', error)
     } finally {
       this.isProcessing = false
+    }
+  }
+
+  // Заменить временный id проёма на настоящий во всех ожидающих запросах.
+  // Правит и БД, и переданный снимок очереди (snapshot), чтобы ещё не обработанные
+  // в текущем проходе запросы ушли уже с настоящим id.
+  private async remapTempId(tempId: number, realId: number, snapshot: PendingRequest[]): Promise<void> {
+    const patchData = (data: any): boolean => {
+      if (!data || typeof data !== 'object') return false
+      let changed = false
+      // FormData сериализуется в { __isFormData, entries: [[key, value], ...] }
+      if (data.__isFormData && Array.isArray(data.entries)) {
+        for (const entry of data.entries) {
+          if (entry[0] === 'opening' && String(entry[1]) === String(tempId)) {
+            entry[1] = String(realId)
+            changed = true
+          }
+        }
+      } else {
+        for (const key of ['opening', 'measurement_opening_id']) {
+          if (key in data && String(data[key]) === String(tempId)) {
+            data[key] = realId
+            changed = true
+          }
+        }
+      }
+      return changed
+    }
+
+    const all = await db.pendingRequests.toArray()
+    for (const req of all) {
+      if (patchData(req.data)) {
+        await db.pendingRequests.update(req.id!, { data: req.data })
+        const inSnapshot = snapshot.find((s) => s.id === req.id)
+        if (inSnapshot) inSnapshot.data = req.data
+      }
     }
   }
 
