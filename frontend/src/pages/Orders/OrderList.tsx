@@ -26,6 +26,8 @@ const OrderList = () => {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('')
   const [salonFilter, setSalonFilter] = useState<number | ''>('')
   const [myOrders, setMyOrders] = useState(false)
+  // «Кроме выполненных и неактуальных» — по умолчанию включено
+  const [excludeFinished, setExcludeFinished] = useState(true)
 
   const canCreate = user?.role === 'manager' || user?.role === 'admin'
 
@@ -48,6 +50,7 @@ const OrderList = () => {
         salon: salonFilter || undefined,
         search: search || undefined,
         my_orders: myOrders || undefined,
+        exclude_finished: excludeFinished || undefined,
         folder: folder || undefined,
       })
       setOrders(data)
@@ -56,7 +59,7 @@ const OrderList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, salonFilter, myOrders, folder])
+  }, [search, statusFilter, salonFilter, myOrders, excludeFinished, folder])
 
   useEffect(() => {
     salonsAPI.getAll().then(setSalons).catch(() => {})
@@ -177,6 +180,15 @@ const OrderList = () => {
             Мои заказы
           </label>
         )}
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={excludeFinished}
+            onChange={(e) => setExcludeFinished(e.target.checked)}
+            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          Кроме выполненных и неактуальных
+        </label>
       </div>
 
       {error && (

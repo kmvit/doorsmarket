@@ -321,6 +321,8 @@ export interface OrderFilters {
   search?: string
   my_orders?: boolean
   exclude_cancelled?: boolean
+  // «Кроме выполненных и неактуальных» — скрыть завершённые заказы (completed + cancelled)
+  exclude_finished?: boolean
   folder?: string
 }
 

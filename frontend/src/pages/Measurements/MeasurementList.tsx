@@ -28,19 +28,27 @@ const MeasurementList = () => {
     urlFolder != null && VALID_FOLDERS.includes(urlFolder) ? urlFolder : 'unscheduled',
   )
   const [search, setSearch] = useState('')
+  // «Кроме выполненных и неактуальных» — по умолчанию включено, показывается только
+  // на вкладке «Все» (остальные вкладки и так делят замеры по состоянию)
+  const [excludeFinished, setExcludeFinished] = useState(true)
 
   const load = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const data = await measurementsAPI.list({ folder, search: search || undefined })
+      const data = await measurementsAPI.list({
+        folder,
+        search: search || undefined,
+        // применяем только на вкладке «Все» (folder === '')
+        exclude_finished: folder === '' && excludeFinished ? true : undefined,
+      })
       setMeasurements(data)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки замеров')
     } finally {
       setIsLoading(false)
     }
-  }, [folder, search])
+  }, [folder, search, excludeFinished])
 
   useEffect(() => {
     const t = setTimeout(load, 300)
@@ -86,6 +94,17 @@ const MeasurementList = () => {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-lg border-gray-300 shadow-sm text-sm"
         />
+        {folder === '' && (
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-3">
+            <input
+              type="checkbox"
+              checked={excludeFinished}
+              onChange={(e) => setExcludeFinished(e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Кроме выполненных и неактуальных
+          </label>
+        )}
       </div>
 
       {error && (

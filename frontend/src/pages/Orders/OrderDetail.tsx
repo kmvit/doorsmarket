@@ -292,15 +292,18 @@ const OrderDetail = () => {
               </svg>
               Добавить КП
             </Link>
-            <button
-              onClick={() => setShowMrModal(true)}
-              className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"
-            >
-              <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              {measurementRequest ? 'Заявка на замер' : 'Заявка на замер'}
-            </button>
+            {/* Заявку можно создавать/редактировать только пока замер не выполнен */}
+            {!measurement?.is_done && (
+              <button
+                onClick={() => setShowMrModal(true)}
+                className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"
+              >
+                <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                {measurementRequest ? 'Изменить заявку на замер' : 'Заявка на замер'}
+              </button>
+            )}
             <Link
               to={`/orders/${order.id}/history`}
               className="inline-flex items-center px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-all"
@@ -527,7 +530,21 @@ const OrderDetail = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {measurementRequest && (
           <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-4 ring-1 ring-blue-100">
-            <h2 className="text-sm font-semibold text-blue-700 uppercase tracking-wider mb-3">Заявка на замер</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-blue-700 uppercase tracking-wider">Заявка на замер</h2>
+              {/* Менеджер может редактировать заявку, пока замер не выполнен */}
+              {canEdit && !measurement?.is_done && (
+                <button
+                  onClick={() => setShowMrModal(true)}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Изменить
+                </button>
+              )}
+            </div>
             <dl className="space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <dt className="text-gray-500">Контактное лицо</dt>

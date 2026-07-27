@@ -22,6 +22,7 @@ export const ordersAPI = {
     if (filters?.search) params.search = filters.search
     if (filters?.my_orders) params.my_orders = 'true'
     if (filters?.exclude_cancelled) params.exclude_cancelled = 'true'
+    if (filters?.exclude_finished) params.exclude_finished = 'true'
     if (filters?.folder) params.folder = filters.folder
 
     return withOfflineFallback({

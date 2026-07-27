@@ -151,6 +151,11 @@ ORDER_FOLDERS = [
 ]
 
 
+# Завершённые статусы заказа: по умолчанию скрыты в общем списке
+# («Кроме выполненных и неактуальных»)
+ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
+
+
 def apply_order_folder(qs, folder):
     """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
     if not folder:
@@ -203,6 +208,16 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if self.request.query_params.get('exclude_cancelled') == 'true':
             qs = qs.exclude(status='cancelled')
+
+        # «Кроме выполненных и неактуальных» — по умолчанию скрываем завершённые заказы
+        # в общем списке. Если пользователь явно фильтрует по такому статусу
+        # (status=completed/cancelled) или открыл соответствующую папку — не исключаем,
+        # иначе выбор «Выполнен»/«Не актуален» всегда давал бы пустой список.
+        if self.request.query_params.get('exclude_finished') == 'true':
+            requested_status = self.request.query_params.get('status')
+            folder_param = self.request.query_params.get('folder')
+            if requested_status not in ORDER_FINISHED_STATUSES and folder_param not in ORDER_FINISHED_STATUSES:
+                qs = qs.exclude(status__in=ORDER_FINISHED_STATUSES)
 
         folder = self.request.query_params.get('folder')
         if folder:
@@ -543,6 +558,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             if not instance:
                 return Response(None)
             return Response(MeasurementRequestSerializer(instance, context={'request': request}).data)
+
+        # Редактировать заявку можно только пока замер не выполнен: после выполнения
+        # данные заявки уже отражены в замере, менять их задним числом нельзя.
+        if instance is not None and getattr(instance, 'measurement', None) and instance.measurement.is_done:
+            return Response(
+                {'detail': 'Замер уже выполнен — заявку на замер изменить нельзя.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         partial = request.method == 'PATCH' or instance is not None
         serializer = MeasurementRequestSerializer(
@@ -955,6 +978,10 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         folder = self.request.query_params.get('folder')
         if folder:
             qs = apply_measurement_folder(qs, folder, self.request.user)
+        # «Кроме выполненных и неактуальных» — на вкладке «Все»: скрываем выполненные
+        # замеры и замеры по неактуальным (отменённым) заказам.
+        if self.request.query_params.get('exclude_finished') == 'true':
+            qs = qs.exclude(is_done=True).exclude(request__order__status='cancelled')
         return qs
 
     @action(detail=False, methods=['get'], url_path='folder_counts')

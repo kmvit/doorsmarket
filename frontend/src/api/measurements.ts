@@ -186,6 +186,11 @@ const filterMeasurementsBySearch = (list: MeasurementListItem[], search?: string
   ].some((v) => (v || '').toLowerCase().includes(q)))
 }
 
+// «Кроме выполненных и неактуальных» офлайн — зеркало серверного exclude_finished:
+// прячем выполненные замеры и замеры по отменённым заказам
+const filterMeasurementsFinished = (list: MeasurementListItem[]): MeasurementListItem[] =>
+  list.filter((m) => !m.is_done && m.order_status !== 'cancelled')
+
 const currentUserIdFromStorage = (): number | null => {
   try {
     const raw = localStorage.getItem('user')
@@ -196,11 +201,12 @@ const currentUserIdFromStorage = (): number | null => {
 }
 
 export const measurementsAPI = {
-  list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number }): Promise<MeasurementListItem[]> => {
+  list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number; exclude_finished?: boolean }): Promise<MeasurementListItem[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.folder) queryParams.folder = params.folder
     if (params?.search) queryParams.search = params.search
     if (params?.service_manager) queryParams.service_manager = params.service_manager
+    if (params?.exclude_finished) queryParams.exclude_finished = 'true'
     return withOfflineFallback({
       cacheKey: `measurements_list_${JSON.stringify(queryParams)}`,
       request: async () => {
@@ -208,13 +214,13 @@ export const measurementsAPI = {
         return Array.isArray(response.data) ? response.data : (response.data.results || [])
       },
       saveOffline: (list) => measurementUtils.saveList(list),
-      // Офлайн: в IndexedDB лежат все замеры — фильтруем по папке и поиску на клиенте
+      // Офлайн: в IndexedDB лежат все замеры — фильтруем по папке, поиску и «кроме
+      // выполненных/неактуальных» на клиенте
       loadOffline: async () => {
         const all = await measurementUtils.getList()
-        return filterMeasurementsBySearch(
-          filterMeasurementsByFolder(all, params?.folder, currentUserIdFromStorage()),
-          params?.search,
-        )
+        let result = filterMeasurementsByFolder(all, params?.folder, currentUserIdFromStorage())
+        if (params?.exclude_finished) result = filterMeasurementsFinished(result)
+        return filterMeasurementsBySearch(result, params?.search)
       },
     })
   },
