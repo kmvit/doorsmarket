@@ -211,7 +211,13 @@ export const orderUtils = {
 export const measurementUtils = {
   // Сохранить список замеров (upsert, без очистки — списки приходят по папкам/фильтрам)
   async saveList(measurements: MeasurementListItem[]): Promise<void> {
-    await db.measurementList.bulkPut(measurements)
+    // Строки-заявки (is_request_only) добавляются в список на лету и приходят с
+    // id === null — у таблицы первичный ключ `id`, поэтому bulkPut по ним падает
+    // и срывает сохранение ВСЕХ замеров. Тогда офлайн список пуст и замер нельзя
+    // открыть. Кешируем только реальные замеры с id; заявки офлайн не нужны
+    // (взять заявку в работу без сети всё равно нельзя).
+    const persistable = measurements.filter((m) => m.id != null)
+    await db.measurementList.bulkPut(persistable)
   },
 
   // Получить список замеров
