@@ -10,31 +10,70 @@ const SYNC_REQUEST_TIMEOUT = 60 * 1000
 const SYNC_INTERVAL = 30 * 1000
 
 // FormData нельзя сохранить в IndexedDB (structured clone её не поддерживает),
-// поэтому сериализуем в массив пар — File/Blob клонируются без проблем
-interface SerializedFormData {
-  __isFormData: true
-  entries: [string, string | File][]
+// поэтому сериализуем в массив пар. Файлы храним БАЙТАМИ (ArrayBuffer), а не
+// File/Blob: на iOS File, положенный в IndexedDB и прочитанный обратно, нередко
+// уходит в запрос пустым (WebKit-баг с blob-ссылками) — сервер отвечал 400
+// «файл пуст», вложение терялось, а зависимый mark_done отклонялся навсегда.
+// Байты считываем сразу при постановке в очередь, пока исходный File ещё жив.
+interface SerializedFile {
+  __isFile: true
+  name: string
+  type: string
+  buffer: ArrayBuffer
 }
 
-const serializeBody = (data: any): any => {
-  if (data instanceof FormData) {
-    const serialized: SerializedFormData = {
-      __isFormData: true,
-      entries: [],
+interface SerializedFormData {
+  __isFormData: true
+  entries: [string, string | File | SerializedFile][]
+}
+
+// Blob.arrayBuffer() появился в Safari 14 — для старых WebKit читаем через FileReader
+const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> =>
+  typeof blob.arrayBuffer === 'function'
+    ? blob.arrayBuffer()
+    : new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as ArrayBuffer)
+        reader.onerror = () => reject(reader.error)
+        reader.readAsArrayBuffer(blob)
+      })
+
+const serializeBody = async (data: any): Promise<any> => {
+  if (!(data instanceof FormData)) return data
+  const raw: [string, FormDataEntryValue][] = []
+  data.forEach((value, key) => {
+    raw.push([key, value])
+  })
+  const serialized: SerializedFormData = { __isFormData: true, entries: [] }
+  for (const [key, value] of raw) {
+    if (value instanceof Blob) {
+      serialized.entries.push([
+        key,
+        {
+          __isFile: true,
+          name: (value as File).name || 'file',
+          type: value.type,
+          buffer: await blobToArrayBuffer(value),
+        },
+      ])
+    } else {
+      serialized.entries.push([key, value])
     }
-    data.forEach((value, key) => {
-      serialized.entries.push([key, value as string | File])
-    })
-    return serialized
   }
-  return data
+  return serialized
 }
 
 const deserializeBody = (data: any): any => {
   if (data && data.__isFormData) {
     const formData = new FormData()
     for (const [key, value] of (data as SerializedFormData).entries) {
-      formData.append(key, value)
+      if (value && typeof value === 'object' && (value as SerializedFile).__isFile) {
+        const f = value as SerializedFile
+        formData.append(key, new File([f.buffer], f.name, { type: f.type }))
+      } else {
+        // Старый формат очереди (File/Blob как есть) и обычные строковые поля
+        formData.append(key, value as string | File)
+      }
     }
     return formData
   }
@@ -107,6 +146,25 @@ const resolveTempRefs = (
   return { changed, unresolved }
 }
 
+// К какому замеру относится отложенный запрос: по id в URL (mark_done, save_draft…)
+// или по полю measurement в теле (вложения, проёмы). Нужно, чтобы при сбое одного
+// действия не отправлять зависимые действия того же замера в том же проходе.
+const getMeasurementRef = (request: PendingRequest): string | null => {
+  const urlMatch = request.url.match(/\/measurements\/(-?\d+)\//)
+  if (urlMatch) return urlMatch[1]
+  const data = request.data
+  if (!data || typeof data !== 'object') return null
+  if (data.__isFormData && Array.isArray(data.entries)) {
+    const entry = (data.entries as [string, unknown][]).find(([key]) => key === 'measurement')
+    if (entry && (typeof entry[1] === 'string' || typeof entry[1] === 'number')) {
+      return String(entry[1])
+    }
+    return null
+  }
+  if (data.measurement != null) return String(data.measurement)
+  return null
+}
+
 // Человекопонятное название отложенного действия — чтобы в списке несинхронизированных
 // пользователь видел «Отметка "Замер выполнен"», а не «POST /measurements/12/mark_done/»
 const describeRequest = (method: string, url: string): string => {
@@ -130,6 +188,14 @@ const describeReason = (error: any): string => {
   if (data && typeof data === 'object') {
     const message = data.detail || data.error
     if (message) return String(message)
+    // Ошибки валидации DRF приходят как {поле: ["текст"]} — без этого пользователь
+    // видел безликое «Сервер отклонил запрос (код 400)» и причину было не понять
+    for (const [field, value] of Object.entries(data)) {
+      const text = Array.isArray(value) ? value[0] : value
+      if (typeof text === 'string' && text) {
+        return field === 'non_field_errors' ? text : `${field}: ${text}`
+      }
+    }
   }
   if (typeof data === 'string' && data.trim() && !data.trim().startsWith('<')) {
     return data.trim().slice(0, 200)
@@ -221,7 +287,7 @@ class RequestQueue {
     const request: PendingRequest = {
       method,
       url,
-      data: serializeBody(data),
+      data: await serializeBody(data),
       headers,
       timestamp: Date.now(),
       retryCount: 0,
@@ -288,7 +354,17 @@ class RequestQueue {
         .orderBy('timestamp')
         .toArray()
 
+      // Замеры, у которых в этом проходе какое-то действие не отправилось.
+      // Последующие действия по тому же замеру пропускаем без траты попыток:
+      // например, mark_done без загруженного плана открывания сервер гарантированно
+      // отклонит — сначала должна успешно уйти загрузка файла.
+      const blockedMeasurements = new Set<string>()
+
       for (const request of requests) {
+        const measurementRef = getMeasurementRef(request)
+        if (measurementRef && blockedMeasurements.has(measurementRef)) {
+          continue
+        }
         try {
           // Перед отправкой разрешаем временные id (проём/замер, созданные офлайн)
           // на настоящие по постоянной карте. Если зависимость ещё не получила
@@ -300,6 +376,7 @@ class RequestQueue {
             await db.pendingRequests.update(request.id!, { data: request.data })
           }
           if (unresolved) {
+            if (measurementRef) blockedMeasurements.add(measurementRef)
             continue
           }
 
@@ -337,6 +414,8 @@ class RequestQueue {
           // после MAX_RETRY_COUNT удаляем, чтобы битый запрос не висел в очереди вечно.
           // Но сначала записываем отказ: иначе действие пропадает молча и пользователь
           // уверен, что оно выполнено (замер так и остаётся в черновиках).
+          // Дальнейшие действия по этому замеру в текущем проходе не отправляем.
+          if (measurementRef) blockedMeasurements.add(measurementRef)
           const retryCount = request.retryCount + 1
           if (retryCount >= MAX_RETRY_COUNT) {
             console.error(
@@ -348,7 +427,7 @@ class RequestQueue {
           } else {
             await db.pendingRequests.update(request.id!, {
               retryCount,
-              lastError: error.message || 'Unknown error',
+              lastError: describeReason(error),
             })
           }
           this.notifyListeners()
