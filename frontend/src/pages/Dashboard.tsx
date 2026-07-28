@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
-import { remindersAPI, ordersAPI } from '../api/orders'
+import { ordersAPI, workshopAPI } from '../api/orders'
 import { OrderFolderCount } from '../types/orders'
 import { withOfflineFallback } from '../services/offline'
 
@@ -79,12 +79,15 @@ const Dashboard = () => {
     if (!showWorkshopCard) return
     const load = async () => {
       try {
-        // Руководитель видит суммарные напоминания по всем салонам города, остальные — свои
-        const mine = !isLeader
+        // Считаем ТЕМ ЖЕ запросом, каким строится страница «Наработки», куда ведут
+        // карточки (/workshop?reminder=...). Раньше счётчик брал напоминания,
+        // созданные лично пользователем (mine), а страница показывала ЗАКАЗЫ всего
+        // салона/города с активными напоминаниями — цифры расходились
+        // (на карточке 1, в списке 7).
         const [today, tomorrow, overdue] = await Promise.all([
-          remindersAPI.list({ today: true, mine }).catch(() => []),
-          remindersAPI.list({ tomorrow: true, mine }).catch(() => []),
-          remindersAPI.list({ overdue: true, mine }).catch(() => []),
+          workshopAPI.list({ with_reminder_today: true }).catch(() => []),
+          workshopAPI.list({ with_reminder_tomorrow: true }).catch(() => []),
+          workshopAPI.list({ with_overdue_reminder: true }).catch(() => []),
         ])
         setReminderTodayCount(today.length)
         setReminderTomorrowCount(tomorrow.length)
@@ -92,7 +95,7 @@ const Dashboard = () => {
       } catch {}
     }
     load()
-  }, [showWorkshopCard, isLeader])
+  }, [showWorkshopCard])
 
   useEffect(() => {
     const fetchStats = async () => {
