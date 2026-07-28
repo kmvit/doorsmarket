@@ -91,7 +91,26 @@
       "Bash(git restore *)",
       "Bash(curl -s -o /dev/null -w \"backend:%{http_code}\\\\n\" --max-time 5 http://localhost:8000/api/v1/measurements/)",
       "Bash(curl -s -o /dev/null -w \"backend:%{http_code}\\\\n\" --max-time 8 http://localhost:8000/api/v1/measurements/)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=15 -p 49369 root@16c90da0e1be.vps.myjino.ru 'hostname; uptime; ls /var/log/nginx 2>/dev/null | head; systemctl list-units --type=service --state=running 2>/dev/null | grep -iE \"gunicorn|uwsgi|django|nginx\" || ps aux | grep -iE \"gunicorn|uwsgi|runserver\" | grep -v grep')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'grep -E \"measurement-attachments|mark_done\" /var/log/nginx/doorsmarket_access.log | tail -30; echo ---; date')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'journalctl -u doorsmarket --since \"2026-07-28 11:30\" --no-pager 2>/dev/null | grep -iE \"bad request|warning|error|attach\" | tail -20')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'systemctl cat doorsmarket | grep -E \"WorkingDirectory|ExecStart\"; grep -n \"LANGUAGE_CODE\" $\\(systemctl cat doorsmarket | sed -n \"s/WorkingDirectory=//p\"\\)/marketingdoors/settings.py 2>/dev/null')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'cd /opt/doorsmarket && venv/bin/python manage.py shell -c \" *)",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzg1MzE1NDI3LCJpYXQiOjE3ODUyMjkwMjcsImp0aSI6IjBhYjZiYmFlMTFlYzQ3NDRiMzgyZWNmZGY1OGZkMDUxIiwidXNlcl9pZCI6IjIifQ.aY8RTBSCxsnc5l2kdeNi4AlBTx6fqaMqE0g6UEgi8Ok\" *)",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'grep -E \"2026/07/2[78]\" /var/log/nginx/doorsmarket_error.log | tail -15; echo ===; grep \"measurement-attachments\" /var/log/nginx/doorsmarket_access.log | awk \"{print \\\\$9, \\\\$10}\" | sort | uniq -c')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'ls -la /opt/doorsmarket/frontend/dist/assets/ 2>/dev/null | head -8 || find /opt/doorsmarket -maxdepth 3 -name \"index-*.js\" 2>/dev/null | head; echo ===; for marker in temp_id_map \"Запрос добавлен в очередь\" \"__isFormData\" \"syncFailures\"; do echo -n \"$marker: \"; grep -rl \"$marker\" /opt/doorsmarket/frontend/dist/assets/*.js /opt/doorsmarket/static/assets/*.js 2>/dev/null | head -1 || echo НЕТ; done')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'which tcpdump || apt list --installed 2>/dev/null | grep -i tcpdump; nohup timeout 1800 tcpdump -i lo -s 0 -w /tmp/sync_capture.pcap \"tcp port 8000\" >/tmp/tcpdump.log 2>&1 & sleep 1; ps aux | grep [t]cpdump | head -2')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'which tcpdump; ls -la /tmp/sync_capture.pcap 2>/dev/null; cat /tmp/tcpdump.log 2>/dev/null; pgrep -a tcpdump')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'apt-get install -y tcpdump >/tmp/apt.log 2>&1; which tcpdump && nohup timeout 1800 tcpdump -i lo -s 0 -w /tmp/sync_capture.pcap \"tcp port 8000\" >/tmp/tcpdump.log 2>&1 & sleep 2; pgrep -a tcpdump; ls -la /tmp/sync_capture.pcap')",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=15 -p 49369 root@16c90da0e1be.vps.myjino.ru 'which tcpdump; pgrep -a tcpdump; ls -la /tmp/sync_capture.pcap 2>/dev/null; tail -3 /tmp/apt.log 2>/dev/null')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'pkill tcpdump; sleep 1; ls -la /tmp/sync_capture.pcap')",
+      "Bash(scp -P 49369 root@16c90da0e1be.vps.myjino.ru:/tmp/sync_capture.pcap /private/tmp/claude-501/-Users-home-PycharmProjects-marketingdoors/70f19346-432a-47bf-bcc0-183d6356ab3c/scratchpad/sync_capture.pcap)",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'grep -rE \"root|alias\" /etc/nginx/sites-enabled/ 2>/dev/null | grep -v \"#\" | head; ls /opt/doorsmarket/frontend/; cd /opt/doorsmarket && git rev-parse HEAD 2>/dev/null || echo \"не git-репо\"')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'cd /opt/doorsmarket && git remote -v && git status --short | head')",
+      "Bash(git push *)",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'cd /opt/doorsmarket && git pull && cd frontend && npm run build 2>&1 | tail -8 && grep -c \"__isFile\" dist/assets/index-*.js && ls -la dist/assets/ | head -5')",
+      "Bash(ssh -o BatchMode=yes -p 49369 root@16c90da0e1be.vps.myjino.ru 'rm -f /tmp/sync_capture.pcap /tmp/tcpdump.log')"
     ]
   }
 }
