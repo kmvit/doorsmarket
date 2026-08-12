@@ -39,8 +39,6 @@
   .photo-page { page-break-before: always; }
   .photo-cap { font-size: 9pt; color: #555; margin-bottom: 2mm; }
   img.photo-full { display: block; width: 100%; max-height: 258mm; object-fit: contain; }
-  .sig-photo { margin-top: 4mm; }
-  .sig-photo img { max-width: 80mm; max-height: 45mm; border: 0.6pt solid #ccc; }
 </style>
 </head>
 <body>
@@ -150,10 +148,11 @@
     </div>
   </div>
 
+  {# ===== Фото подписанного бланка — на отдельной странице, во весь лист (как схемы проёмов) ===== #}
   {% if signature_path %}
-  <div class="sig-photo">
-    <div class="small muted">Фото подписанного бланка:</div>
-    <img src="file://{{ signature_path }}" alt="Подпись">
+  <div class="photo-page">
+    <div class="photo-cap">Фото подписанного бланка</div>
+    <img class="photo-full" src="file://{{ signature_path }}" alt="Подпись">
   </div>
   {% endif %}
 
