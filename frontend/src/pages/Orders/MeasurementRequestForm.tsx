@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ordersAPI } from '../../api/orders'
 import { MeasurementRequest, MeasurementPayer, CreateMeasurementRequestData } from '../../types/orders'
+import FileViewer from '../../components/common/FileViewer'
 
 interface Props {
   orderId: number
@@ -26,12 +27,15 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
   const [openingPlan, setOpeningPlan] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Просмотр текущего плана открывания в модалке с кнопкой закрытия
+  const [showPlanViewer, setShowPlanViewer] = useState(false)
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    // Пока открыт просмотр файла, Escape закрывает только его (обрабатывает FileViewer)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showPlanViewer) onClose() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, showPlanViewer])
 
   const setField = <K extends keyof CreateMeasurementRequestData>(field: K, value: CreateMeasurementRequestData[K]) => {
     setForm((f) => ({ ...f, [field]: value }))
@@ -103,7 +107,10 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">План открывания (PDF/JPG)</label>
             {existing?.opening_plan_url && (
-              <a href={existing.opening_plan_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline mb-1 block">Текущий файл</a>
+              // Не target="_blank": в PWA на iOS файл открывался без кнопки закрытия
+              <button type="button" onClick={() => setShowPlanViewer(true)} className="text-xs text-primary-600 hover:underline mb-1 block">
+                Текущий файл
+              </button>
             )}
             <input type="file" accept="application/pdf,image/*" onChange={(e) => setOpeningPlan(e.target.files?.[0] || null)} className="block w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700" />
           </div>
@@ -120,6 +127,17 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
           </div>
         </form>
       </div>
+      {showPlanViewer && existing?.opening_plan_url && (
+        // stopPropagation: клики внутри просмотрщика не должны долетать до подложки
+        // формы (у неё onClick={onClose}) — иначе закрывалась вся заявка
+        <div onClick={(e) => e.stopPropagation()}>
+          <FileViewer
+            fileUrl={existing.opening_plan_url}
+            fileName="План открывания"
+            onClose={() => setShowPlanViewer(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }

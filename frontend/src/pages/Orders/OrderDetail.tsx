@@ -427,17 +427,17 @@ const OrderDetail = () => {
           </dl>
           {order.commercial_offer_url && (
             <div className="mt-3 pt-3 border-t border-gray-100">
-              <a
-                href={order.commercial_offer_url}
-                target="_blank"
-                rel="noreferrer"
+              {/* Через FileViewer, а не target="_blank": в PWA на iOS файл открывался без кнопки закрытия */}
+              <button
+                type="button"
+                onClick={() => setViewerFile({ url: order.commercial_offer_url!, name: 'Коммерческое предложение' })}
                 className="inline-flex items-center text-sm text-primary-600 hover:underline"
               >
                 <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 Коммерческое предложение
-              </a>
+              </button>
             </div>
           )}
         </div>
@@ -579,9 +579,15 @@ const OrderDetail = () => {
                 <div className="flex justify-between">
                   <dt className="text-gray-500">План открывания</dt>
                   <dd>
-                    <a href={measurementRequest.opening_plan_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+                    {/* Открываем через FileViewer, а не target="_blank": в PWA на iOS
+                        новая вкладка открывается без браузерных кнопок и файл нельзя закрыть */}
+                    <button
+                      type="button"
+                      onClick={() => setViewerFile({ url: measurementRequest.opening_plan_url!, name: 'План открывания' })}
+                      className="text-primary-600 hover:underline"
+                    >
                       Открыть
-                    </a>
+                    </button>
                   </dd>
                 </div>
               )}
