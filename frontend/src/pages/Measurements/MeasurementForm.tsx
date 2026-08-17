@@ -941,7 +941,6 @@ const MeasurementForm = () => {
                   {op.door_type === DOUBLE_DOOR_TYPE ? (
                     <input
                       type="text"
-                      inputMode="numeric"
                       value={op.recommended_door_width_parts ?? ''}
                       onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_width_parts', e.target.value)}
                       onBlur={() => saveRecommendedDoor(op)}

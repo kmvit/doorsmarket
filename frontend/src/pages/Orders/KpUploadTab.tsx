@@ -349,7 +349,6 @@ const KpUploadTab = ({
                           {item.door_type === DOUBLE_DOOR_TYPE ? (
                             <input
                               type="text"
-                              inputMode="numeric"
                               value={item.door_width_parts ?? ''}
                               onChange={(e) => updateItem(idx, 'door_width_parts', e.target.value)}
                               className="w-20 rounded border-gray-300 text-sm"
