@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ordersAPI } from '../../api/orders'
 import {
   Salon, ParsedKpData, ParsedKpItem, ParsedKpAddon,
-  ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY,
+  ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY, DOUBLE_DOOR_TYPE, sumDoorWidthParts,
 } from '../../types/orders'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import HScrollSync from '../../components/common/HScrollSync'
@@ -69,7 +69,13 @@ const KpUploadTab = ({
   const updateItem = (idx: number, field: keyof ParsedKpItem, value: any) => {
     if (!parsed) return
     const items = [...parsed.items]
-    items[idx] = { ...items[idx], [field]: value }
+    const next = { ...items[idx], [field]: value }
+    // Двустворчатая: числовая ширина = сумма ширин полотен из строки «800 + 800»
+    if (next.door_type === DOUBLE_DOOR_TYPE && field === 'door_width_parts') {
+      next.door_width = sumDoorWidthParts(value)
+    }
+    if (next.door_type !== DOUBLE_DOOR_TYPE) next.door_width_parts = ''
+    items[idx] = next
     setParsed({ ...parsed, items })
   }
   const removeItem = (idx: number) =>
@@ -338,7 +344,21 @@ const KpUploadTab = ({
                           </select>
                         </td>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.door_height ?? ''} onChange={(e) => updateItem(idx, 'door_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
-                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.door_width ?? ''} onChange={(e) => updateItem(idx, 'door_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
+                        <td className="px-2 py-1.5 align-top">
+                          {/* Двустворчатая: ширина — сумма ширин двух полотен («800 + 800») */}
+                          {item.door_type === DOUBLE_DOOR_TYPE ? (
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={item.door_width_parts ?? ''}
+                              onChange={(e) => updateItem(idx, 'door_width_parts', e.target.value)}
+                              className="w-20 rounded border-gray-300 text-sm"
+                              placeholder="800 + 800"
+                            />
+                          ) : (
+                            <input type="number" value={item.door_width ?? ''} onChange={(e) => updateItem(idx, 'door_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" />
+                          )}
+                        </td>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.recommended_opening_height ?? ''} onChange={(e) => updateItem(idx, 'recommended_opening_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.recommended_opening_width ?? ''} onChange={(e) => updateItem(idx, 'recommended_opening_width', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>
                         <td className="px-2 py-1.5 align-top">

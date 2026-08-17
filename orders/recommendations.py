@@ -5,12 +5,61 @@
   - Рек. дверь  = (проём.h - 70, проём.w - 100)
   - Рек. проём  = (двери.h + 70, двери.w + 100)
 
+Зависимость от типа двери:
+  - Межкомнатная / входная — базовые правила выше.
+  - Двустворчатая — по высоте те же +70, по ширине сумма ширин двух полотен + 100.
+    Ширина полотен хранится строкой-суммой («800 + 800»), а рек. проём считается
+    от суммы.
+  - Сдвижная / Другое — авторасчёта нет: СМ заполняет рекомендации вручную,
+    и они не обязательны.
+
 Текстовые рекомендации по проёму выводятся, когда фактическое отклонение
 выходит за пороги:
   - высота: 60 мм или 80 мм
   - ширина: 90 мм или 105 мм
 """
+import re
 from typing import Optional, Tuple, List, Dict, Any
+
+
+# Типы дверей, для которых рекомендации не считаются автоматически
+NO_AUTO_RECOMMENDATION_TYPES = {'sliding', 'other'}
+# Тип двери с двумя полотнами: ширина задаётся суммой
+DOUBLE_DOOR_TYPE = 'double'
+
+
+# --- Ширина двустворчатой двери («800 + 800») ---
+
+def parse_door_width_parts(text) -> List[int]:
+    """
+    Разбирает ширину двустворчатой двери из строки-суммы: '800 + 800' → [800, 800].
+    Принимает любые разделители («800+800», «800 / 800», «800, 800»).
+    """
+    if text is None:
+        return []
+    return [int(n) for n in re.findall(r'\d+', str(text)) if int(n) > 0]
+
+
+def sum_door_width_parts(text) -> Optional[int]:
+    """Суммарная ширина полотен из строки-суммы: '800 + 800' → 1600."""
+    parts = parse_door_width_parts(text)
+    return sum(parts) if parts else None
+
+
+def format_door_width_parts(parts: List[int]) -> str:
+    """Собирает строку-сумму из ширин полотен: [800, 800] → '800 + 800'."""
+    return ' + '.join(str(p) for p in parts if p)
+
+
+def split_double_door_width(total: Optional[int]) -> str:
+    """
+    Делит суммарную ширину на два полотна: 1600 → '800 + 800'.
+    Нечётный остаток отдаём первому полотну (1601 → '801 + 800').
+    """
+    if not total or total <= 0:
+        return ''
+    half = total // 2
+    return format_door_width_parts([total - half, half])
 
 
 # --- Базовые расчёты ---
@@ -18,11 +67,16 @@ from typing import Optional, Tuple, List, Dict, Any
 def calculate_door_recommendation(
     opening_h: Optional[int],
     opening_w: Optional[int],
+    door_type: str = '',
 ) -> Tuple[Optional[int], Optional[int]]:
     """
     Рекомендуемый размер двери по фактическому проёму.
     Дверь = проём - 70 (высота) / -100 (ширина).
+    Для сдвижной и «другое» авторасчёта нет — СМ заполняет вручную.
+    Для двустворчатой ширина — суммарная (делится на полотна отдельно).
     """
+    if (door_type or '') in NO_AUTO_RECOMMENDATION_TYPES:
+        return None, None
     rec_h = max(0, opening_h - 70) if opening_h else None
     rec_w = max(0, opening_w - 100) if opening_w else None
     return rec_h, rec_w
@@ -31,11 +85,16 @@ def calculate_door_recommendation(
 def calculate_opening_recommendation(
     door_h: Optional[int],
     door_w: Optional[int],
+    door_type: str = '',
 ) -> Tuple[Optional[int], Optional[int]]:
     """
     Рекомендуемый размер проёма под существующую дверь.
     Проём = дверь + 70 (высота) / +100 (ширина).
+    Для двустворчатой door_w — сумма ширин полотен, правило то же (+100).
+    Для сдвижной и «другое» авторасчёта нет.
     """
+    if (door_type or '') in NO_AUTO_RECOMMENDATION_TYPES:
+        return None, None
     rec_h = (door_h + 70) if door_h else None
     rec_w = (door_w + 100) if door_w else None
     return rec_h, rec_w
@@ -48,6 +107,7 @@ def build_recommendation_text(
     opening_w: Optional[int],
     door_h: Optional[int],
     door_w: Optional[int],
+    door_type: str = '',
 ) -> str:
     """
     Строит рекомендации для проёма в кратком виде:
@@ -59,6 +119,10 @@ def build_recommendation_text(
         - ширина: проём превышает дверь на 105 мм → уменьшить
     """
     parts: List[str] = []
+
+    # Сдвижная / «другое»: рекомендации задаёт СМ вручную, авто-текст не строим
+    if (door_type or '') in NO_AUTO_RECOMMENDATION_TYPES:
+        return ''
 
     if opening_h is not None and door_h is not None:
         delta_h = opening_h - door_h

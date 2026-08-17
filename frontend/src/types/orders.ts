@@ -64,14 +64,37 @@ export const ORDER_STATUS_HINT: Partial<Record<OrderStatus, string>> = {
   shipped: 'Поставьте в график монтажа',
 }
 
-export type DoorType = 'entrance' | 'interior' | 'other' | ''
+export type DoorType = 'entrance' | 'interior' | 'sliding' | 'double' | 'other' | ''
 export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | ''
 export type AddonKind = 'box' | 'platband' | 'extension' | 'hinges' | 'handle' | 'mechanism' | 'glass' | 'extra' | 'service'
 
 export const DOOR_TYPE_DISPLAY: Record<string, string> = {
   entrance: 'Входная',
   interior: 'Межкомнатная',
+  sliding: 'Сдвижная',
+  double: 'Двустворчатая',
   other: 'Другое',
+}
+
+// Типы дверей без авторасчёта рекомендаций — СМ заполняет их вручную,
+// и поля не обязательны
+export const NO_AUTO_RECOMMENDATION_DOOR_TYPES: DoorType[] = ['sliding', 'other']
+// Двустворчатая: ширина задаётся суммой ширин двух полотен («800 + 800»)
+export const DOUBLE_DOOR_TYPE: DoorType = 'double'
+
+// Сумма ширин полотен из строки-суммы: «800 + 800» → 1600
+export const sumDoorWidthParts = (text?: string | null): number | null => {
+  const nums = String(text ?? '').match(/\d+/g)
+  if (!nums) return null
+  const total = nums.reduce((acc, n) => acc + Number(n), 0)
+  return total > 0 ? total : null
+}
+
+// Делит суммарную ширину на два полотна: 1600 → «800 + 800»
+export const splitDoubleDoorWidth = (total?: number | null): string => {
+  if (!total || total <= 0) return ''
+  const half = Math.floor(total / 2)
+  return `${total - half} + ${half}`
 }
 
 export const OPENING_TYPE_DISPLAY: Record<string, string> = {
@@ -190,6 +213,7 @@ export interface MeasurementData {
   actual_depth: number | null
   recommended_door_height: number | null
   recommended_door_width: number | null
+  recommended_door_width_parts: string
   recommended_opening_height: number | null
   recommended_opening_width: number | null
   opening_type: string
@@ -212,6 +236,8 @@ export interface OrderItem {
   opening_type_display: string
   door_height: number | null
   door_width: number | null
+  // Двустворчатая: ширины полотен строкой-суммой («800 + 800»), door_width — их сумма
+  door_width_parts: string
   recommended_opening_height: number | null
   recommended_opening_width: number | null
   notes: string
@@ -290,6 +316,7 @@ export interface CreateOrderItemData {
   opening_type?: OpeningType
   door_height?: number | null
   door_width?: number | null
+  door_width_parts?: string
   recommended_opening_height?: number | null
   recommended_opening_width?: number | null
   notes?: string
@@ -428,6 +455,7 @@ export interface ParsedKpItem {
   opening_type: string
   door_height: number | null
   door_width: number | null
+  door_width_parts?: string
   recommended_opening_height: number | null
   recommended_opening_width: number | null
   notes?: string

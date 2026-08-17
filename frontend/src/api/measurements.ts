@@ -3,7 +3,10 @@ import {
   Measurement, MeasurementListItem, MeasurementFolder,
   MeasurementOpening, MeasurementAttachment,
 } from '../types/measurements'
-import { MeasurementFolderCount } from '../types/orders'
+import {
+  MeasurementFolderCount, DoorType, DOUBLE_DOOR_TYPE,
+  NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
+} from '../types/orders'
 import { measurementUtils, cacheUtils, withOfflineFallback, db } from '../services/offline'
 import { requestQueue, requestWithQueue, isNetworkError } from '../services/sync'
 
@@ -33,6 +36,7 @@ const emptyOpening = (measurementId: number, data: Partial<MeasurementOpening>):
   actual_depth: null,
   recommended_door_height: null,
   recommended_door_width: null,
+  recommended_door_width_parts: '',
   recommended_door_is_manual: false,
   recommended_opening_height: null,
   recommended_opening_width: null,
@@ -138,18 +142,37 @@ const removeAttachmentFromLocalDetail = async (
 // Локальный пересчёт рекомендаций проёма — зеркало серверного _recalc_recommendations.
 // Нужен в офлайне: сервер недоступен, а рек. размеры и текст должны появляться сразу.
 const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial<MeasurementOpening>): T => {
+  const isDouble = op.door_type === DOUBLE_DOOR_TYPE
+  const noAuto = NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(op.door_type as DoorType)
   // СМ прислал рек. размер двери → ручной режим (пустые значения возвращают авторасчёт)
-  if (patch && ('recommended_door_height' in patch || 'recommended_door_width' in patch)) {
-    op.recommended_door_is_manual = Boolean(op.recommended_door_height || op.recommended_door_width)
+  if (patch && ('recommended_door_height' in patch || 'recommended_door_width' in patch
+    || 'recommended_door_width_parts' in patch)) {
+    op.recommended_door_is_manual = Boolean(
+      op.recommended_door_height || op.recommended_door_width || op.recommended_door_width_parts,
+    )
   }
+  // Двустворчатая: числовая ширина = сумма ширин полотен из строки «800 + 800»
+  if (isDouble && op.recommended_door_width_parts) {
+    op.recommended_door_width = sumDoorWidthParts(op.recommended_door_width_parts)
+  }
+  if (!isDouble) op.recommended_door_width_parts = ''
   if (!op.recommended_door_is_manual) {
-    op.recommended_door_height = op.actual_height ? Number(op.actual_height) - 70 : null
-    op.recommended_door_width = op.actual_width ? Number(op.actual_width) - 100 : null
+    const door = calculateDoorRecommendation(op.actual_height, op.actual_width, op.door_type)
+    op.recommended_door_height = door.h
+    op.recommended_door_width = door.w
+    if (isDouble) op.recommended_door_width_parts = splitDoubleDoorWidth(door.w)
   }
-  op.recommended_opening_height = op.recommended_door_height ? Number(op.recommended_door_height) + 70 : null
-  op.recommended_opening_width = op.recommended_door_width ? Number(op.recommended_door_width) + 100 : null
+  const opening = calculateOpeningRecommendation(
+    op.recommended_door_height, op.recommended_door_width, op.door_type,
+  )
+  // Сдвижная / «другое»: рек. проём заполняет СМ — не затираем введённое
+  if (!noAuto) {
+    op.recommended_opening_height = opening.h
+    op.recommended_opening_width = opening.w
+  }
   op.recommendation_text = buildRecommendationText(
     op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width,
+    op.door_type,
   )
   return op
 }
@@ -588,25 +611,42 @@ export const measurementAttachmentsAPI = {
 export const calculateDoorRecommendation = (
   openingH: number | null,
   openingW: number | null,
-): { h: number | null; w: number | null } => ({
-  h: openingH ? Math.max(0, openingH - 70) : null,
-  w: openingW ? Math.max(0, openingW - 100) : null,
-})
+  doorType: string = '',
+): { h: number | null; w: number | null } => {
+  // Сдвижная / «другое» — авторасчёта нет, СМ заполняет вручную
+  if (NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(doorType as DoorType)) {
+    return { h: null, w: null }
+  }
+  return {
+    h: openingH ? Math.max(0, openingH - 70) : null,
+    w: openingW ? Math.max(0, openingW - 100) : null,
+  }
+}
 
 export const calculateOpeningRecommendation = (
   doorH: number | null,
   doorW: number | null,
-): { h: number | null; w: number | null } => ({
-  h: doorH ? doorH + 70 : null,
-  w: doorW ? doorW + 100 : null,
-})
+  doorType: string = '',
+): { h: number | null; w: number | null } => {
+  if (NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(doorType as DoorType)) {
+    return { h: null, w: null }
+  }
+  // Двустворчатая: doorW — сумма ширин полотен, правило то же (+100)
+  return {
+    h: doorH ? doorH + 70 : null,
+    w: doorW ? doorW + 100 : null,
+  }
+}
 
 export const buildRecommendationText = (
   openingH: number | null,
   openingW: number | null,
   doorH: number | null,
   doorW: number | null,
+  doorType: string = '',
 ): string => {
+  // Сдвижная / «другое»: рекомендации задаёт СМ вручную, авто-текст не строим
+  if (NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(doorType as DoorType)) return ''
   // Краткий формат: «Увеличить проём по высоте до 2570, уменьшить проём по ширине до 900»
   const parts: string[] = []
   if (openingH != null && doorH != null) {

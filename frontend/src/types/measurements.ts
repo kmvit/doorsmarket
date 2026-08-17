@@ -25,6 +25,9 @@ export interface MeasurementOpening {
 
   recommended_door_height: number | null
   recommended_door_width: number | null
+  // Двустворчатая: ширины полотен строкой-суммой («800 + 800»),
+  // recommended_door_width хранит их сумму
+  recommended_door_width_parts: string
   recommended_door_is_manual: boolean
   recommended_opening_height: number | null
   recommended_opening_width: number | null

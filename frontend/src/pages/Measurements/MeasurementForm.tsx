@@ -10,7 +10,10 @@ import {
   validateLiftRequired,
 } from '../../api/measurements'
 import { Measurement, MeasurementOpening, MeasurementAttachment } from '../../types/measurements'
-import { DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY } from '../../types/orders'
+import {
+  DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY, DoorType, DOUBLE_DOOR_TYPE,
+  NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
+} from '../../types/orders'
 import { isQueuedError, requestQueue } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
@@ -70,20 +73,37 @@ const MeasurementForm = () => {
       openings: m.openings.map((o) => {
         if (o.id !== openingId) return o
         const next = { ...o, [field]: value }
+        const isDouble = next.door_type === DOUBLE_DOOR_TYPE
+        const noAuto = NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(next.door_type as DoorType)
         // СМ редактирует рек. дверь → ручной режим (пустые значения возвращают авторасчёт)
-        if (field === 'recommended_door_height' || field === 'recommended_door_width') {
-          next.recommended_door_is_manual = Boolean(next.recommended_door_height || next.recommended_door_width)
+        if (field === 'recommended_door_height' || field === 'recommended_door_width'
+          || field === 'recommended_door_width_parts') {
+          next.recommended_door_is_manual = Boolean(
+            next.recommended_door_height || next.recommended_door_width || next.recommended_door_width_parts,
+          )
         }
+        // Сдвижная / «другое»: рек. проём вводит СМ — его правки не пересчитываем
+        if (noAuto && (field === 'recommended_opening_height' || field === 'recommended_opening_width')) {
+          return next
+        }
+        // Двустворчатая: числовая ширина = сумма ширин полотен («800 + 800»)
+        if (isDouble && next.recommended_door_width_parts) {
+          next.recommended_door_width = sumDoorWidthParts(next.recommended_door_width_parts)
+        }
+        if (!isDouble) next.recommended_door_width_parts = ''
         // Рек. дверь = факт. проём − 70/100, если СМ не задал её вручную
         if (!next.recommended_door_is_manual) {
           const h = next.actual_height ? Number(next.actual_height) : null
           const w = next.actual_width ? Number(next.actual_width) : null
-          next.recommended_door_height = h ? h - 70 : null
-          next.recommended_door_width = w ? w - 100 : null
+          next.recommended_door_height = noAuto ? null : (h ? h - 70 : null)
+          next.recommended_door_width = noAuto ? null : (w ? w - 100 : null)
+          if (isDouble) next.recommended_door_width_parts = splitDoubleDoorWidth(next.recommended_door_width)
         }
-        // Рек. проём = рек. дверь + 70/100
-        next.recommended_opening_height = next.recommended_door_height ? Number(next.recommended_door_height) + 70 : null
-        next.recommended_opening_width = next.recommended_door_width ? Number(next.recommended_door_width) + 100 : null
+        // Рек. проём = рек. дверь + 70/100 (для двустворчатой — от суммы полотен)
+        if (!noAuto) {
+          next.recommended_opening_height = next.recommended_door_height ? Number(next.recommended_door_height) + 70 : null
+          next.recommended_opening_width = next.recommended_door_width ? Number(next.recommended_door_width) + 100 : null
+        }
         return next
       }),
     })
@@ -115,6 +135,14 @@ const MeasurementForm = () => {
         payload.recommended_door_height = op.recommended_door_height
         payload.recommended_door_width = op.recommended_door_width
       }
+      if (op.door_type === DOUBLE_DOOR_TYPE) {
+        payload.recommended_door_width_parts = op.recommended_door_width_parts
+      }
+      // Сдвижная / «другое»: рек. проём заполняет СМ вручную — отправляем как есть
+      if (NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(op.door_type as DoorType)) {
+        payload.recommended_opening_height = op.recommended_opening_height
+        payload.recommended_opening_width = op.recommended_opening_width
+      }
       const updated = await measurementOpeningsAPI.update(op.id, payload)
       // Обновляем только этот проём из ответа сервера — без спиннера и скролла
       setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? updated : o) } : prev)
@@ -133,6 +161,10 @@ const MeasurementForm = () => {
       const updated = await measurementOpeningsAPI.update(op.id, {
         recommended_door_height: patch ? (patch.h ?? null) : op.recommended_door_height,
         recommended_door_width: patch ? (patch.w ?? null) : op.recommended_door_width,
+        // Двустворчатая: ширины полотен строкой-суммой; «↺ авто» их тоже сбрасывает
+        ...(op.door_type === DOUBLE_DOOR_TYPE
+          ? { recommended_door_width_parts: patch ? '' : op.recommended_door_width_parts }
+          : {}),
       })
       setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? updated : o) } : prev)
     } catch {
@@ -173,6 +205,9 @@ const MeasurementForm = () => {
           ? {
               recommended_door_height: op.recommended_door_height,
               recommended_door_width: op.recommended_door_width,
+              ...(op.door_type === DOUBLE_DOOR_TYPE
+                ? { recommended_door_width_parts: op.recommended_door_width_parts }
+                : {}),
             }
           : {}),
         opening_type: op.opening_type,
@@ -828,9 +863,9 @@ const MeasurementForm = () => {
                   className={fieldCls}
                 >
                   <option value="">—</option>
-                  <option value="entrance">{DOOR_TYPE_DISPLAY.entrance}</option>
-                  <option value="interior">{DOOR_TYPE_DISPLAY.interior}</option>
-                  <option value="other">{DOOR_TYPE_DISPLAY.other}</option>
+                  {Object.entries(DOOR_TYPE_DISPLAY).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -902,34 +937,85 @@ const MeasurementForm = () => {
                     className={fieldCls}
                     placeholder="Высота, мм"
                   />
-                  <input
-                    type="number"
-                    value={op.recommended_door_width ?? ''}
-                    onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_width', e.target.value ? Number(e.target.value) : null)}
-                    onBlur={() => saveRecommendedDoor(op)}
-                    disabled={!canEditOpenings}
-                    className={fieldCls}
-                    placeholder="Ширина, мм"
-                  />
+                  {/* Двустворчатая: ширины двух полотен суммой («800 + 800») */}
+                  {op.door_type === DOUBLE_DOOR_TYPE ? (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={op.recommended_door_width_parts ?? ''}
+                      onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_width_parts', e.target.value)}
+                      onBlur={() => saveRecommendedDoor(op)}
+                      disabled={!canEditOpenings}
+                      className={fieldCls}
+                      placeholder="800 + 800"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={op.recommended_door_width ?? ''}
+                      onChange={(e) => updateOpeningLocal(op.id, 'recommended_door_width', e.target.value ? Number(e.target.value) : null)}
+                      onBlur={() => saveRecommendedDoor(op)}
+                      disabled={!canEditOpenings}
+                      className={fieldCls}
+                      placeholder="Ширина, мм"
+                    />
+                  )}
                 </div>
                 <div className="text-xs text-blue-600 mt-1">
-                  {op.recommended_door_is_manual
-                    ? '✎ задан вручную — рекомендации считаются от этого размера'
-                    : 'авторасчёт: проём −70 / −100. Можно отредактировать'}
+                  {op.door_type === DOUBLE_DOOR_TYPE
+                    ? `ширина — сумма ширин двух полотен${op.recommended_door_width ? ` (итого ${op.recommended_door_width} мм)` : ''}`
+                    : NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(op.door_type as DoorType)
+                      ? 'для этого типа двери авторасчёта нет — заполняется вручную (не обязательно)'
+                      : op.recommended_door_is_manual
+                        ? '✎ задан вручную — рекомендации считаются от этого размера'
+                        : 'авторасчёт: проём −70 / −100. Можно отредактировать'}
                 </div>
               </div>
               <div className="p-3 bg-cyan-50 rounded-lg">
                 <div className="text-xs font-medium text-cyan-700 uppercase mb-1">Рекомендуемый размер проёма</div>
-                <div className="text-cyan-900">
-                  Высота: <strong>{op.recommended_opening_height ?? '—'}</strong> · Ширина: <strong>{op.recommended_opening_width ?? '—'}</strong>
-                </div>
-                <div className="text-xs text-cyan-600 mt-1">(рек. дверь +70 / +100)</div>
+                {/* Сдвижная / «другое»: авторасчёта нет — СМ вводит проём сам */}
+                {NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(op.door_type as DoorType) ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        value={op.recommended_opening_height ?? ''}
+                        onChange={(e) => updateOpeningLocal(op.id, 'recommended_opening_height', e.target.value ? Number(e.target.value) : null)}
+                        onBlur={() => saveOpening(op)}
+                        disabled={!canEditOpenings}
+                        className={fieldCls}
+                        placeholder="Высота, мм"
+                      />
+                      <input
+                        type="number"
+                        value={op.recommended_opening_width ?? ''}
+                        onChange={(e) => updateOpeningLocal(op.id, 'recommended_opening_width', e.target.value ? Number(e.target.value) : null)}
+                        onBlur={() => saveOpening(op)}
+                        disabled={!canEditOpenings}
+                        className={fieldCls}
+                        placeholder="Ширина, мм"
+                      />
+                    </div>
+                    <div className="text-xs text-cyan-600 mt-1">заполняется вручную (не обязательно)</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-cyan-900">
+                      Высота: <strong>{op.recommended_opening_height ?? '—'}</strong> · Ширина: <strong>{op.recommended_opening_width ?? '—'}</strong>
+                    </div>
+                    <div className="text-xs text-cyan-600 mt-1">
+                      {op.door_type === DOUBLE_DOOR_TYPE
+                        ? '(высота +70 / сумма ширин полотен +100)'
+                        : '(рек. дверь +70 / +100)'}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Текст рекомендации — от рекомендуемой двери */}
             {(() => {
-              const text = buildRecommendationText(op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width)
+              const text = buildRecommendationText(op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width, op.door_type)
               if (!text) return null
               return (
                 <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">

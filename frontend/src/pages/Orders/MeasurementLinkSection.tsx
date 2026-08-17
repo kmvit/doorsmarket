@@ -245,7 +245,7 @@ const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }:
                     {item.model_name || '—'}
                   </div>
                   <div className="text-xs text-gray-500 space-y-0.5 mb-2">
-                    <div>Размер двери: {item.door_height ?? '—'}×{item.door_width ?? '—'} мм</div>
+                    <div>Размер двери: {item.door_height ?? '—'}×{item.door_width_parts || item.door_width || '—'} мм</div>
                     {(item.door_type_display || item.opening_type_display) && (
                       <div>
                         {item.door_type_display || ''}
@@ -314,7 +314,7 @@ const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }:
                       {op.actual_depth ? `×${op.actual_depth}` : ''} мм
                     </div>
                     <div>
-                      Рек. дверь: {op.recommended_door_height ?? '—'}×{op.recommended_door_width ?? '—'} мм
+                      Рек. дверь: {op.recommended_door_height ?? '—'}×{op.recommended_door_width_parts || op.recommended_door_width || '—'} мм
                       {op.recommended_door_is_manual ? ' (задана СМ)' : ''}
                     </div>
                     <div>

@@ -338,6 +338,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 opening_type=item.get('opening_type') or '',
                 door_height=item.get('door_height') or None,
                 door_width=item.get('door_width') or None,
+                door_width_parts=(item.get('door_width_parts') or '')[:50],
                 recommended_opening_height=item.get('recommended_opening_height') or None,
                 recommended_opening_width=item.get('recommended_opening_width') or None,
                 notes=(item.get('notes') or ''),
@@ -411,6 +412,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     opening_type=item.get('opening_type') or '',
                     door_height=item.get('door_height') or None,
                     door_width=item.get('door_width') or None,
+                    door_width_parts=(item.get('door_width_parts') or '')[:50],
                     recommended_opening_height=item.get('recommended_opening_height') or None,
                     recommended_opening_width=item.get('recommended_opening_width') or None,
                     notes=(item.get('notes') or ''),
@@ -487,6 +489,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     opening_type=item.get('opening_type') or '',
                     door_height=item.get('door_height') or None,
                     door_width=item.get('door_width') or None,
+                    door_width_parts=(item.get('door_width_parts') or '')[:50],
                     recommended_opening_height=item.get('recommended_opening_height') or None,
                     recommended_opening_width=item.get('recommended_opening_width') or None,
                     notes=(item.get('notes') or ''),
@@ -645,12 +648,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 item.door_height = new_h
             if new_w and not item.door_width:
                 item.door_width = new_w
+            # Двустворчатая: переносим и ширины полотен («800 + 800»)
+            if op.recommended_door_width_parts and not (item.door_width_parts or '').strip():
+                item.door_width_parts = op.recommended_door_width_parts
             if op.recommended_opening_height and not item.recommended_opening_height:
                 item.recommended_opening_height = op.recommended_opening_height
             if op.recommended_opening_width and not item.recommended_opening_width:
                 item.recommended_opening_width = op.recommended_opening_width
             item.save(update_fields=[
                 'room_name', 'door_type', 'opening_type', 'door_height', 'door_width',
+                'door_width_parts',
                 'recommended_opening_height', 'recommended_opening_width',
             ])
 
@@ -757,16 +764,34 @@ class OrderItemViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_update(self, serializer):
+        from .recommendations import (
+            DOUBLE_DOOR_TYPE, NO_AUTO_RECOMMENDATION_TYPES, sum_door_width_parts,
+        )
+
         changed = serializer.validated_data
         item = serializer.save()
-        # Правка размера двери пересчитывает рекомендованный проём (дверь +70/+100).
-        # Исключение: если рек. проём задан в этом же запросе явно — оставляем его
-        # (менеджер решил переопределить, его мнение приоритетнее КП/замера).
-        if 'door_height' in changed and 'recommended_opening_height' not in changed and item.door_height:
-            item.recommended_opening_height = item.door_height + 70
-        if 'door_width' in changed and 'recommended_opening_width' not in changed and item.door_width:
-            item.recommended_opening_width = item.door_width + 100
-        item.save(update_fields=['recommended_opening_height', 'recommended_opening_width'])
+        # Двустворчатая: ширина полотен приходит строкой-суммой («800 + 800»),
+        # числовая door_width = их сумма, от неё считается рек. проём (+100).
+        if item.door_type == DOUBLE_DOOR_TYPE and 'door_width_parts' in changed:
+            total = sum_door_width_parts(item.door_width_parts)
+            if total:
+                item.door_width = total
+                changed = {**changed, 'door_width': total}
+        elif item.door_type != DOUBLE_DOOR_TYPE and item.door_width_parts:
+            item.door_width_parts = ''
+        # Сдвижная / «другое»: рек. проём заполняет пользователь, авторасчёта нет
+        if item.door_type not in NO_AUTO_RECOMMENDATION_TYPES:
+            # Правка размера двери пересчитывает рекомендованный проём (дверь +70/+100).
+            # Исключение: если рек. проём задан в этом же запросе явно — оставляем его
+            # (менеджер решил переопределить, его мнение приоритетнее КП/замера).
+            if 'door_height' in changed and 'recommended_opening_height' not in changed and item.door_height:
+                item.recommended_opening_height = item.door_height + 70
+            if 'door_width' in changed and 'recommended_opening_width' not in changed and item.door_width:
+                item.recommended_opening_width = item.door_width + 100
+        item.save(update_fields=[
+            'door_width', 'door_width_parts',
+            'recommended_opening_height', 'recommended_opening_width',
+        ])
         item.order.touch_activity(ActivityKind.ITEMS_CHANGED)
 
 
@@ -1455,7 +1480,10 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
     def _door_edited_manually(self):
         """Запрос содержит рек. размер двери — СМ редактирует его вручную."""
         data = self.request.data or {}
-        return 'recommended_door_height' in data or 'recommended_door_width' in data
+        return any(
+            key in data for key in
+            ('recommended_door_height', 'recommended_door_width', 'recommended_door_width_parts')
+        )
 
     def _recalc_recommendations(self, op: MeasurementOpening, manual_door=False):
         """
@@ -1463,23 +1491,50 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         - Рек. дверь = факт. проём − 70/−100, но СМ может отредактировать её вручную —
           тогда авторасчёт двери отключается (пока СМ не очистит поля).
         - Рек. проём = рек. дверь + 70/+100 — всегда от актуальной рек. двери.
+        - Двустворчатая: ширина хранится строкой-суммой («800 + 800»), числовая
+          ширина = сумма полотен, проём = сумма + 100.
+        - Сдвижная / «другое»: авторасчёта нет, значения задаёт СМ.
         """
+        from .recommendations import (
+            DOUBLE_DOOR_TYPE, NO_AUTO_RECOMMENDATION_TYPES,
+            split_double_door_width, sum_door_width_parts,
+        )
+
+        is_double = op.door_type == DOUBLE_DOOR_TYPE
+        no_auto = op.door_type in NO_AUTO_RECOMMENDATION_TYPES
+
         if manual_door:
             # СМ прислал рек. размер двери: непустой → ручной режим, пустой → снова авто
             op.recommended_door_is_manual = bool(
-                op.recommended_door_height or op.recommended_door_width
+                op.recommended_door_height
+                or op.recommended_door_width
+                or op.recommended_door_width_parts
             )
+        # Двустворчатая: числовая ширина всегда = сумма ширин полотен из строки
+        if is_double and op.recommended_door_width_parts:
+            op.recommended_door_width = sum_door_width_parts(op.recommended_door_width_parts)
+        if not is_double:
+            op.recommended_door_width_parts = ''
+
         if not op.recommended_door_is_manual:
-            rec_dh, rec_dw = calculate_door_recommendation(op.actual_height, op.actual_width)
+            rec_dh, rec_dw = calculate_door_recommendation(
+                op.actual_height, op.actual_width, op.door_type,
+            )
             op.recommended_door_height = rec_dh
             op.recommended_door_width = rec_dw
+            # Авто-заполнение полотен двустворчатой: суммарную ширину делим пополам
+            if is_double:
+                op.recommended_door_width_parts = split_double_door_width(rec_dw)
         rec_oh, rec_ow = calculate_opening_recommendation(
-            op.recommended_door_height, op.recommended_door_width,
+            op.recommended_door_height, op.recommended_door_width, op.door_type,
         )
-        op.recommended_opening_height = rec_oh
-        op.recommended_opening_width = rec_ow
+        # Сдвижная / «другое»: рек. проём заполняет СМ — не перетираем введённое пустым
+        if not no_auto:
+            op.recommended_opening_height = rec_oh
+            op.recommended_opening_width = rec_ow
         op.save(update_fields=[
-            'recommended_door_height', 'recommended_door_width', 'recommended_door_is_manual',
+            'recommended_door_height', 'recommended_door_width',
+            'recommended_door_width_parts', 'recommended_door_is_manual',
             'recommended_opening_height', 'recommended_opening_width',
         ])
 

@@ -114,7 +114,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'id', 'order', 'opening_number', 'room_name', 'model_name',
             'quantity', 'price', 'amount', 'door_type', 'door_type_display',
             'opening_type', 'opening_type_display',
-            'door_height', 'door_width',
+            'door_height', 'door_width', 'door_width_parts',
             'recommended_opening_height', 'recommended_opening_width',
             'notes', 'position', 'attachments', 'measurement_data',
         ]
@@ -140,6 +140,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'actual_depth': op.actual_depth,
             'recommended_door_height': op.recommended_door_height,
             'recommended_door_width': op.recommended_door_width,
+            'recommended_door_width_parts': op.recommended_door_width_parts,
             'recommended_opening_height': op.recommended_opening_height,
             'recommended_opening_width': op.recommended_opening_width,
             'opening_type': op.opening_type,
@@ -147,6 +148,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'recommendation_text': build_recommendation_text(
                 op.actual_height, op.actual_width,
                 op.recommended_door_height, op.recommended_door_width,
+                op.door_type,
             ),
         }
 
@@ -162,7 +164,7 @@ class OrderItemWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'opening_number', 'room_name', 'model_name',
             'quantity', 'price', 'amount', 'door_type', 'opening_type',
-            'door_height', 'door_width',
+            'door_height', 'door_width', 'door_width_parts',
             'recommended_opening_height', 'recommended_opening_width',
             'notes', 'position',
         ]
@@ -506,7 +508,8 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'id', 'measurement', 'order_item', 'opening_number', 'room_name',
             'door_type', 'door_type_display',
             'actual_height', 'actual_width', 'actual_depth',
-            'recommended_door_height', 'recommended_door_width', 'recommended_door_is_manual',
+            'recommended_door_height', 'recommended_door_width',
+            'recommended_door_width_parts', 'recommended_door_is_manual',
             'recommended_opening_height', 'recommended_opening_width',
             'opening_type', 'opening_type_display',
             'addon_width',
@@ -526,6 +529,7 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
         return build_recommendation_text(
             obj.actual_height, obj.actual_width,
             obj.recommended_door_height, obj.recommended_door_width,
+            obj.door_type,
         )
 
 
@@ -538,6 +542,7 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
             'door_type',
             'actual_height', 'actual_width', 'actual_depth',
             'recommended_door_height', 'recommended_door_width',
+            'recommended_door_width_parts',
             'recommended_opening_height', 'recommended_opening_width',
             'opening_type', 'addon_width',
             'face_trim_qty', 'face_trim_comment',

@@ -116,15 +116,22 @@ def render_recommendations_blank(measurement) -> bytes:
             door_w = op.recommended_door_width
             opening_h = op.recommended_opening_height
             opening_w = op.recommended_opening_width
+        # Двустворчатая: ширину полотен показываем суммой («800 + 800»)
+        door_w_text = ''
+        if item and (item.door_width_parts or '').strip():
+            door_w_text = item.door_width_parts
+        elif (op.recommended_door_width_parts or '').strip():
+            door_w_text = op.recommended_door_width_parts
         rows.append({
             'op': op,
             'panel_name': item.model_name if item else '',
             'door_h': door_h,
             'door_w': door_w,
+            'door_w_text': door_w_text,
             'opening_h': opening_h,
             'opening_w': opening_w,
             'rec_text': build_recommendation_text(
-                op.actual_height, op.actual_width, door_h, door_w,
+                op.actual_height, op.actual_width, door_h, door_w, op.door_type,
             ),
         })
 

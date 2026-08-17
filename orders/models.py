@@ -247,6 +247,8 @@ class Order(models.Model):
 class DoorType(models.TextChoices):
     ENTRANCE = 'entrance', 'Входная'
     INTERIOR = 'interior', 'Межкомнатная'
+    SLIDING = 'sliding', 'Сдвижная'
+    DOUBLE = 'double', 'Двустворчатая'
     OTHER = 'other', 'Другое'
 
 
@@ -284,6 +286,11 @@ class OrderItem(models.Model):
     )
     door_width = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Ширина полотна, мм'
+    )
+    # Двустворчатая дверь: ширины полотен строкой-суммой («800 + 800»);
+    # door_width при этом хранит их сумму.
+    door_width_parts = models.CharField(
+        max_length=50, blank=True, verbose_name='Ширина полотен (сумма)',
     )
     recommended_opening_height = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Рекомендуемая высота проёма, мм'
@@ -589,6 +596,11 @@ class MeasurementOpening(models.Model):
     # а рек. проём и все рекомендации считаются от размера, заданного СМ.
     recommended_door_height = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. высота двери')
     recommended_door_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Рек. ширина двери')
+    # Двустворчатая дверь: ширины полотен строкой-суммой («800 + 800»).
+    # Числовая recommended_door_width хранит их сумму — от неё считается рек. проём.
+    recommended_door_width_parts = models.CharField(
+        max_length=50, blank=True, verbose_name='Рек. ширина полотен (сумма)',
+    )
     recommended_door_is_manual = models.BooleanField(
         default=False,
         verbose_name='Рек. размер двери задан СМ вручную',

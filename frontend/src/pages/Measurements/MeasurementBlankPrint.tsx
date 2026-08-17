@@ -192,7 +192,11 @@ const MeasurementBlankPrint = () => {
                   <td className="left">{dash(op.room_name)}</td>
                   <td>{dash(op.door_type_display)}</td>
                   <td>{fmtSize(op.actual_height, op.actual_width, op.actual_depth)}</td>
-                  <td>{fmtSize(op.recommended_door_height, op.recommended_door_width)}</td>
+                  <td>
+                    {op.recommended_door_width_parts
+                      ? `${op.recommended_door_height ?? '—'}×${op.recommended_door_width_parts}`
+                      : fmtSize(op.recommended_door_height, op.recommended_door_width)}
+                  </td>
                   <td>{fmtSize(op.recommended_opening_height, op.recommended_opening_width)}</td>
                   <td>
                     {needsRework(op)

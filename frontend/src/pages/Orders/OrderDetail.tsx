@@ -161,18 +161,25 @@ const OrderDetail = () => {
     }
   }
 
-  const handleAdjustDoor = async (itemId: number, recDoorH: number | null, recDoorW: number | null) => {
+  const handleAdjustDoor = async (
+    itemId: number,
+    recDoorH: number | null,
+    recDoorW: number | null,
+    // Двустворчатая: ширины полотен строкой-суммой («800 + 800»)
+    recDoorWParts?: string,
+  ) => {
     if (!recDoorH && !recDoorW) {
       alert('Нет данных рекомендованной двери в замере')
       return
     }
     if (!window.confirm(
-      `Установить размер двери ${recDoorH ?? '—'}×${recDoorW ?? '—'} (из замера)? Рек. проём пересчитается.`,
+      `Установить размер двери ${recDoorH ?? '—'}×${recDoorWParts || recDoorW || '—'} (из замера)? Рек. проём пересчитается.`,
     )) return
     try {
       await ordersAPI.updateItem(itemId, {
         door_height: recDoorH,
         door_width: recDoorW,
+        ...(recDoorWParts ? { door_width_parts: recDoorWParts } : {}),
         recommended_opening_height: recDoorH ? recDoorH + 70 : null,
         recommended_opening_width: recDoorW ? recDoorW + 100 : null,
       })
@@ -790,7 +797,7 @@ const OrderDetail = () => {
                       {item.opening_type ? OPENING_TYPE_SHORT[item.opening_type] : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_height ?? '—'}</td>
-                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_width ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 align-top">{item.door_width_parts || item.door_width || '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_height ?? '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-600 align-top">{item.recommended_opening_width ?? '—'}</td>
                     {/* Колонки 13–18 из Замера */}
@@ -799,7 +806,7 @@ const OrderDetail = () => {
                     <td className="px-3 py-2 text-right text-cyan-800 align-top">{item.measurement_data?.actual_depth ?? '—'}</td>
                     <td className="px-3 py-2 text-right text-cyan-800 align-top text-xs">
                       {item.measurement_data?.recommended_door_height != null && item.measurement_data?.recommended_door_width != null
-                        ? `${item.measurement_data.recommended_door_height}×${item.measurement_data.recommended_door_width}`
+                        ? `${item.measurement_data.recommended_door_height}×${item.measurement_data.recommended_door_width_parts || item.measurement_data.recommended_door_width}`
                         : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-cyan-800 align-top text-xs">
@@ -818,7 +825,7 @@ const OrderDetail = () => {
                         // размера двери В ЗАКАЗЕ. Так при правке размеров менеджером она
                         // сразу обновляется — его размер приоритетнее КП/замера.
                         const text = buildRecommendationText(
-                          md.actual_height, md.actual_width, item.door_height, item.door_width,
+                          md.actual_height, md.actual_width, item.door_height, item.door_width, item.door_type,
                         )
                         const canAdjust = canEdit && md.recommended_door_height && md.recommended_door_width
                           && (md.recommended_door_height !== item.door_height || md.recommended_door_width !== item.door_width)
@@ -836,10 +843,10 @@ const OrderDetail = () => {
                                 </span>
                                 {canAdjust && (
                                   <button
-                                    onClick={() => handleAdjustDoor(item.id, md.recommended_door_height, md.recommended_door_width)}
+                                    onClick={() => handleAdjustDoor(item.id, md.recommended_door_height, md.recommended_door_width, md.recommended_door_width_parts)}
                                     className="px-2 py-0.5 text-[11px] rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
                                   >
-                                    Изменить размер двери → {md.recommended_door_height}×{md.recommended_door_width}
+                                    Изменить размер двери → {md.recommended_door_height}×{md.recommended_door_width_parts || md.recommended_door_width}
                                   </button>
                                 )}
                               </div>
