@@ -919,6 +919,35 @@ const MeasurementForm = () => {
               </div>
             </div>
 
+            {/* Открывание — до рекомендуемых размеров: СМ выбирает его сразу после
+                фактических размеров, а рекомендации смотрит уже с учётом открывания */}
+            <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Открывание *</label>
+                <select
+                  value={op.opening_type}
+                  onChange={(e) => {
+                    updateOpeningLocal(op.id, 'opening_type', e.target.value as any)
+                    setTimeout(() => saveOpening({ ...op, opening_type: e.target.value as any }), 0)
+                  }}
+                  disabled={!canEditOpenings}
+                  className={fieldCls}
+                  title={op.opening_type ? OPENING_TYPE_DISPLAY[op.opening_type] : ''}
+                >
+                  <option value="">—</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="B_INVERSO">B Inverso</option>
+                  <option value="C">C</option>
+                  <option value="D">D</option>
+                  <option value="D_INVERSO">D Inverso</option>
+                </select>
+                {isInverso(op.opening_type) && (
+                  <p className="text-xs text-red-600 mt-1">⚠️ Inverso: увеличьте высоту полотна на 1 см.</p>
+                )}
+              </div>
+            </div>
+
             {/* Рекомендации: рек. дверь редактируется СМ, рек. проём считается от неё */}
             <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div className="p-3 bg-blue-50 rounded-lg">
@@ -1032,32 +1061,8 @@ const MeasurementForm = () => {
               )
             })()}
 
-            {/* Открывание + добор */}
+            {/* Добор */}
             <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Открывание *</label>
-                <select
-                  value={op.opening_type}
-                  onChange={(e) => {
-                    updateOpeningLocal(op.id, 'opening_type', e.target.value as any)
-                    setTimeout(() => saveOpening({ ...op, opening_type: e.target.value as any }), 0)
-                  }}
-                  disabled={!canEditOpenings}
-                  className={fieldCls}
-                  title={op.opening_type ? OPENING_TYPE_DISPLAY[op.opening_type] : ''}
-                >
-                  <option value="">—</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="B_INVERSO">B Inverso</option>
-                  <option value="C">C</option>
-                  <option value="D">D</option>
-                  <option value="D_INVERSO">D Inverso</option>
-                </select>
-                {isInverso(op.opening_type) && (
-                  <p className="text-xs text-red-600 mt-1">⚠️ Inverso: увеличьте высоту полотна на 1 см.</p>
-                )}
-              </div>
               <div>
                 <label className={labelCls}>Добор, количество (можно дробное)</label>
                 <input
