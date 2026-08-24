@@ -34,7 +34,10 @@ export interface MeasurementOpening {
 
   opening_type: OpeningType
   opening_type_display: string
+  // Историческое поле (ширина добора в мм) — только для чтения старых замеров
   addon_width: number | null
+  // Добор, количество (можно дробное)
+  addon_qty: string | number | null
 
   face_trim_qty: string | number | null
   face_trim_comment: string
@@ -66,6 +69,10 @@ export interface Measurement {
   done_at: string | null
   is_processed: boolean
   processed_at: string | null
+  // Повторный замер: сколько раз менеджер возвращал замер СМ на доработку
+  repeat_count: number
+  repeat_requested_at: string | null
+  repeat_reason: string
   created_at: string
   updated_at: string
 
@@ -111,6 +118,7 @@ export interface MeasurementListItem {
   done_at: string | null
   is_processed: boolean
   processed_at: string | null
+  repeat_count: number
   service_manager: number | null
   service_manager_name: string | null
   order_status: OrderStatus

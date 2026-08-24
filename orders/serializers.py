@@ -512,7 +512,7 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'recommended_door_width_parts', 'recommended_door_is_manual',
             'recommended_opening_height', 'recommended_opening_width',
             'opening_type', 'opening_type_display',
-            'addon_width',
+            'addon_width', 'addon_qty',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
             'extra_hardware', 'threshold', 'notes',
@@ -544,7 +544,7 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
             'recommended_door_height', 'recommended_door_width',
             'recommended_door_width_parts',
             'recommended_opening_height', 'recommended_opening_width',
-            'opening_type', 'addon_width',
+            'opening_type', 'addon_width', 'addon_qty',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
             'extra_hardware', 'threshold', 'notes',
@@ -584,6 +584,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'measurement_date', 'signature_photo', 'signature_photo_url',
             'client_access_token', 'short_code', 'is_draft', 'draft_saved_at',
             'is_done', 'done_at', 'is_processed', 'processed_at',
+            'repeat_count', 'repeat_requested_at', 'repeat_reason',
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
@@ -595,6 +596,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
             'is_draft', 'draft_saved_at',
             'is_processed', 'processed_at', 'client_access_token', 'short_code',
+            'repeat_count', 'repeat_requested_at', 'repeat_reason',
             'service_manager',
         ]
         extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}
@@ -662,6 +664,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
             'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer_display',
             'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'repeat_count',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',
         ]
@@ -703,6 +706,7 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
     is_processed = serializers.SerializerMethodField()
     done_at = serializers.SerializerMethodField()
     processed_at = serializers.SerializerMethodField()
+    repeat_count = serializers.SerializerMethodField()
     service_manager = serializers.SerializerMethodField()
     service_manager_name = serializers.SerializerMethodField()
 
@@ -713,6 +717,7 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
             'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer_display',
             'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'repeat_count',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',
         ]
@@ -740,6 +745,9 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
 
     def get_processed_at(self, obj):
         return None
+
+    def get_repeat_count(self, obj):
+        return 0
 
     def get_service_manager(self, obj):
         return None

@@ -1295,6 +1295,74 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         order.save()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
+    # ---- Повторный замер (менеджер возвращает выполненный замер СМ) ----
+    @action(detail=True, methods=['post'], url_path='request_repeat')
+    def request_repeat(self, request, pk=None):
+        """
+        POST /measurements/{id}/request_repeat/
+        Body: {reason?: str}
+        Менеджер отправляет заказ на повторный замер: тот же замер снова становится
+        невыполненным и без даты, заказ возвращается в статус «Заявка на замер»,
+        и замер снова появляется у СМ в папке «Назначить замер». СМ корректирует
+        существующие проёмы и снова нажимает «Замер выполнен» — после этого
+        менеджеру опять приходит задание обработать замер.
+        """
+        if request.user.role not in ('manager', 'admin', 'leader'):
+            return Response(
+                {'detail': 'Назначить повторный замер может только менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        m = self.get_object()
+        if not m.is_done:
+            return Response(
+                {'detail': 'Замер ещё не выполнен — повторный замер назначать не из чего.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reason = (request.data.get('reason') or '').strip()[:500]
+        m.is_done = False
+        m.done_at = None
+        m.is_processed = False
+        m.processed_at = None
+        m.is_draft = False
+        # Дату сбрасываем: замер нужно заново запланировать (папка «Назначить замер»)
+        m.measurement_date = None
+        m.repeat_count = (m.repeat_count or 0) + 1
+        m.repeat_requested_at = timezone.now()
+        m.repeat_reason = reason
+        m.save(update_fields=[
+            'is_done', 'done_at', 'is_processed', 'processed_at', 'is_draft',
+            'measurement_date', 'repeat_count', 'repeat_requested_at', 'repeat_reason',
+            'updated_at',
+        ])
+
+        order = m.request.order
+        description = f'Назначен повторный замер №{m.repeat_count}'
+        if reason:
+            description = f'{description}. Причина: {reason}'
+        order.change_status(
+            OrderStatus.MEASUREMENT_REQUESTED, actor=request.user, description=description,
+        )
+        order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED)
+
+        # Push сервис-менеджеру этого замера — он уже считал замер закрытым
+        if m.service_manager_id and m.service_manager_id != request.user.pk:
+            try:
+                from users.push_utils import send_push_notification
+                send_push_notification(
+                    user=m.service_manager,
+                    title=f'Повторный замер по заказу #{order.id}',
+                    body=reason or 'Менеджер назначил повторный замер',
+                    url=f'/measurements/{m.id}',
+                    data={'measurementId': m.id, 'orderId': order.id},
+                )
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).error(
+                    'Ошибка push о повторном замере #%s: %s', m.id, exc,
+                )
+
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
     # ---- PDF-бланк замера (Фаза 4) ----
     @action(detail=True, methods=['get'], url_path='download_blank_pdf')
     def download_blank_pdf(self, request, pk=None):

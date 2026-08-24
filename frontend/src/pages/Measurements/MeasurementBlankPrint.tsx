@@ -174,7 +174,7 @@ const MeasurementBlankPrint = () => {
               <th>Рек. проём<br />В×Ш</th>
               <th>Доработать<br />размеры проёмов</th>
               <th>Открывание</th>
-              <th>Добор</th>
+              <th>Добор,<br />кол-во</th>
               <th>Наличник<br />лицев.</th>
               <th>Наличник<br />обор.</th>
               <th>Доп. фурнитура</th>
@@ -204,7 +204,7 @@ const MeasurementBlankPrint = () => {
                       : '—'}
                   </td>
                   <td>{dash(op.opening_type_display)}</td>
-                  <td>{dash(op.addon_width)}</td>
+                  <td>{op.addon_qty != null && op.addon_qty !== '' ? op.addon_qty : (op.addon_width != null ? `${op.addon_width} мм` : '—')}</td>
                   <td className="left">{dash(op.face_trim_qty)}{op.face_trim_comment ? ` (${op.face_trim_comment})` : ''}</td>
                   <td className="left">{dash(op.back_trim_qty)}{op.back_trim_comment ? ` (${op.back_trim_comment})` : ''}</td>
                   <td className="left">{dash(op.extra_hardware)}</td>

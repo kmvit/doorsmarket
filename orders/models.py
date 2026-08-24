@@ -533,6 +533,15 @@ class Measurement(models.Model):
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата обработки')
+    # Повторный замер: менеджер возвращает выполненный замер СМ на доработку.
+    # Замер тот же (СМ корректирует существующие проёмы), счётчик — сколько раз возвращали.
+    repeat_count = models.PositiveSmallIntegerField(default=0, verbose_name='Повторных замеров')
+    repeat_requested_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Повторный замер назначен',
+    )
+    repeat_reason = models.CharField(
+        max_length=500, blank=True, verbose_name='Причина повторного замера',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -615,7 +624,14 @@ class MeasurementOpening(models.Model):
         blank=True,
         verbose_name='Открывание',
     )
-    addon_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Ширина добора, мм')
+    # Историческое поле: раньше по добору записывали ширину в мм. Оставлено для
+    # уже выполненных замеров (показывается в бланке с пометкой «мм»), новые
+    # замеры заполняют addon_qty.
+    addon_width = models.PositiveIntegerField(null=True, blank=True, verbose_name='Ширина добора, мм (устар.)')
+    addon_qty = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Добор, количество',
+    )
 
     # Наличники — поддерживаем дробные значения (по Excel «число, в т.ч. дробное»)
     face_trim_qty = models.DecimalField(

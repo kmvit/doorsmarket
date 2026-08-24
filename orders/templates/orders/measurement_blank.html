@@ -86,7 +86,7 @@
         <th>Рек. проём<br>В×Ш</th>
         <th>Доработать<br>размеры проёмов</th>
         <th>Открывание</th>
-        <th>Добор</th>
+        <th>Добор,<br>кол-во</th>
         <th>Наличник<br>лицев.</th>
         <th>Наличник<br>обор.</th>
         <th>Доп.<br>фурнитура</th>
@@ -105,7 +105,7 @@
         <td>{{ op.recommended_opening_height|default:"—" }}×{{ op.recommended_opening_width|default:"—" }}</td>
         <td>{% if op.needs_rework %}<span class="warn">доработать проём до рекомендуемого размера</span>{% else %}—{% endif %}</td>
         <td>{{ op.get_opening_type_display|default:"—" }}</td>
-        <td>{{ op.addon_width|default:"—" }}</td>
+        <td>{% if op.addon_qty %}{{ op.addon_qty|floatformat:"-2" }}{% elif op.addon_width %}{{ op.addon_width }} мм{% else %}—{% endif %}</td>
         <td class="left">{{ op.face_trim_qty|floatformat:"-2"|default:"—" }}{% if op.face_trim_comment %} ({{ op.face_trim_comment }}){% endif %}</td>
         <td class="left">{{ op.back_trim_qty|floatformat:"-2"|default:"—" }}{% if op.back_trim_comment %} ({{ op.back_trim_comment }}){% endif %}</td>
         <td class="left">{{ op.extra_hardware|default:"—" }}</td>

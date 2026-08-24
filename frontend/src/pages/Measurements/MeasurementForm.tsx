@@ -120,7 +120,7 @@ const MeasurementForm = () => {
         actual_width: op.actual_width,
         actual_depth: op.actual_depth,
         opening_type: op.opening_type,
-        addon_width: op.addon_width,
+        addon_qty: op.addon_qty,
         face_trim_qty: op.face_trim_qty,
         face_trim_comment: op.face_trim_comment,
         back_trim_qty: op.back_trim_qty,
@@ -211,7 +211,7 @@ const MeasurementForm = () => {
             }
           : {}),
         opening_type: op.opening_type,
-        addon_width: op.addon_width,
+        addon_qty: op.addon_qty,
         face_trim_qty: op.face_trim_qty,
         face_trim_comment: op.face_trim_comment,
         back_trim_qty: op.back_trim_qty,
@@ -571,6 +571,15 @@ const MeasurementForm = () => {
 
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{actionError}</div>
+      )}
+      {/* Менеджер вернул замер на повторный выезд — СМ должен видеть это и причину */}
+      {m.repeat_count > 0 && !m.is_done && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl mb-4">
+          <span className="font-semibold">↻ Повторный замер №{m.repeat_count}.</span>{' '}
+          {m.repeat_reason
+            ? `Причина: ${m.repeat_reason}`
+            : 'Менеджер вернул замер — проверьте и скорректируйте данные, затем снова нажмите «Замер выполнен».'}
+        </div>
       )}
       {draftNotice && (
         <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4 flex items-center justify-between gap-3">
@@ -1050,15 +1059,21 @@ const MeasurementForm = () => {
                 )}
               </div>
               <div>
-                <label className={labelCls}>Ширина добора, мм</label>
+                <label className={labelCls}>Добор, количество (можно дробное)</label>
                 <input
-                  type="number"
-                  value={op.addon_width ?? ''}
-                  onChange={(e) => updateOpeningLocal(op.id, 'addon_width', e.target.value ? Number(e.target.value) : null)}
+                  type="text"
+                  inputMode="decimal"
+                  value={op.addon_qty ?? ''}
+                  onChange={(e) => updateOpeningLocal(op.id, 'addon_qty', normalizeDecimal(e.target.value))}
                   onBlur={() => saveOpening(op)}
                   disabled={!canEditOpenings}
                   className={fieldCls}
+                  placeholder="например, 1.5"
                 />
+                {/* Старые замеры хранят ширину добора в мм — показываем, чтобы не потерять данные */}
+                {op.addon_width != null && (
+                  <p className="text-xs text-gray-500 mt-1">Ранее указана ширина добора: {op.addon_width} мм</p>
+                )}
               </div>
             </div>
 

@@ -30,6 +30,7 @@ const OrderDetail = () => {
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [recPdfGenerating, setRecPdfGenerating] = useState(false)
+  const [requestingRepeat, setRequestingRepeat] = useState(false)
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
@@ -112,6 +113,25 @@ const OrderDetail = () => {
       nextActionRef.current?.promptNextAction()
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Не удалось отметить как обработанный')
+    }
+  }
+
+  // Повторный замер: замер возвращается СМ (снова «Заявка на замер», без даты),
+  // СМ корректирует существующие проёмы и снова закрывает замер
+  const handleRequestRepeat = async () => {
+    if (!measurement || requestingRepeat) return
+    if (!window.confirm(
+      'Назначить повторный замер? Замер снова станет невыполненным и попадёт сервис-менеджеру в «Назначить замер».',
+    )) return
+    const reason = window.prompt('Причина повторного замера (необязательно):', '') ?? ''
+    setRequestingRepeat(true)
+    try {
+      await measurementsAPI.requestRepeat(measurement.id, reason.trim())
+      await reloadOrder()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Не удалось назначить повторный замер')
+    } finally {
+      setRequestingRepeat(false)
     }
   }
 
@@ -652,6 +672,16 @@ const OrderDetail = () => {
                   ✓ Замер обработан
                 </button>
               )}
+              {measurement && measurement.is_done && canEdit && (
+                <button
+                  onClick={handleRequestRepeat}
+                  disabled={requestingRepeat}
+                  className="px-3 py-1.5 text-sm font-medium text-amber-800 bg-amber-100 border border-amber-300 hover:bg-amber-200 rounded-lg disabled:opacity-60"
+                  title="Вернуть замер сервис-менеджеру на повторный выезд"
+                >
+                  {requestingRepeat ? 'Назначаем…' : '↻ Повторный замер'}
+                </button>
+              )}
               {measurement && measurement.is_done && (
                 <>
                   <button
@@ -709,6 +739,15 @@ const OrderDetail = () => {
                 <dt className="text-gray-500">Проёмы</dt>
                 <dd className="text-gray-900">{measurement.openings.length} шт</dd>
               </div>
+              {measurement.repeat_count > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Повторный замер</dt>
+                  <dd className="text-amber-700 font-medium">
+                    №{measurement.repeat_count}
+                    {measurement.repeat_reason ? ` — ${measurement.repeat_reason}` : ''}
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-gray-500">Статус</dt>
                 <dd>

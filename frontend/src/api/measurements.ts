@@ -43,6 +43,7 @@ const emptyOpening = (measurementId: number, data: Partial<MeasurementOpening>):
   opening_type: '' as MeasurementOpening['opening_type'],
   opening_type_display: '',
   addon_width: null,
+  addon_qty: null,
   face_trim_qty: null,
   face_trim_comment: '',
   back_trim_qty: null,
@@ -322,6 +323,12 @@ export const measurementsAPI = {
 
   markProcessed: async (id: number): Promise<Measurement> => {
     return requestWithQueue('POST', `/measurements/${id}/mark_processed/`)
+  },
+
+  // Повторный замер: менеджер возвращает выполненный замер СМ на доработку —
+  // замер снова становится невыполненным и попадает в «Назначить замер»
+  requestRepeat: async (id: number, reason?: string): Promise<Measurement> => {
+    return requestWithQueue('POST', `/measurements/${id}/request_repeat/`, { reason: reason || '' })
   },
 
   // Phase 5: SMS клиенту о недозвоне («Отправить» / «Повторно отправить»)
