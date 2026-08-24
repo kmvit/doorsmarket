@@ -3,6 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import SearchFilter, OrderingFilter
+
+from marketingdoors.search import NumberAwareSearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
 from django.utils import timezone
@@ -83,8 +85,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     partial_update: Частичное обновление рекламации
     """
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
+    filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
+    # id — номер рекламации, как он показан в списке («#189»); решётку срезает фильтр
+    search_fields = ['id', 'order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
     ordering_fields = ['created_at', 'updated_at', 'status', 'order_number']
     ordering = ['-created_at']
     filterset_fields = ['status', 'complaint_type', 'production_site', 'reason']

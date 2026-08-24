@@ -348,7 +348,7 @@ const ComplaintList = () => {
                   type="text"
                   value={localFilters.search || ''}
                   onChange={(e) => handleFilterChange('search', e.target.value)}
-                  placeholder="Номер заказа, клиент, адрес..."
+                  placeholder="№ рекламации, номер заказа, клиент, адрес..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>

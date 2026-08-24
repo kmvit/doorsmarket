@@ -4,6 +4,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import SearchFilter, OrderingFilter
+
+from marketingdoors.search import NumberAwareSearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import timedelta
 from django.db.models import Q, Prefetch
@@ -186,8 +188,9 @@ def apply_order_folder(qs, folder):
 
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['kp_number', 'client_name', 'address', 'contact_phone']
+    filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
+    # id — номер заказа, как он показан в списке («#183»); решётку срезает фильтр
+    search_fields = ['id', 'kp_number', 'client_name', 'address', 'contact_phone']
     ordering_fields = ['created_at', 'updated_at', 'status', 'kp_date', 'client_name']
     ordering = ['-created_at']
     filterset_fields = ['status', 'salon']
@@ -893,7 +896,7 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
     """Список Наработок — заказы менеджера со связкой ближайшее напоминание + статус + телефон."""
     permission_classes = [IsAuthenticated]
     serializer_class = WorkshopOrderSerializer
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
     filterset_fields = ['status', 'salon', 'manager']
     # Поиск по любому из полей таблицы (как в рекламациях)
     search_fields = [
@@ -997,7 +1000,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     CRUD замеров. Доступен СМ (свой город), менеджеру (свой салон), admin/leader.
     """
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
     filterset_fields = ['is_done', 'is_processed', 'is_draft', 'service_manager']
     search_fields = [
         'id', 'request__order__id', 'request__order__client_name',

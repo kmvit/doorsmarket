@@ -117,7 +117,7 @@ const OrderList = () => {
           <label className="block text-xs font-medium text-gray-600 mb-1">Поиск</label>
           <input
             type="text"
-            placeholder="Клиент, адрес, номер КП..."
+            placeholder="№ заказа, клиент, адрес, номер КП..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
