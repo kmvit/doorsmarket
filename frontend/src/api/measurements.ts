@@ -656,8 +656,9 @@ export const buildRecommendationText = (
   }
   if (openingW != null && doorW != null) {
     const d = openingW - doorW
+    // Допуск ±10 мм от рекомендуемого проёма (как по высоте)
     if (d < 90) parts.push(`увеличить проём по ширине до ${doorW + 100}`)
-    else if (d > 105) parts.push(`уменьшить проём по ширине до ${doorW + 100}`)
+    else if (d > 110) parts.push(`уменьшить проём по ширине до ${doorW + 100}`)
   }
   if (parts.length === 0) return ''
   const text = parts.join(', ')

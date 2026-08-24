@@ -10,7 +10,10 @@ import os
 from django.conf import settings
 from django.template.loader import render_to_string
 
-IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif')
+IMAGE_EXTS = (
+    '.jpg', '.jpeg', '.jfif', '.jpe', '.png', '.gif', '.webp', '.bmp',
+    '.heic', '.heif', '.avif',
+)
 
 
 def _is_image(name: str) -> bool:
@@ -35,13 +38,14 @@ def render_measurement_blank(measurement) -> bytes:
     openings = list(measurement.openings.all().order_by('opening_number'))
 
     # Пометка «доработать проём»: рек. размеры проёма не совпадают с фактическими.
-    # По высоте допускается отклонение до 10 мм включительно — доработка не требуется.
+    # Допускается отклонение до 10 мм включительно (и по высоте, и по ширине) —
+    # доработка не требуется.
     for op in openings:
         op.needs_rework = bool(
             (op.recommended_opening_height and op.actual_height
              and abs(op.recommended_opening_height - op.actual_height) > 10)
             or (op.recommended_opening_width and op.actual_width
-                and op.recommended_opening_width != op.actual_width)
+                and abs(op.recommended_opening_width - op.actual_width) > 10)
         )
 
     # Фото-схемы по проёмам — только реально существующие изображения.

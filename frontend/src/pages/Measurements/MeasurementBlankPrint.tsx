@@ -24,7 +24,7 @@ const needsRework = (op: MeasurementOpening): boolean =>
     (op.recommended_opening_height && op.actual_height
       && Math.abs(op.recommended_opening_height - op.actual_height) > 10)
     || (op.recommended_opening_width && op.actual_width
-      && op.recommended_opening_width !== op.actual_width),
+      && Math.abs(op.recommended_opening_width - op.actual_width) > 10),
   )
 
 const HideOnError = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
