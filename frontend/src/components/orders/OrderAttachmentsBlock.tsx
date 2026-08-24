@@ -118,7 +118,7 @@ const OrderAttachmentsBlock = ({
           <input
             type="file"
             multiple
-            accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+            accept="image/*,.jfif,video/*,.pdf,.doc,.docx,.xls,.xlsx"
             onChange={handleUpload}
             disabled={uploading}
             className="hidden"

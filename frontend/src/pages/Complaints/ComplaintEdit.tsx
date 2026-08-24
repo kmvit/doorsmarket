@@ -838,7 +838,7 @@ const ComplaintEdit = () => {
                 <input
                   type="file"
                   multiple
-                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  accept="image/*,.jfif,video/*,.pdf,.doc,.docx,.xls,.xlsx"
                   onChange={handleFileChange}
                   className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
                 />

@@ -41,7 +41,7 @@ registerRoute(navigationRoute)
 // Оффлайн-чтение API обслуживает слой IndexedDB (services/offline.ts).
 
 registerRoute(
-  /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+  /\.(?:png|jpg|jpeg|jfif|jpe|svg|gif|webp|bmp|heic|heif|avif)$/i,
   new CacheFirst({
     cacheName: 'images-cache',
     plugins: [

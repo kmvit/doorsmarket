@@ -563,7 +563,7 @@ const MeasurementForm = () => {
           {(user?.role === 'service_manager' || user?.role === 'admin') && (
             <label className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer">
               {m.signature_photo_url ? '↻ Заменить фото подписи' : '✍ Загрузить фото подписи'}
-              <input type="file" accept="image/*" onChange={handleUploadSignature} className="hidden" />
+              <input type="file" accept="image/*,.jfif" onChange={handleUploadSignature} className="hidden" />
             </label>
           )}
         </div>

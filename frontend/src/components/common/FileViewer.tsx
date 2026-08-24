@@ -42,7 +42,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
   // отрезаем query/hash и проверяем сначала имя, затем сам URL.
   const detectType = (s: string): 'image' | 'video' | 'pdf' | 'other' | null => {
     const v = s.toLowerCase().split('?')[0].split('#')[0]
-    if (v.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif|avif)$/)) return 'image'
+    if (v.match(/\.(jpg|jpeg|jfif|jpe|png|gif|webp|bmp|svg|heic|heif|avif)$/)) return 'image'
     if (v.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/)) return 'video'
     if (v.match(/\.(pdf)$/)) return 'pdf'
     return null

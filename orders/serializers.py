@@ -14,7 +14,7 @@ User = get_user_model()
 
 def infer_attachment_type(filename: str) -> str:
     ext = (filename or '').lower().rsplit('.', 1)[-1]
-    if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'):
+    if ext in ('jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif'):
         return 'photo'
     if ext in ('mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'):
         return 'video'

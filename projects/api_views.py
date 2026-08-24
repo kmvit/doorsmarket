@@ -348,7 +348,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         for file in files:
             # Определяем тип файла по расширению
             file_ext = file.name.lower().split('.')[-1]
-            if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            if file_ext in ['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif']:
                 attachment_type = 'photo'
             elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
                 attachment_type = 'video'
@@ -441,7 +441,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         files = request.FILES.getlist('attachments')
         for file in files:
             file_ext = file.name.lower().split('.')[-1]
-            if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            if file_ext in ['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif']:
                 attachment_type = 'photo'
             elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
                 attachment_type = 'video'

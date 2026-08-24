@@ -444,7 +444,7 @@ def complaint_edit(request, pk):
             for file in files:
                 # Определяем тип файла по расширению
                 file_ext = file.name.lower().split('.')[-1]
-                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                if file_ext in ['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif']:
                     attachment_type = 'photo'
                 elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
                     attachment_type = 'video'
@@ -599,7 +599,7 @@ def complaint_create(request):
                 for file in files:
                     # Определяем тип файла по расширению
                     file_ext = file.name.lower().split('.')[-1]
-                    if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                    if file_ext in ['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif']:
                         attachment_type = 'photo'
                     elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
                         attachment_type = 'video'
@@ -1571,7 +1571,7 @@ def sm_dispute_decision(request, pk):
             for file in files:
                 # Определяем тип файла
                 file_ext = file.name.lower().split('.')[-1]
-                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                if file_ext in ['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif']:
                     attachment_type = 'photo'
                 elif file_ext in ['mp4', 'avi', 'mov', 'wmv', 'flv']:
                     attachment_type = 'video'

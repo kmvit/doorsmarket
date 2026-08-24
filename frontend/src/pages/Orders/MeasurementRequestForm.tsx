@@ -112,7 +112,7 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
                 Текущий файл
               </button>
             )}
-            <input type="file" accept="application/pdf,image/*" onChange={(e) => setOpeningPlan(e.target.files?.[0] || null)} className="block w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700" />
+            <input type="file" accept="application/pdf,image/*,.jfif" onChange={(e) => setOpeningPlan(e.target.files?.[0] || null)} className="block w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>

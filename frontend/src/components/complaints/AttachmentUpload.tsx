@@ -33,7 +33,7 @@ const AttachmentUpload = ({ complaintId, onUploaded }: AttachmentUploadProps) =>
         // Определяем тип вложения по расширению
         let attachmentType = 'document'
         const extension = file.name.split('.').pop()?.toLowerCase()
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')) {
+        if (['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif'].includes(extension || '')) {
           attachmentType = 'photo'
         } else if (['mp4', 'avi', 'mov', 'wmv'].includes(extension || '')) {
           attachmentType = 'video'
@@ -66,7 +66,7 @@ const AttachmentUpload = ({ complaintId, onUploaded }: AttachmentUploadProps) =>
         <input
           type="file"
           multiple
-          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+          accept="image/*,.jfif,video/*,.pdf,.doc,.docx,.xls,.xlsx"
           onChange={handleFileChange}
           className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
         />

@@ -25,7 +25,7 @@ const FileUploadList = ({ files, onRemove, onPreview, type = 'attachments' }: Fi
 
   const getFileType = (filename: string): string => {
     const ext = filename.toLowerCase().split('.').pop()
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'Фото'
+    if (['jpg', 'jpeg', 'jfif', 'jpe', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif'].includes(ext || '')) return 'Фото'
     if (['mp4', 'avi', 'mov', 'wmv', 'flv'].includes(ext || '')) return 'Видео'
     if (['pdf'].includes(ext || '')) return 'PDF'
     if (['doc', 'docx'].includes(ext || '')) return 'Word'
