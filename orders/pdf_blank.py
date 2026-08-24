@@ -37,15 +37,14 @@ def render_measurement_blank(measurement) -> bytes:
     order = getattr(req, 'order', None) if req else None
     openings = list(measurement.openings.all().order_by('opening_number'))
 
-    # Пометка «доработать проём»: рек. размеры проёма не совпадают с фактическими.
-    # Допускается отклонение до 10 мм включительно (и по высоте, и по ширине) —
-    # доработка не требуется.
+    # Столбец «Доработать размеры проёмов»: допускается отклонение факта от
+    # рекомендуемого до 10 мм включительно; если фактические размеры не сняты,
+    # но рекомендуемый проём задан — «Привести размеры проёма к рекомендованным».
+    from .recommendations import opening_rework_text
     for op in openings:
-        op.needs_rework = bool(
-            (op.recommended_opening_height and op.actual_height
-             and abs(op.recommended_opening_height - op.actual_height) > 10)
-            or (op.recommended_opening_width and op.actual_width
-                and abs(op.recommended_opening_width - op.actual_width) > 10)
+        op.rework_text = opening_rework_text(
+            op.actual_height, op.actual_width,
+            op.recommended_opening_height, op.recommended_opening_width,
         )
 
     # Фото-схемы по проёмам — только реально существующие изображения.
@@ -136,6 +135,7 @@ def render_recommendations_blank(measurement) -> bytes:
             'opening_w': opening_w,
             'rec_text': build_recommendation_text(
                 op.actual_height, op.actual_width, door_h, door_w, op.door_type,
+                opening_h, opening_w,
             ),
         })
 

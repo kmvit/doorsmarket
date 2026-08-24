@@ -1023,7 +1023,7 @@ const MeasurementForm = () => {
 
             {/* Текст рекомендации — от рекомендуемой двери */}
             {(() => {
-              const text = buildRecommendationText(op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width, op.door_type)
+              const text = buildRecommendationText(op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width, op.door_type, op.recommended_opening_height, op.recommended_opening_width)
               if (!text) return null
               return (
                 <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">

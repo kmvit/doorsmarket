@@ -103,12 +103,49 @@ def calculate_opening_recommendation(
 
 # --- Текстовые рекомендации (Лист 7 ТЗ) ---
 
+# Допуск фактического проёма от рекомендуемого, мм (и по высоте, и по ширине)
+OPENING_TOLERANCE_MM = 10
+# Текст, когда СМ не снял фактические размеры, но указал рекомендуемый проём
+BRING_TO_RECOMMENDED_TEXT = 'Привести размеры проёма к рекомендованным'
+REWORK_TEXT = 'Доработать проём до рекомендуемого размера'
+
+
+def opening_rework_text(
+    actual_h: Optional[int],
+    actual_w: Optional[int],
+    rec_opening_h: Optional[int],
+    rec_opening_w: Optional[int],
+) -> str:
+    """
+    Текст для столбца «Доработать размеры проёмов» в бланке замера.
+      - фактических размеров нет, но рекомендуемый проём задан →
+        «Привести размеры проёма к рекомендованным» (СМ снял только рекомендации);
+      - факт отличается от рекомендуемого больше чем на 10 мм → «Доработать проём…»;
+      - иначе пусто.
+    """
+    has_actual = bool(actual_h or actual_w)
+    has_rec = bool(rec_opening_h or rec_opening_w)
+    if not has_rec:
+        return ''
+    if not has_actual:
+        return BRING_TO_RECOMMENDED_TEXT
+    off_by_height = bool(
+        rec_opening_h and actual_h and abs(rec_opening_h - actual_h) > OPENING_TOLERANCE_MM
+    )
+    off_by_width = bool(
+        rec_opening_w and actual_w and abs(rec_opening_w - actual_w) > OPENING_TOLERANCE_MM
+    )
+    return REWORK_TEXT if (off_by_height or off_by_width) else ''
+
+
 def build_recommendation_text(
     opening_h: Optional[int],
     opening_w: Optional[int],
     door_h: Optional[int],
     door_w: Optional[int],
     door_type: str = '',
+    rec_opening_h: Optional[int] = None,
+    rec_opening_w: Optional[int] = None,
 ) -> str:
     """
     Строит рекомендации для проёма в кратком виде:
@@ -120,6 +157,12 @@ def build_recommendation_text(
         - ширина: проём превышает дверь на 110 мм → уменьшить
     """
     parts: List[str] = []
+
+    # СМ не снял фактические размеры проёма, но указал рекомендуемый — тогда
+    # вместо расчётных рекомендаций выводим общее указание. Проверяем ДО отсечки
+    # по типу двери: у сдвижной и «другое» это основной сценарий.
+    if opening_h is None and opening_w is None:
+        return BRING_TO_RECOMMENDED_TEXT if (rec_opening_h or rec_opening_w) else ''
 
     # Сдвижная / «другое»: рекомендации задаёт СМ вручную, авто-текст не строим
     if (door_type or '') in NO_AUTO_RECOMMENDATION_TYPES:

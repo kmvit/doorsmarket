@@ -637,12 +637,24 @@ const OrderDetail = () => {
             <h2 className="text-sm font-semibold text-cyan-700 uppercase tracking-wider">Замер</h2>
             <div className="flex items-center gap-2">
               {measurement ? (
-                <Link
-                  to={`/measurements/${measurement.id}`}
-                  className="px-3 py-1.5 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg"
-                >
-                  Открыть замер →
-                </Link>
+                <>
+                  <Link
+                    to={`/measurements/${measurement.id}`}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg"
+                  >
+                    Открыть замер →
+                  </Link>
+                  {/* Перенос даты уже назначенного, но ещё не выполненного замера */}
+                  {!measurement.is_done && (canManage || user?.role === 'service_manager') && (
+                    <button
+                      onClick={() => setShowScheduleModal(true)}
+                      className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg"
+                      title="Изменить дату и время замера (клиенту уйдёт SMS)"
+                    >
+                      {measurement.measurement_date ? '📅 Перенести замер' : '📅 Назначить дату замера'}
+                    </button>
+                  )}
+                </>
               ) : (
                 ['service_manager', 'admin', 'leader'].includes(user?.role || '') && (
                   <button
@@ -865,6 +877,10 @@ const OrderDetail = () => {
                         // сразу обновляется — его размер приоритетнее КП/замера.
                         const text = buildRecommendationText(
                           md.actual_height, md.actual_width, item.door_height, item.door_width, item.door_type,
+                          // Если СМ не снял факт. размеры, но задал рек. проём —
+                          // выводится «Привести размеры проёма к рекомендованным»
+                          item.recommended_opening_height ?? md.recommended_opening_height,
+                          item.recommended_opening_width ?? md.recommended_opening_width,
                         )
                         const canAdjust = canEdit && md.recommended_door_height && md.recommended_door_width
                           && (md.recommended_door_height !== item.door_height || md.recommended_door_width !== item.door_width)
@@ -989,13 +1005,16 @@ const OrderDetail = () => {
 
       {showScheduleModal && measurementRequest && (
         <ScheduleMeasurementModal
+          measurementId={measurement?.id}
           requestId={measurementRequest.id}
+          initialDate={measurement?.measurement_date}
           contactName={measurementRequest.contact_name}
           onClose={() => setShowScheduleModal(false)}
           onScheduled={(mid) => {
             setShowScheduleModal(false)
             reloadOrder()
-            navigate(`/measurements/${mid}`)
+            // При переносе остаёмся в заказе, при создании замера — открываем его
+            if (!measurement) navigate(`/measurements/${mid}`)
           }}
         />
       )}

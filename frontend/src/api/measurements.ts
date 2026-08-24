@@ -173,7 +173,7 @@ const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial
   }
   op.recommendation_text = buildRecommendationText(
     op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width,
-    op.door_type,
+    op.door_type, op.recommended_opening_height, op.recommended_opening_width,
   )
   return op
 }
@@ -645,13 +645,40 @@ export const calculateOpeningRecommendation = (
   }
 }
 
+// Допуск фактического проёма от рекомендуемого, мм
+export const OPENING_TOLERANCE_MM = 10
+export const BRING_TO_RECOMMENDED_TEXT = 'Привести размеры проёма к рекомендованным'
+export const REWORK_TEXT = 'Доработать проём до рекомендуемого размера'
+
+// Текст столбца «Доработать размеры проёмов» в бланке замера.
+// Нет фактических размеров, но задан рекомендуемый проём → «Привести к рекомендованным».
+export const openingReworkText = (
+  actualH: number | null,
+  actualW: number | null,
+  recOpeningH: number | null,
+  recOpeningW: number | null,
+): string => {
+  if (!recOpeningH && !recOpeningW) return ''
+  if (!actualH && !actualW) return BRING_TO_RECOMMENDED_TEXT
+  const offH = Boolean(recOpeningH && actualH && Math.abs(recOpeningH - actualH) > OPENING_TOLERANCE_MM)
+  const offW = Boolean(recOpeningW && actualW && Math.abs(recOpeningW - actualW) > OPENING_TOLERANCE_MM)
+  return offH || offW ? REWORK_TEXT : ''
+}
+
 export const buildRecommendationText = (
   openingH: number | null,
   openingW: number | null,
   doorH: number | null,
   doorW: number | null,
   doorType: string = '',
+  recOpeningH: number | null = null,
+  recOpeningW: number | null = null,
 ): string => {
+  // СМ не снял фактические размеры, но указал рекомендуемый проём — общее указание.
+  // Проверяем ДО отсечки по типу двери: у сдвижной и «другое» это основной сценарий.
+  if (openingH == null && openingW == null) {
+    return recOpeningH || recOpeningW ? BRING_TO_RECOMMENDED_TEXT : ''
+  }
   // Сдвижная / «другое»: рекомендации задаёт СМ вручную, авто-текст не строим
   if (NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(doorType as DoorType)) return ''
   // Краткий формат: «Увеличить проём по высоте до 2570, уменьшить проём по ширине до 900»

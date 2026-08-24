@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { measurementsAPI } from '../../api/measurements'
+import { measurementsAPI, openingReworkText } from '../../api/measurements'
 import { Measurement, MeasurementOpening } from '../../types/measurements'
 
 /**
@@ -19,12 +19,10 @@ const fmtSize = (h: number | null, w: number | null, d?: number | null) => {
 }
 
 // Пометка «доработать проём»: по высоте допускается отклонение до 10 мм включительно
-const needsRework = (op: MeasurementOpening): boolean =>
-  Boolean(
-    (op.recommended_opening_height && op.actual_height
-      && Math.abs(op.recommended_opening_height - op.actual_height) > 10)
-    || (op.recommended_opening_width && op.actual_width
-      && Math.abs(op.recommended_opening_width - op.actual_width) > 10),
+const reworkText = (op: MeasurementOpening): string =>
+  openingReworkText(
+    op.actual_height, op.actual_width,
+    op.recommended_opening_height, op.recommended_opening_width,
   )
 
 const HideOnError = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
@@ -199,8 +197,8 @@ const MeasurementBlankPrint = () => {
                   </td>
                   <td>{fmtSize(op.recommended_opening_height, op.recommended_opening_width)}</td>
                   <td>
-                    {needsRework(op)
-                      ? <span className="text-red-700 font-semibold">доработать проём до рекомендуемого размера</span>
+                    {reworkText(op)
+                      ? <span className="text-red-700 font-semibold">{reworkText(op)}</span>
                       : '—'}
                   </td>
                   <td>{dash(op.opening_type_display)}</td>

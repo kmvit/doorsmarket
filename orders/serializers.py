@@ -149,6 +149,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
                 op.actual_height, op.actual_width,
                 op.recommended_door_height, op.recommended_door_width,
                 op.door_type,
+                op.recommended_opening_height, op.recommended_opening_width,
             ),
         }
 
@@ -530,6 +531,7 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             obj.actual_height, obj.actual_width,
             obj.recommended_door_height, obj.recommended_door_width,
             obj.door_type,
+            obj.recommended_opening_height, obj.recommended_opening_width,
         )
 
 
