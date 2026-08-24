@@ -684,7 +684,7 @@ const OrderDetail = () => {
                   ✓ Замер обработан
                 </button>
               )}
-              {measurement && measurement.is_done && canEdit && (
+              {measurement && measurement.is_done && canManage && (
                 <button
                   onClick={handleRequestRepeat}
                   disabled={requestingRepeat}

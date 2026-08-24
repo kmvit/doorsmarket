@@ -126,6 +126,26 @@ const ComplaintList = () => {
   const stripFolderScope = (f: ComplaintFilters): ComplaintFilters =>
     ({ ...f, my_tasks: undefined, my_orders: undefined, needs_planning: undefined } as any)
 
+  // Поиск применяется сразу при наборе (как в заказах) — с задержкой 300 мс,
+  // чтобы не дёргать сервер на каждую букву. Остальные фильтры — по кнопке
+  // «Применить фильтры»: их меняют реже и обычно несколько сразу.
+  const searchDebutRef = useRef(true)
+  useEffect(() => {
+    if (searchDebutRef.current) {
+      searchDebutRef.current = false
+      return
+    }
+    const timer = setTimeout(() => {
+      // Берём применённые фильтры из стора: живой поиск только сужает текущую
+      // выборку и не должен сбрасывать выбранные в панели значения
+      const current = useComplaintsStore.getState().filters
+      const applied = { ...current, search: localFilters.search || undefined }
+      setFilters(applied)
+      fetchComplaints(applied)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [localFilters.search])
+
   const handleApplyFilters = () => {
     const applied = stripFolderScope(localFilters)
     setLocalFilters(applied)

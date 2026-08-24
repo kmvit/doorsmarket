@@ -45,12 +45,17 @@ const MeasurementForm = () => {
   const [savingConditions, setSavingConditions] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [draftNotice, setDraftNotice] = useState<string | null>(null)
+  const [requestingRepeat, setRequestingRepeat] = useState(false)
 
   const canEditOpenings = !m?.is_done && (
     user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
   )
   const canMarkDone = canEditOpenings
   const canMarkProcessed = m?.is_done && !m?.is_processed && (user?.role === 'manager' || user?.role === 'admin')
+  // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
+  const canRequestRepeat = Boolean(
+    m?.is_done && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+  )
 
   const load = async () => {
     setIsLoading(true)
@@ -304,6 +309,24 @@ const MeasurementForm = () => {
     }
   }
 
+  // Повторный замер: замер снова становится невыполненным и попадает СМ
+  // в «Назначить замер»; проёмы сохраняются, СМ их корректирует
+  const handleRequestRepeat = async () => {
+    if (!m || requestingRepeat) return
+    if (!confirm('Назначить повторный замер? Замер снова станет невыполненным и попадёт сервис-менеджеру в «Назначить замер».')) return
+    const reason = prompt('Причина повторного замера (необязательно):', '') ?? ''
+    setRequestingRepeat(true)
+    setActionError(null)
+    try {
+      const updated = await measurementsAPI.requestRepeat(m.id, reason.trim())
+      setM(updated)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Не удалось назначить повторный замер')
+    } finally {
+      setRequestingRepeat(false)
+    }
+  }
+
   const handleSaveDraft = async () => {
     if (!m) return
     setActionError(null)
@@ -544,6 +567,16 @@ const MeasurementForm = () => {
               className="px-4 py-1.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl"
             >
               ✓ Замер обработан
+            </button>
+          )}
+          {canRequestRepeat && (
+            <button
+              onClick={handleRequestRepeat}
+              disabled={requestingRepeat}
+              className="px-4 py-1.5 text-sm font-medium text-amber-800 bg-amber-100 border border-amber-300 hover:bg-amber-200 rounded-xl disabled:opacity-60"
+              title="Вернуть замер сервис-менеджеру на повторный выезд"
+            >
+              {requestingRepeat ? 'Назначаем…' : '↻ Повторный замер'}
             </button>
           )}
           <button
