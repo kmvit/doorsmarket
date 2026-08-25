@@ -18,26 +18,6 @@ if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.register(swUrl, swOptions)
       console.log('[PWA] Service Worker зарегистрирован:', registration.scope)
 
-      // Новая версия уже установлена и ждёт активации — включаем сразу.
-      // Частый случай в PWA: приложение свернули до того, как старый SW освободил контроль.
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-      }
-
-      // ВАЖНО: iOS в режиме «с домашнего экрана» почти не проверяет обновления сам —
-      // событие load не срабатывает, пока приложение не выгрузят из памяти, и
-      // пользователь неделями видит старую версию. Проверяем при каждом возврате
-      // в приложение и раз в час, пока оно открыто.
-      const checkForUpdate = () => {
-        registration.update().catch(() => {
-          /* нет сети — проверим при следующем возврате */
-        })
-      }
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') checkForUpdate()
-      })
-      setInterval(checkForUpdate, 60 * 60 * 1000)
-
       // Обработка обновлений Service Worker
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing
