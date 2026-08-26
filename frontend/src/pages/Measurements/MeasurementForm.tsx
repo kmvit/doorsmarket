@@ -14,7 +14,7 @@ import {
   DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY, DoorType, DOUBLE_DOOR_TYPE,
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
 } from '../../types/orders'
-import { isQueuedError, requestQueue } from '../../services/sync'
+import { isQueuedError } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
@@ -361,16 +361,7 @@ const MeasurementForm = () => {
   // синхронизации сервер его отклоняет и замер навсегда остаётся в черновиках.
   const validateCanMarkDone = async (): Promise<string | null> => {
     if (!m) return null
-    // Файл, загруженный офлайн, ещё не виден в m.attachments — учитываем очередь синхронизации
-    const pendingUpload = (await requestQueue.getAll()).some((r) => {
-      if (!r.url.includes('/measurement-attachments/')) return false
-      const entries = r.data?.entries as [string, unknown][] | undefined
-      return entries?.some(([key, value]) => key === 'measurement' && String(value) === String(m.id)) ?? false
-    })
-    const hasPlan = Boolean(m.opening_plan_url) || (m.opening_plan_urls || []).length > 0
-    if (!hasPlan && m.attachments.length === 0 && !pendingUpload) {
-      return 'Перед закрытием замера приложите план открывания.'
-    }
+    // План открывания не обязателен: бывают замеры на одну дверь, где схема не нужна
     const missing: string[] = []
     if (m.lift_available === null || m.lift_available === undefined) missing.push('возможен ли подъём на лифте')
     if (m.stairs_available === null || m.stairs_available === undefined) missing.push('возможен ли подъём по лестнице')
@@ -688,7 +679,7 @@ const MeasurementForm = () => {
                   ))}
                 </span>
               ) : (
-                <span className="text-amber-700">Не приложен — нужно вложить до закрытия замера</span>
+                <span className="text-gray-500">Не приложен</span>
               )}
             </div>
             <div>

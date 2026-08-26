@@ -1252,13 +1252,8 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
         m = self.get_object()
-        # Валидация: план открывания обязателен — годится любой файл заявки
-        # (их может быть несколько) либо вложение самого замера
-        if not (m.request.opening_plan or m.request.files.exists() or m.attachments.exists()):
-            return Response(
-                {'detail': 'Перед закрытием замера приложите план открывания.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # План открывания не обязателен: бывают замеры на одну дверь, где схема
+        # не нужна. Обязательными остаются только условия объекта.
         # Валидация: условия объекта обязательны (лифт, лестница, пронос, этаж)
         order = m.request.order
         missing = []
