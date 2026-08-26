@@ -160,14 +160,20 @@ export const ordersAPI = {
   saveMeasurementRequest: async (
     orderId: number,
     data: CreateMeasurementRequestData,
-    openingPlan?: File | null,
+    // Планов открывания может быть несколько; removeFileIds — id ранее
+    // приложенных файлов на удаление (null — файл в поле opening_plan заявки)
+    files?: File[] | null,
+    removeFileIds?: (number | null)[],
   ): Promise<MeasurementRequest> => {
-    if (openingPlan) {
+    const hasFiles = Boolean(files && files.length)
+    const hasRemovals = Boolean(removeFileIds && removeFileIds.length)
+    if (hasFiles || hasRemovals) {
       const formData = new FormData()
       Object.entries(data).forEach(([k, v]) => {
         if (v !== undefined && v !== null) formData.append(k, String(v))
       })
-      formData.append('opening_plan', openingPlan)
+      ;(files || []).forEach((f) => formData.append('files', f))
+      ;(removeFileIds || []).forEach((id) => formData.append('remove_files', id === null ? 'null' : String(id)))
       return requestWithQueue('POST', `/orders/${orderId}/measurement-request/`, formData, {
         'Content-Type': 'multipart/form-data',
       })

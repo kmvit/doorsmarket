@@ -367,7 +367,8 @@ const MeasurementForm = () => {
       const entries = r.data?.entries as [string, unknown][] | undefined
       return entries?.some(([key, value]) => key === 'measurement' && String(value) === String(m.id)) ?? false
     })
-    if (!m.opening_plan_url && m.attachments.length === 0 && !pendingUpload) {
+    const hasPlan = Boolean(m.opening_plan_url) || (m.opening_plan_urls || []).length > 0
+    if (!hasPlan && m.attachments.length === 0 && !pendingUpload) {
       return 'Перед закрытием замера приложите план открывания.'
     }
     const missing: string[] = []
@@ -671,15 +672,21 @@ const MeasurementForm = () => {
               />
             </div>
             <div>
+              {/* Планов открывания в заявке может быть несколько */}
               <span className="text-gray-500">План открывания: </span>
-              {m.opening_plan_url ? (
-                <button
-                  type="button"
-                  onClick={() => setViewerFile({ url: m.opening_plan_url!, name: 'План открывания' })}
-                  className="text-primary-600 hover:underline"
-                >
-                  Открыть
-                </button>
+              {(m.opening_plan_urls || []).length > 0 ? (
+                <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5 align-top">
+                  {m.opening_plan_urls.map((f, idx) => (
+                    <button
+                      key={`${f.url}-${idx}`}
+                      type="button"
+                      onClick={() => setViewerFile({ url: f.url, name: f.name })}
+                      className="text-primary-600 hover:underline"
+                    >
+                      {f.name}
+                    </button>
+                  ))}
+                </span>
               ) : (
                 <span className="text-amber-700">Не приложен — нужно вложить до закрытия замера</span>
               )}

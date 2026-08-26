@@ -59,10 +59,19 @@ def render_measurement_blank(measurement) -> bytes:
         if images:
             opening_photos.append({'opening': op, 'images': images})
 
-    # План открывания (из заявки) — только если это изображение и файл есть.
-    plan_path = None
-    if req and req.opening_plan and _is_image(req.opening_plan.name):
-        plan_path = _abs_path(req.opening_plan)
+    # Планы открывания (из заявки) — их может быть несколько. Берём только
+    # существующие изображения: PDF-файлы в бланк не вставить.
+    plan_paths = []
+    if req:
+        candidates = []
+        if req.opening_plan:
+            candidates.append(req.opening_plan)
+        candidates.extend(f.file for f in req.files.all())
+        for f in candidates:
+            if _is_image(f.name):
+                path = _abs_path(f)
+                if path:
+                    plan_paths.append(path)
 
     # Фото подписанного бланка (для уже подписанного замера).
     signature_path = None
@@ -80,7 +89,7 @@ def render_measurement_blank(measurement) -> bytes:
         'req': req,
         'openings': openings,
         'opening_photos': opening_photos,
-        'plan_path': plan_path,
+        'plan_paths': plan_paths,
         'signature_path': signature_path,
         'sm_name': sm_name,
     })

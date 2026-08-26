@@ -267,13 +267,15 @@ const MeasurementBlankPrint = () => {
           )
         })}
 
-        {/* План открывания */}
-        {m.opening_plan_url && (
-          <div className="photo-page mt-6">
-            <div className="text-xs text-gray-500 mb-1">План открывания</div>
-            <HideOnError src={m.opening_plan_url} alt="План открывания" className="w-full max-h-[900px] object-contain" />
+        {/* Планы открывания — их может быть несколько; PDF-файлы просто не отрисуются */}
+        {(m.opening_plan_urls || []).map((f, idx) => (
+          <div key={`${f.url}-${idx}`} className="photo-page mt-6">
+            <div className="text-xs text-gray-500 mb-1">
+              План открывания{m.opening_plan_urls.length > 1 ? ` (${idx + 1} из ${m.opening_plan_urls.length})` : ''}
+            </div>
+            <HideOnError src={f.url} alt="План открывания" className="w-full max-h-[900px] object-contain" />
           </div>
-        )}
+        ))}
       </div>
     </div>
   )

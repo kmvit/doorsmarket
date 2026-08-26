@@ -369,6 +369,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 class MeasurementRequestSerializer(serializers.ModelSerializer):
     payer_display = serializers.CharField(source='get_payer_display', read_only=True)
     opening_plan_url = serializers.SerializerMethodField()
+    # Все файлы заявки: исторический opening_plan + дополнительные из MeasurementRequestFile
+    files = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -376,6 +378,7 @@ class MeasurementRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'order', 'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer', 'payer_display', 'opening_plan', 'opening_plan_url',
+            'files',
             'comment', 'created_at', 'created_by', 'created_by_name',
         ]
         read_only_fields = ['id', 'created_at', 'created_by', 'order']
@@ -389,6 +392,29 @@ class MeasurementRequestSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.opening_plan.url)
         return None
+
+    def get_files(self, obj):
+        """Все файлы заявки одним списком — первым идёт исторический opening_plan."""
+        request = self.context.get('request')
+
+        def absolute(url):
+            return request.build_absolute_uri(url) if request else url
+
+        result = []
+        if obj.opening_plan:
+            result.append({
+                # id=None → это поле заявки, а не строка MeasurementRequestFile
+                'id': None,
+                'url': absolute(obj.opening_plan.url),
+                'name': obj.opening_plan.name.rsplit('/', 1)[-1],
+            })
+        for f in obj.files.all():
+            result.append({
+                'id': f.id,
+                'url': absolute(f.file.url),
+                'name': f.name or f.file.name.rsplit('/', 1)[-1],
+            })
+        return result
 
     def get_created_by_name(self, obj):
         if not obj.created_by:
@@ -566,6 +592,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
     contact_phone = serializers.CharField(source='request.contact_phone', read_only=True)
     opening_plan_url = serializers.SerializerMethodField()
     signature_photo_url = serializers.SerializerMethodField()
+    # Все файлы плана открывания из заявки (их может быть несколько)
+    opening_plan_urls = serializers.SerializerMethodField()
     lift_required = serializers.SerializerMethodField()
     lift_impossible_warning = serializers.SerializerMethodField()
     order_status = serializers.CharField(source='request.order.status', read_only=True)
@@ -590,7 +618,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
-            'opening_plan_url', 'lift_required', 'lift_impossible_warning', 'order_status',
+            'opening_plan_url', 'opening_plan_urls',
+            'lift_required', 'lift_impossible_warning', 'order_status',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number', 'floor_readiness',
             'kp_number', 'kp_date',
         ]
@@ -615,6 +644,27 @@ class MeasurementSerializer(serializers.ModelSerializer):
         if plan and request:
             return request.build_absolute_uri(plan.url)
         return None
+
+    def get_opening_plan_urls(self, obj):
+        """Все файлы заявки (план открывания мог быть приложен несколькими файлами)."""
+        request = self.context.get('request')
+        req = obj.request
+        if not req:
+            return []
+        result = []
+        if req.opening_plan:
+            url = req.opening_plan.url
+            result.append({
+                'url': request.build_absolute_uri(url) if request else url,
+                'name': req.opening_plan.name.rsplit('/', 1)[-1],
+            })
+        for f in req.files.all():
+            url = f.file.url
+            result.append({
+                'url': request.build_absolute_uri(url) if request else url,
+                'name': f.name or f.file.name.rsplit('/', 1)[-1],
+            })
+        return result
 
     def get_signature_photo_url(self, obj):
         request = self.context.get('request')

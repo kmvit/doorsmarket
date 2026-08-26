@@ -16,6 +16,7 @@ from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
+    MeasurementRequestFile,
 )
 from . import sms_templates
 from .serializers import (
@@ -587,6 +588,33 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Адрес относится к заказу, а не к заявке: подтягивается из КП в форму заявки,
         # менеджер может поправить, и правка сохраняется в заказ. Поле не в сериализаторе
         # заявки, поэтому пишем его в заказ вручную (только если ключ передан).
+        # Дополнительные файлы заявки: их может быть несколько. Первый файл, если
+        # заявка ещё пустая, кладём в исторический opening_plan — на него завязаны
+        # старые ссылки и валидация закрытия замера; остальные — в MeasurementRequestFile.
+        extra_files = request.FILES.getlist('files')
+        for f in extra_files:
+            if not instance.opening_plan:
+                instance.opening_plan = f
+                instance.save(update_fields=['opening_plan'])
+            else:
+                MeasurementRequestFile.objects.create(
+                    request=instance, file=f, name=(f.name or '')[:255],
+                )
+
+        # Удаление ранее приложенных файлов (id из списка files сериализатора;
+        # null-id — это сам opening_plan заявки)
+        remove_ids = request.data.getlist('remove_files') if hasattr(request.data, 'getlist') else (
+            request.data.get('remove_files') or []
+        )
+        for raw_id in remove_ids:
+            if str(raw_id) in ('', 'null', 'None'):
+                if instance.opening_plan:
+                    instance.opening_plan.delete(save=False)
+                    instance.opening_plan = None
+                    instance.save(update_fields=['opening_plan'])
+                continue
+            MeasurementRequestFile.objects.filter(request=instance, pk=raw_id).delete()
+
         address_provided = 'address' in request.data
         if address_provided:
             order.address = (request.data.get('address') or '').strip()[:500]
@@ -1224,8 +1252,9 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
         m = self.get_object()
-        # Валидация: opening_plan обязателен
-        if not (m.request.opening_plan or m.attachments.exists()):
+        # Валидация: план открывания обязателен — годится любой файл заявки
+        # (их может быть несколько) либо вложение самого замера
+        if not (m.request.opening_plan or m.request.files.exists() or m.attachments.exists()):
             return Response(
                 {'detail': 'Перед закрытием замера приложите план открывания.'},
                 status=status.HTTP_400_BAD_REQUEST,

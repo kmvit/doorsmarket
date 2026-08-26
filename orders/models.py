@@ -412,6 +412,8 @@ class MeasurementRequest(models.Model):
         default=MeasurementPayer.CLIENT,
         verbose_name='Кто оплачивает замер',
     )
+    # Первый (или единственный) файл плана открывания. Исторически заявка
+    # позволяла приложить ровно один файл; остальные лежат в MeasurementRequestFile.
     opening_plan = models.FileField(
         upload_to='orders/opening_plans/',
         null=True,
@@ -435,6 +437,31 @@ class MeasurementRequest(models.Model):
 
     def __str__(self):
         return f'Заявка на замер по заказу #{self.order_id}'
+
+
+class MeasurementRequestFile(models.Model):
+    """
+    Дополнительные файлы заявки на замер (планы открывания, схемы, фото).
+    Первый файл исторически хранится в MeasurementRequest.opening_plan —
+    он остаётся там, чтобы не ломать старые заявки и ссылки на них.
+    """
+    request = models.ForeignKey(
+        MeasurementRequest,
+        on_delete=models.CASCADE,
+        related_name='files',
+        verbose_name='Заявка на замер',
+    )
+    file = models.FileField(upload_to='orders/opening_plans/', verbose_name='Файл')
+    name = models.CharField(max_length=255, blank=True, verbose_name='Имя файла')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Загружен')
+
+    class Meta:
+        verbose_name = 'Файл заявки на замер'
+        verbose_name_plural = 'Файлы заявки на замер'
+        ordering = ['id']
+
+    def __str__(self):
+        return self.name or self.file.name
 
 
 class OrderActionReminder(models.Model):

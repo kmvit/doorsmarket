@@ -602,19 +602,22 @@ const OrderDetail = () => {
                 <dt className="text-gray-500">Кто оплачивает</dt>
                 <dd className="text-gray-900">{measurementRequest.payer_display}</dd>
               </div>
-              {measurementRequest.opening_plan_url && (
-                <div className="flex justify-between">
-                  <dt className="text-gray-500">План открывания</dt>
-                  <dd>
+              {(measurementRequest.files || []).length > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-gray-500 shrink-0">План открывания</dt>
+                  <dd className="text-right">
                     {/* Открываем через FileViewer, а не target="_blank": в PWA на iOS
                         новая вкладка открывается без браузерных кнопок и файл нельзя закрыть */}
-                    <button
-                      type="button"
-                      onClick={() => setViewerFile({ url: measurementRequest.opening_plan_url!, name: 'План открывания' })}
-                      className="text-primary-600 hover:underline"
-                    >
-                      Открыть
-                    </button>
+                    {measurementRequest.files.map((f, idx) => (
+                      <button
+                        key={f.id ?? `plan-${idx}`}
+                        type="button"
+                        onClick={() => setViewerFile({ url: f.url, name: f.name })}
+                        className="text-primary-600 hover:underline block truncate max-w-[220px] ml-auto"
+                      >
+                        {f.name}
+                      </button>
+                    ))}
                   </dd>
                 </div>
               )}

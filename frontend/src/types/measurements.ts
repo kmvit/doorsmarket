@@ -86,6 +86,8 @@ export interface Measurement {
   contact_position: string
   contact_phone: string
   opening_plan_url: string | null
+  // Все планы открывания из заявки (их может быть несколько)
+  opening_plan_urls: { url: string; name: string }[]
   lift_required: boolean
   lift_impossible_warning: string | null
   order_status: OrderStatus

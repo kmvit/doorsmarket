@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ordersAPI } from '../../api/orders'
-import { MeasurementRequest, MeasurementPayer, CreateMeasurementRequestData } from '../../types/orders'
+import { MeasurementRequest, MeasurementPayer, CreateMeasurementRequestData, MeasurementRequestFile } from '../../types/orders'
 import FileViewer from '../../components/common/FileViewer'
 
 interface Props {
@@ -24,18 +24,24 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
     comment: existing?.comment || '',
     address: defaultAddress,
   })
-  const [openingPlan, setOpeningPlan] = useState<File | null>(null)
+  // Планов открывания может быть несколько: копим выбранные файлы, а уже
+  // приложенные показываем списком с возможностью удалить
+  const [newFiles, setNewFiles] = useState<File[]>([])
+  const [removedFileIds, setRemovedFileIds] = useState<(number | null)[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Просмотр текущего плана открывания в модалке с кнопкой закрытия
-  const [showPlanViewer, setShowPlanViewer] = useState(false)
+  // Просмотр приложенного файла в модалке с кнопкой закрытия
+  const [viewerFile, setViewerFile] = useState<MeasurementRequestFile | null>(null)
+
+  // Уже приложенные файлы за вычетом помеченных на удаление
+  const existingFiles = (existing?.files || []).filter((f) => !removedFileIds.includes(f.id))
 
   useEffect(() => {
     // Пока открыт просмотр файла, Escape закрывает только его (обрабатывает FileViewer)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showPlanViewer) onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !viewerFile) onClose() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose, showPlanViewer])
+  }, [onClose, viewerFile])
 
   const setField = <K extends keyof CreateMeasurementRequestData>(field: K, value: CreateMeasurementRequestData[K]) => {
     setForm((f) => ({ ...f, [field]: value }))
@@ -48,7 +54,7 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
     setIsSubmitting(true)
     setError(null)
     try {
-      const result = await ordersAPI.saveMeasurementRequest(orderId, form, openingPlan)
+      const result = await ordersAPI.saveMeasurementRequest(orderId, form, newFiles, removedFileIds)
       onSaved(result)
       onClose()
     } catch (err: any) {
@@ -105,14 +111,61 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">План открывания (PDF/JPG)</label>
-            {existing?.opening_plan_url && (
-              // Не target="_blank": в PWA на iOS файл открывался без кнопки закрытия
-              <button type="button" onClick={() => setShowPlanViewer(true)} className="text-xs text-primary-600 hover:underline mb-1 block">
-                Текущий файл
-              </button>
+            <label className="block text-sm font-medium text-gray-700 mb-1">План открывания (PDF/JPG, можно несколько)</label>
+            {/* Уже приложенные файлы: открываются во встроенном просмотрщике */}
+            {existingFiles.length > 0 && (
+              <ul className="mb-2 space-y-1">
+                {existingFiles.map((f) => (
+                  <li key={f.id ?? 'plan'} className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setViewerFile(f)}
+                      className="text-primary-600 hover:underline truncate max-w-[70%] text-left"
+                    >
+                      📎 {f.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRemovedFileIds((prev) => [...prev, f.id])}
+                      className="text-red-600 hover:text-red-800 shrink-0"
+                      title="Удалить файл"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-            <input type="file" accept="application/pdf,image/*,.jfif" onChange={(e) => setOpeningPlan(e.target.files?.[0] || null)} className="block w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700" />
+            {/* Выбранные сейчас файлы — до сохранения их можно убрать из списка */}
+            {newFiles.length > 0 && (
+              <ul className="mb-2 space-y-1">
+                {newFiles.map((f, idx) => (
+                  <li key={`${f.name}-${idx}`} className="flex items-center gap-2 text-xs text-gray-700">
+                    <span className="truncate max-w-[70%]">➕ {f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-red-600 hover:text-red-800 shrink-0"
+                      title="Убрать из загрузки"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <input
+              type="file"
+              multiple
+              accept="application/pdf,image/*,.jfif"
+              onChange={(e) => {
+                // Добавляем к уже выбранным: на телефоне файлы часто выбирают по одному
+                const picked = Array.from(e.target.files || [])
+                if (picked.length) setNewFiles((prev) => [...prev, ...picked])
+                e.target.value = ''
+              }}
+              className="block w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
@@ -127,14 +180,14 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
           </div>
         </form>
       </div>
-      {showPlanViewer && existing?.opening_plan_url && (
+      {viewerFile && (
         // stopPropagation: клики внутри просмотрщика не должны долетать до подложки
         // формы (у неё onClick={onClose}) — иначе закрывалась вся заявка
         <div onClick={(e) => e.stopPropagation()}>
           <FileViewer
-            fileUrl={existing.opening_plan_url}
-            fileName="План открывания"
-            onClose={() => setShowPlanViewer(false)}
+            fileUrl={viewerFile.url}
+            fileName={viewerFile.name}
+            onClose={() => setViewerFile(null)}
           />
         </div>
       )}

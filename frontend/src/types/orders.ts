@@ -385,10 +385,19 @@ export interface MeasurementRequest {
   payer: MeasurementPayer
   payer_display: string
   opening_plan_url: string | null
+  // Все файлы заявки (планов открывания может быть несколько).
+  // id === null — это исторический файл в поле opening_plan самой заявки.
+  files: MeasurementRequestFile[]
   comment: string
   created_at: string
   created_by: number | null
   created_by_name: string | null
+}
+
+export interface MeasurementRequestFile {
+  id: number | null
+  url: string
+  name: string
 }
 
 export interface CreateMeasurementRequestData {

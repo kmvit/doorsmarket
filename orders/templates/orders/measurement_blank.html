@@ -168,13 +168,13 @@
     {% endfor %}
   {% endif %}
 
-  {# ===== План открывания — на отдельной странице, во весь лист ===== #}
-  {% if plan_path %}
+  {# ===== Планы открывания — каждый на отдельной странице, во весь лист ===== #}
+  {% for plan_path in plan_paths %}
   <div class="photo-page">
-    <div class="photo-cap">План открывания</div>
+    <div class="photo-cap">План открывания{% if plan_paths|length > 1 %} ({{ forloop.counter }} из {{ plan_paths|length }}){% endif %}</div>
     <img class="photo-full" src="file://{{ plan_path }}" alt="План открывания">
   </div>
-  {% endif %}
+  {% endfor %}
 
 </body>
 </html>
