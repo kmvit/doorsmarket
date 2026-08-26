@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { loadEnv } from 'vite'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  // Адрес Django в разработке: порт 8000 бывает занят другим проектом —
+  // тогда поднимаем backend на свободном порту и указываем его в frontend/.env.local
+  // (VITE_PROXY_TARGET=http://localhost:8010)
+  const env = loadEnv(mode, '.', '')
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8000'
+  return {
   plugins: [
     react(),
     VitePWA({
@@ -73,12 +80,17 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: proxyTarget,
+        changeOrigin: true
+      },
+      // Загруженные файлы (планы открывания, фото) отдаёт Django
+      '/media': {
+        target: proxyTarget,
         changeOrigin: true
       },
       // Короткие ссылки замера /z/{код} обслуживает Django (как /api)
       '/z': {
-        target: 'http://localhost:8000',
+        target: proxyTarget,
         changeOrigin: true
       }
     }
@@ -95,5 +107,5 @@ export default defineConfig(({ mode }) => ({
       }
     }
   }
-}))
-
+}
+})

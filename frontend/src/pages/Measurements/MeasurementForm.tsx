@@ -18,6 +18,7 @@ import { isQueuedError } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import FileViewer from '../../components/common/FileViewer'
+import FloatingFileViewer, { FloatingFile } from '../../components/common/FloatingFileViewer'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 
@@ -42,6 +43,10 @@ const MeasurementForm = () => {
   // Уведомление о работе офлайн (действие поставлено в очередь синхронизации)
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
+  // План открывания показываем в плавающем окне: оно не закрывает форму,
+  // и СМ вводит размеры, глядя на план
+  const [planFile, setPlanFile] = useState<FloatingFile | null>(null)
+  const [planPanelVh, setPlanPanelVh] = useState(0)
   const [savingConditions, setSavingConditions] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [draftNotice, setDraftNotice] = useState<string | null>(null)
@@ -493,7 +498,10 @@ const MeasurementForm = () => {
   const liftRequired = validateLiftRequired(m.openings)
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-5xl">
+    <div
+      className="container mx-auto px-4 py-6 max-w-5xl"
+      style={planPanelVh ? { paddingBottom: `calc(${planPanelVh}vh + 1.5rem)` } : undefined}
+    >
       {/* Хлебные крошки */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <Link to="/measurements" className="hover:text-primary-600">Замеры</Link>
@@ -671,8 +679,8 @@ const MeasurementForm = () => {
                     <button
                       key={`${f.url}-${idx}`}
                       type="button"
-                      onClick={() => setViewerFile({ url: f.url, name: f.name })}
-                      className="text-primary-600 hover:underline"
+                      onClick={() => setPlanFile((prev) => (prev?.url === f.url ? null : { url: f.url, name: f.name }))}
+                      className={`hover:underline ${planFile?.url === f.url ? 'text-primary-800 font-semibold' : 'text-primary-600'}`}
                     >
                       {f.name}
                     </button>
@@ -1287,6 +1295,12 @@ const MeasurementForm = () => {
           }}
         />
       )}
+
+      <FloatingFileViewer
+        file={planFile}
+        onClose={() => setPlanFile(null)}
+        onHeightChange={setPlanPanelVh}
+      />
 
       {viewerFile && (
         <FileViewer
