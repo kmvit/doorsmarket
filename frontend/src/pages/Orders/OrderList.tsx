@@ -5,6 +5,7 @@ import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
 import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
+import { usePersistedState } from '../../utils/persistedState'
 
 // Метки папок для баннера (folder может быть статусом или составной выборкой)
 const FOLDER_LABELS: Record<string, string> = {
@@ -22,12 +23,14 @@ const OrderList = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('')
-  const [salonFilter, setSalonFilter] = useState<number | ''>('')
-  const [myOrders, setMyOrders] = useState(false)
+  // Фильтры сохраняются на время сеанса: открыл заказ, вернулся назад — выбранное
+  // осталось (см. usePersistedState)
+  const [search, setSearch] = usePersistedState('orders:search', '')
+  const [statusFilter, setStatusFilter] = usePersistedState<OrderStatus | ''>('orders:status', '')
+  const [salonFilter, setSalonFilter] = usePersistedState<number | ''>('orders:salon', '')
+  const [myOrders, setMyOrders] = usePersistedState('orders:my', false)
   // «Кроме выполненных и неактуальных» — по умолчанию включено
-  const [excludeFinished, setExcludeFinished] = useState(true)
+  const [excludeFinished, setExcludeFinished] = usePersistedState('orders:exclude_finished', true)
 
   const canCreate = user?.role === 'manager' || user?.role === 'admin'
 

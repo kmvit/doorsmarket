@@ -4,6 +4,7 @@ import { measurementsAPI } from '../../api/measurements'
 import { MeasurementListItem, MeasurementFolder } from '../../types/measurements'
 import { ORDER_STATUS_COLOR } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
+import { usePersistedState } from '../../utils/persistedState'
 
 const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: '', label: 'Все', color: 'bg-gray-200 text-gray-800' },
@@ -24,13 +25,15 @@ const MeasurementList = () => {
   const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [folder, setFolder] = useState<MeasurementFolder>(
-    urlFolder != null && VALID_FOLDERS.includes(urlFolder) ? urlFolder : 'unscheduled',
+  // Вкладка и поиск сохраняются на время сеанса: открыл замер, вернулся назад —
+  // список остался там же
+  const [folder, setFolder] = usePersistedState<MeasurementFolder>(
+    'measurements:folder', 'unscheduled',
   )
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistedState('measurements:search', '')
   // «Кроме выполненных и неактуальных» — по умолчанию включено, показывается только
   // на вкладке «Все» (остальные вкладки и так делят замеры по состоянию)
-  const [excludeFinished, setExcludeFinished] = useState(true)
+  const [excludeFinished, setExcludeFinished] = usePersistedState('measurements:exclude_finished', true)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -49,6 +52,13 @@ const MeasurementList = () => {
       setIsLoading(false)
     }
   }, [folder, search, excludeFinished])
+
+  // Папка из URL (переход с дашборда) важнее сохранённой вкладки
+  useEffect(() => {
+    if (urlFolder != null && VALID_FOLDERS.includes(urlFolder)) {
+      setFolder(urlFolder)
+    }
+  }, [urlFolder])
 
   useEffect(() => {
     const t = setTimeout(load, 300)

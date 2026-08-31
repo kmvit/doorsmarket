@@ -1,6 +1,21 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { ComplaintListItem, Complaint, ComplaintFilters } from '../types/complaints'
 import { complaintsAPI } from '../api/complaints'
+
+const DEFAULT_FILTERS: ComplaintFilters = {
+  exclude_closed: true,
+  ordering: '-created_at',
+}
+
+/**
+ * «Папочные» параметры приходят из URL при заходе с дашборда (?my_tasks=review и
+ * т.п.). Это разовая выборка, а не выбор пользователя в панели фильтров, поэтому
+ * их не сохраняем — иначе при следующем открытии списка он молча окажется
+ * сужённым до папки, из которой заходили вчера.
+ */
+export const stripFolderScope = (f: ComplaintFilters): ComplaintFilters =>
+  ({ ...f, my_tasks: undefined, my_orders: undefined, needs_planning: undefined } as any)
 
 interface ComplaintsStore {
   complaints: ComplaintListItem[]
@@ -16,18 +31,16 @@ interface ComplaintsStore {
   fetchComplaints: (filters?: ComplaintFilters) => Promise<void>
   fetchComplaint: (id: number) => Promise<void>
   setFilters: (filters: ComplaintFilters) => void
+  replaceFilters: (filters: ComplaintFilters) => void
   clearFilters: () => void
   setPage: (page: number) => void
   clearError: () => void
 }
 
-export const useComplaintsStore = create<ComplaintsStore>((set, get) => ({
+export const useComplaintsStore = create<ComplaintsStore>()(persist((set, get) => ({
   complaints: [],
   currentComplaint: null,
-  filters: {
-    exclude_closed: true,
-    ordering: '-created_at',
-  },
+  filters: DEFAULT_FILTERS,
   isLoading: false,
   error: null,
   totalCount: 0,
@@ -78,14 +91,14 @@ export const useComplaintsStore = create<ComplaintsStore>((set, get) => ({
     set({ filters: { ...get().filters, ...filters }, page: 1 })
   },
 
+  // Заход в папку с дашборда: выборку задаёт URL целиком, а сохранённые фильтры
+  // пользователя не должны её дополнительно сужать (иначе папка выглядит пустой)
+  replaceFilters: (filters: ComplaintFilters) => {
+    set({ filters, page: 1 })
+  },
+
   clearFilters: () => {
-    set({
-      filters: {
-        exclude_closed: true,
-        ordering: '-created_at',
-      },
-      page: 1,
-    })
+    set({ filters: DEFAULT_FILTERS, page: 1 })
   },
 
   setPage: (page: number) => {
@@ -95,5 +108,11 @@ export const useComplaintsStore = create<ComplaintsStore>((set, get) => ({
   clearError: () => {
     set({ error: null })
   },
+}), {
+  // Фильтры переживают уход в карточку и перезагрузку вкладки, но не живут
+  // дольше сеанса. Сами рекламации не кешируем — их всегда тянем с сервера.
+  name: 'complaints-filters',
+  storage: createJSONStorage(() => sessionStorage),
+  partialize: (state) => ({ filters: stripFolderScope(state.filters) }),
 }))
 

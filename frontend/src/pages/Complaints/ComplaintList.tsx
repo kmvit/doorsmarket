@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useComplaintsStore } from '../../store/complaintsStore'
+import { useComplaintsStore, stripFolderScope } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
 import { ComplaintFilters } from '../../types/complaints'
 import { referencesAPI } from '../../api/references'
@@ -14,7 +14,10 @@ const ComplaintList = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
-  const { complaints, isLoading, error, fetchComplaints, filters, setFilters, clearFilters } = useComplaintsStore()
+  const {
+    complaints, isLoading, error, fetchComplaints,
+    filters, setFilters, replaceFilters, clearFilters,
+  } = useComplaintsStore()
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [cities, setCities] = useState<City[]>([])
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
@@ -81,9 +84,10 @@ const ComplaintList = () => {
       }
     }
     
-    // Применяем фильтры из URL
+    // Применяем фильтры из URL. Папка задаёт выборку целиком — сохранённые
+    // фильтры пользователя заменяем, а не дополняем ими (replaceFilters).
     if (myTasks || needsPlanning || filter) {
-      setFilters(urlFilters)
+      replaceFilters(urlFilters)
       setLocalFilters(urlFilters)
       fetchComplaints(urlFilters)
     } else {
@@ -120,11 +124,9 @@ const ComplaintList = () => {
 
   // «Папочные» параметры приходят из URL при заходе с дашборда (например,
   // ?my_tasks=review — «Ожидают ответа»). Они сужают выборку и НЕ управляются
-  // панелью фильтров. При ручном применении/сбросе их нужно снять, иначе они
-  // залипают в localFilters и сторе (setFilters мержит) и любой выбранный фильтр
-  // не работает — список остаётся в рамках папки, пока не перезапустишь приложение.
-  const stripFolderScope = (f: ComplaintFilters): ComplaintFilters =>
-    ({ ...f, my_tasks: undefined, my_orders: undefined, needs_planning: undefined } as any)
+  // панелью фильтров. При ручном применении/сбросе их нужно снять (stripFolderScope
+  // из стора), иначе они залипают в localFilters и сторе (setFilters мержит) и
+  // любой выбранный фильтр не работает — список остаётся в рамках папки.
 
   // Поиск применяется сразу при наборе (как в заказах) — с задержкой 300 мс,
   // чтобы не дёргать сервер на каждую букву. Остальные фильтры — по кнопке
