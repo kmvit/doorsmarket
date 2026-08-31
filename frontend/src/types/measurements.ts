@@ -85,6 +85,8 @@ export interface Measurement {
   contact_name: string
   contact_position: string
   contact_phone: string
+  // Комментарий менеджера из заявки на замер
+  request_comment: string
   opening_plan_url: string | null
   // Все планы открывания из заявки (их может быть несколько)
   opening_plan_urls: { url: string; name: string }[]

@@ -590,6 +590,9 @@ class MeasurementSerializer(serializers.ModelSerializer):
     contact_name = serializers.CharField(source='request.contact_name', read_only=True)
     contact_position = serializers.CharField(source='request.contact_position', read_only=True)
     contact_phone = serializers.CharField(source='request.contact_phone', read_only=True)
+    # Комментарий менеджера из заявки: СМ должен видеть его прямо в замере,
+    # иначе указания к выезду остаются только на странице заказа
+    request_comment = serializers.CharField(source='request.comment', read_only=True, allow_blank=True)
     opening_plan_url = serializers.SerializerMethodField()
     signature_photo_url = serializers.SerializerMethodField()
     # Все файлы плана открывания из заявки (их может быть несколько)
@@ -618,6 +621,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
+            'request_comment',
             'opening_plan_url', 'opening_plan_urls',
             'lift_required', 'lift_impossible_warning', 'order_status',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number', 'floor_readiness',

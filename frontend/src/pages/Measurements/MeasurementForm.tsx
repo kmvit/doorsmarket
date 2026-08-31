@@ -637,6 +637,16 @@ const MeasurementForm = () => {
         </div>
       )}
 
+      {/* Комментарий менеджера из заявки — указания к выезду, СМ должен их видеть */}
+      {m.request_comment && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-xl mb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 mb-1">
+            Комментарий к заявке
+          </p>
+          <p className="text-sm whitespace-pre-line">{m.request_comment}</p>
+        </div>
+      )}
+
       {/* Шапка-инфо */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
