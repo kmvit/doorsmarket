@@ -134,8 +134,14 @@ def render_recommendations_blank(measurement) -> bytes:
             door_w_text = item.door_width_parts
         elif (op.recommended_door_width_parts or '').strip():
             door_w_text = op.recommended_door_width_parts
+        # Открывание — тоже из КП: менеджер мог поменять его после замера
+        if item and item.opening_type:
+            opening_type_display = item.get_opening_type_display()
+        else:
+            opening_type_display = op.get_opening_type_display() if op.opening_type else ''
         rows.append({
             'op': op,
+            'opening_type_display': opening_type_display,
             'panel_name': item.model_name if item else '',
             'door_h': door_h,
             'door_w': door_w,
