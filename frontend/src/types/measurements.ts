@@ -75,6 +75,13 @@ export interface Measurement {
   repeat_count: number
   repeat_requested_at: string | null
   repeat_reason: string
+  /** Замер признан неактуальным — менеджер подтвердил пометку СМ */
+  is_irrelevant: boolean
+  /** СМ пометил замер неактуальным; пока решения менеджера нет — замер в работе */
+  irrelevant_requested_at: string | null
+  irrelevant_reason: string
+  irrelevant_requested_by_name: string
+  irrelevant_confirmed_at: string | null
   created_at: string
   updated_at: string
 
@@ -126,6 +133,8 @@ export interface MeasurementListItem {
   /** Когда СМ дополнял замер уже после «Замер выполнен» (null — не дополнял) */
   updated_after_done_at?: string | null
   processed_at: string | null
+  is_irrelevant?: boolean
+  irrelevant_requested_at?: string | null
   repeat_count: number
   service_manager: number | null
   service_manager_name: string | null
@@ -135,4 +144,5 @@ export interface MeasurementListItem {
   created_at: string
 }
 
-export type MeasurementFolder = 'unscheduled' | 'scheduled' | 'today' | 'drafts' | 'done' | 'mine' | ''
+export type MeasurementFolder =
+  | 'unscheduled' | 'scheduled' | 'today' | 'drafts' | 'done' | 'irrelevant' | 'mine' | ''

@@ -331,6 +331,27 @@ export const measurementsAPI = {
     return requestWithQueue('POST', `/measurements/${id}/request_repeat/`, { reason: reason || '' })
   },
 
+  // «Неактуален»: СМ помечает невыполненный замер, решение принимает менеджер.
+  // До его решения замер остаётся в заявках — поэтому здесь очередь синхронизации:
+  // СМ жмёт кнопку на объекте, где сети может не быть.
+  markIrrelevant: async (id: number, reason?: string): Promise<Measurement> => {
+    return requestWithQueue('POST', `/measurements/${id}/mark_irrelevant/`, { reason: reason || '' })
+  },
+
+  // Менеджер подтверждает: замер уходит в «Неактуальные» и из заявок пропадает
+  confirmIrrelevant: async (id: number): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/confirm_irrelevant/`)
+    return response.data
+  },
+
+  // Менеджер оставляет замер актуальным: пометка снимается, замер в работе
+  keepRelevant: async (id: number, comment?: string): Promise<Measurement> => {
+    const response = await apiClient.post(`/measurements/${id}/keep_relevant/`, {
+      comment: comment || '',
+    })
+    return response.data
+  },
+
   // Phase 5: SMS клиенту о недозвоне («Отправить» / «Повторно отправить»)
   notifyClientCallFailed: async (id: number): Promise<{ detail: string; phone: string }> => {
     const response = await apiClient.post(`/measurements/${id}/notify_client_call_failed/`)

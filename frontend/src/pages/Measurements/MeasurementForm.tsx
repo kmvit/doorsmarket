@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import {
@@ -51,6 +51,12 @@ const MeasurementForm = () => {
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [draftNotice, setDraftNotice] = useState<string | null>(null)
   const [requestingRepeat, setRequestingRepeat] = useState(false)
+  const [markingIrrelevant, setMarkingIrrelevant] = useState(false)
+  const [irrelevantBusy, setIrrelevantBusy] = useState(false)
+  const [showIrrelevantModal, setShowIrrelevantModal] = useState(false)
+  // Окно показываем один раз за загрузку карточки: менеджер мог его закрыть,
+  // чтобы сперва посмотреть замер, и повторно оно лезть не должно.
+  const irrelevantModalShown = useRef(false)
 
   // Проёмы редактируются и после «Замер выполнен»: СМ часто дозаполняет данные
   // или доснимает пропущенный проём уже после закрытия замера. Граница —
@@ -71,6 +77,18 @@ const MeasurementForm = () => {
   const canRequestRepeat = Boolean(
     m?.is_done && ['manager', 'admin', 'leader'].includes(user?.role || ''),
   )
+  // «Неактуален»: помечает СМ, решает менеджер. Пока решения нет, замер
+  // остаётся в работе — поэтому пометка это заявка, а не факт.
+  const irrelevantPending = Boolean(m?.irrelevant_requested_at && !m?.is_irrelevant)
+  // Пока решения менеджера нет, кнопку прячем: повторное нажатие только
+  // ещё раз дёрнет менеджера, состояние объясняет бейдж.
+  const canMarkIrrelevant = Boolean(
+    !m?.is_done && !m?.is_irrelevant && !irrelevantPending &&
+    ['service_manager', 'admin', 'leader'].includes(user?.role || ''),
+  )
+  const canDecideIrrelevant = Boolean(
+    irrelevantPending && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+  )
 
   const load = async () => {
     setIsLoading(true)
@@ -85,6 +103,14 @@ const MeasurementForm = () => {
   }
 
   useEffect(() => { load() }, [id])
+
+  // Менеджеру сразу показываем окно: СМ пометил замер неактуальным, нужно решение.
+  useEffect(() => {
+    if (canDecideIrrelevant && !irrelevantModalShown.current) {
+      irrelevantModalShown.current = true
+      setShowIrrelevantModal(true)
+    }
+  }, [canDecideIrrelevant])
 
   const updateOpeningLocal = (openingId: number, field: keyof MeasurementOpening, value: any) => {
     if (!m) return
@@ -326,6 +352,42 @@ const MeasurementForm = () => {
 
   // Повторный замер: замер снова становится невыполненным и попадает СМ
   // в «Назначить замер»; проёмы сохраняются, СМ их корректирует
+  const handleMarkIrrelevant = async () => {
+    if (!m || markingIrrelevant) return
+    if (!confirm('Пометить замер как неактуальный? Решение примет менеджер — до этого замер останется в заявках.')) return
+    const reason = prompt('Причина (её увидит менеджер):', '') ?? ''
+    setMarkingIrrelevant(true)
+    setActionError(null)
+    try {
+      setM(await measurementsAPI.markIrrelevant(m.id, reason.trim()))
+    } catch (err: any) {
+      if (isQueuedError(err)) {
+        setOfflineNotice('Нет сети: пометка сохранена и уйдёт менеджеру при появлении интернета.')
+        return
+      }
+      setActionError(err.response?.data?.detail || 'Не удалось пометить замер неактуальным')
+    } finally {
+      setMarkingIrrelevant(false)
+    }
+  }
+
+  const handleIrrelevantDecision = async (confirmed: boolean) => {
+    if (!m || irrelevantBusy) return
+    setIrrelevantBusy(true)
+    setActionError(null)
+    try {
+      const updated = confirmed
+        ? await measurementsAPI.confirmIrrelevant(m.id)
+        : await measurementsAPI.keepRelevant(m.id)
+      setM(updated)
+      setShowIrrelevantModal(false)
+    } catch (err: any) {
+      setActionError(err.response?.data?.detail || 'Не удалось сохранить решение')
+    } finally {
+      setIrrelevantBusy(false)
+    }
+  }
+
   const handleRequestRepeat = async () => {
     if (!m || requestingRepeat) return
     if (!confirm('Назначить повторный замер? Замер снова станет невыполненным и попадёт сервис-менеджеру в «Назначить замер».')) return
@@ -544,6 +606,14 @@ const MeasurementForm = () => {
             {m.is_processed && (
               <span className="px-3 py-1 rounded-full bg-emerald-200 text-emerald-900 font-medium">✓ Обработан</span>
             )}
+            {m.is_irrelevant && (
+              <span className="px-3 py-1 rounded-full bg-gray-300 text-gray-800 font-medium">Неактуален</span>
+            )}
+            {irrelevantPending && (
+              <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 font-medium">
+                Помечен неактуальным — ждёт решения менеджера
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -577,6 +647,24 @@ const MeasurementForm = () => {
               className="px-4 py-1.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl"
             >
               ✓ Замер обработан
+            </button>
+          )}
+          {canMarkIrrelevant && (
+            <button
+              onClick={handleMarkIrrelevant}
+              disabled={markingIrrelevant}
+              className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 hover:bg-gray-200 rounded-xl disabled:opacity-60"
+              title="Замер не нужен: клиент передумал, объект не готов. Решение примет менеджер"
+            >
+              {markingIrrelevant ? 'Помечаем…' : 'Неактуален'}
+            </button>
+          )}
+          {canDecideIrrelevant && (
+            <button
+              onClick={() => setShowIrrelevantModal(true)}
+              className="px-4 py-1.5 text-sm font-medium text-orange-800 bg-orange-100 border border-orange-300 hover:bg-orange-200 rounded-xl"
+            >
+              Решить по неактуальности
             </button>
           )}
           {canRequestRepeat && (
@@ -1343,6 +1431,60 @@ const MeasurementForm = () => {
           fileName={viewerFile.name}
           onClose={() => setViewerFile(null)}
         />
+      )}
+      {/* Окно менеджеру: СМ пометил замер неактуальным, нужно решение.
+          Закрыть можно, не решая, — тогда замер просто остаётся в заявках. */}
+      {showIrrelevantModal && m.irrelevant_requested_at && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Сервис-менеджер пометил замер как неактуальный
+            </h3>
+            <div className="mt-3 text-sm text-gray-700 space-y-1">
+              <p>
+                {m.irrelevant_requested_by_name || 'Сервис-менеджер'} ·{' '}
+                {new Date(m.irrelevant_requested_at).toLocaleString('ru-RU')}
+              </p>
+              {m.irrelevant_reason ? (
+                <p className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+                  {m.irrelevant_reason}
+                </p>
+              ) : (
+                <p className="text-gray-500">Причина не указана.</p>
+              )}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Подтвердите — замер уйдёт в «Неактуальные» и пропадёт из заявок. Оставите
+              актуальным — пометка снимется, замер останется в работе у сервис-менеджера.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIrrelevantModal(false)}
+                disabled={irrelevantBusy}
+                className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl disabled:opacity-60"
+              >
+                Решу позже
+              </button>
+              <button
+                type="button"
+                onClick={() => handleIrrelevantDecision(false)}
+                disabled={irrelevantBusy}
+                className="px-4 py-2 text-sm font-medium text-green-800 bg-green-100 border border-green-300 hover:bg-green-200 rounded-xl disabled:opacity-60"
+              >
+                Оставить актуальным
+              </button>
+              <button
+                type="button"
+                onClick={() => handleIrrelevantDecision(true)}
+                disabled={irrelevantBusy}
+                className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 rounded-xl disabled:opacity-60"
+              >
+                {irrelevantBusy ? 'Сохраняем…' : 'Подтвердить неактуальность'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {pdfGenerating && (
         <LoadingOverlay message="Формируем PDF-бланк замера…" hint="Это может занять несколько секунд, не закрывайте страницу." />

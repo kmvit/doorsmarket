@@ -1116,11 +1116,20 @@ MEASUREMENT_FOLDERS = [
     ('today', 'Сегодня замер'),
     ('drafts', 'Черновики'),
     ('done', 'Замер выполнен'),
+    ('irrelevant', 'Неактуальные'),
 ]
 
 
 def apply_measurement_folder(qs, folder, user):
-    """Фильтр папки замеров. Неизвестная папка → без изменений."""
+    """
+    Фильтр папки замеров. Неизвестная папка → без изменений.
+
+    Подтверждённые неактуальные замеры видны только в своей папке: в рабочих
+    папках им делать нечего, но и удалять их нельзя — по ним остаётся история.
+    """
+    if folder == 'irrelevant':
+        return qs.filter(is_irrelevant=True)
+    qs = qs.exclude(is_irrelevant=True)
     if folder == 'unscheduled':
         return qs.filter(measurement_date__isnull=True, is_done=False)
     if folder == 'scheduled':
@@ -1187,10 +1196,15 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         только в «Заказах»). Такие строки помечены is_request_only и ведут в заказ.
         """
         qs = self.filter_queryset(self.get_queryset())
+        folder = request.query_params.get('folder')
+        # Фильтр папки уже отсёк неактуальные; на вкладке «Все» (папки нет)
+        # убираем их здесь. В get_queryset этого делать нельзя — тогда
+        # у карточки самого неактуального замера отвалится открытие.
+        if folder != 'irrelevant':
+            qs = qs.exclude(is_irrelevant=True)
         ctx = self.get_serializer_context()
         rows = MeasurementListSerializer(qs, many=True, context=ctx).data
 
-        folder = request.query_params.get('folder')
         if folder in (None, '', 'unscheduled'):
             pending = self._pending_requests(request)
             pending_rows = PendingMeasurementRequestListSerializer(pending, many=True, context=ctx).data
@@ -1365,6 +1379,11 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
         m = self.get_object()
+        if m.is_irrelevant:
+            return Response(
+                {'detail': 'Замер признан неактуальным — выполнять его нечего.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # План открывания не обязателен: бывают замеры на одну дверь, где схема
         # не нужна. Обязательными остаются только условия объекта.
         # Валидация: условия объекта обязательны (лифт, лестница, пронос, этаж)
@@ -1434,6 +1453,141 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         order.touch_activity(ActivityKind.MEASUREMENT_PROCESSED, save=False)
         order.save()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    # ---- «Неактуален»: СМ помечает, менеджер решает ----
+    @action(detail=True, methods=['post'], url_path='mark_irrelevant')
+    def mark_irrelevant(self, request, pk=None):
+        """
+        СМ помечает невыполненный замер неактуальным. Замер остаётся в работе:
+        решение принимает менеджер, поэтому из заявок он пока не пропадает.
+        """
+        if request.user.role not in ('service_manager', 'admin', 'leader'):
+            return Response(
+                {'detail': 'Пометить замер неактуальным может только сервис-менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        m = self.get_object()
+        if m.is_done:
+            return Response(
+                {'detail': 'Замер уже выполнен — пометить его неактуальным нельзя.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if m.is_irrelevant:
+            return Response(
+                {'detail': 'Замер уже признан неактуальным.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = (request.data.get('reason') or '').strip()[:500]
+        m.irrelevant_requested_at = timezone.now()
+        m.irrelevant_requested_by = request.user
+        m.irrelevant_reason = reason
+        m.save(update_fields=[
+            'irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason',
+            'updated_at',
+        ])
+
+        order = m.request.order
+        description = 'СМ пометил замер как неактуальный'
+        if reason:
+            description = f'{description}. Причина: {reason}'
+        order.log_activity(ActivityKind.MEASUREMENT_SCHEDULED, actor=request.user, description=description)
+        self._push_about_irrelevant(
+            m, order, recipient=order.manager, actor=request.user,
+            title=f'Замер по заказу #{order.id} помечен неактуальным',
+            body=reason or 'Сервис-менеджер считает замер неактуальным — подтвердите или оставьте в работе',
+        )
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='confirm_irrelevant')
+    def confirm_irrelevant(self, request, pk=None):
+        """Менеджер подтверждает: замер уходит в «Неактуальные» и из заявок пропадает."""
+        if request.user.role not in ('manager', 'admin', 'leader'):
+            return Response(
+                {'detail': 'Решение по неактуальности принимает менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        m = self.get_object()
+        if not m.irrelevant_requested_at:
+            return Response(
+                {'detail': 'Замер не помечен неактуальным — подтверждать нечего.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        m.is_irrelevant = True
+        m.irrelevant_confirmed_at = timezone.now()
+        m.irrelevant_confirmed_by = request.user
+        m.save(update_fields=[
+            'is_irrelevant', 'irrelevant_confirmed_at', 'irrelevant_confirmed_by', 'updated_at',
+        ])
+
+        order = m.request.order
+        order.log_activity(
+            ActivityKind.MEASUREMENT_SCHEDULED, actor=request.user,
+            description='Менеджер подтвердил неактуальность замера',
+        )
+        self._push_about_irrelevant(
+            m, order, recipient=m.service_manager, actor=request.user,
+            title=f'Замер по заказу #{order.id} признан неактуальным',
+            body='Менеджер подтвердил неактуальность — замер снят с работы',
+        )
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='keep_relevant')
+    def keep_relevant(self, request, pk=None):
+        """Менеджер оставляет замер актуальным: пометка снимается, замер в работе."""
+        if request.user.role not in ('manager', 'admin', 'leader'):
+            return Response(
+                {'detail': 'Решение по неактуальности принимает менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        m = self.get_object()
+        if not m.irrelevant_requested_at:
+            return Response(
+                {'detail': 'Замер не помечен неактуальным.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        comment = (request.data.get('comment') or '').strip()[:500]
+        service_manager = m.service_manager
+        m.irrelevant_requested_at = None
+        m.irrelevant_requested_by = None
+        m.irrelevant_reason = ''
+        m.is_irrelevant = False
+        m.irrelevant_confirmed_at = None
+        m.irrelevant_confirmed_by = None
+        m.save(update_fields=[
+            'irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason',
+            'is_irrelevant', 'irrelevant_confirmed_at', 'irrelevant_confirmed_by', 'updated_at',
+        ])
+
+        order = m.request.order
+        description = 'Менеджер оставил замер актуальным'
+        if comment:
+            description = f'{description}. Комментарий: {comment}'
+        order.log_activity(ActivityKind.MEASUREMENT_SCHEDULED, actor=request.user, description=description)
+        self._push_about_irrelevant(
+            m, order, recipient=service_manager, actor=request.user,
+            title=f'Замер по заказу #{order.id} остаётся в работе',
+            body=comment or 'Менеджер не подтвердил неактуальность — замер нужно выполнить',
+        )
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    @staticmethod
+    def _push_about_irrelevant(measurement, order, *, recipient, actor, title, body):
+        """Push второй стороне. Себе не шлём, ошибку отправки не роняем в ответ."""
+        if not recipient or recipient.pk == actor.pk:
+            return
+        try:
+            from users.push_utils import send_push_notification
+            send_push_notification(
+                user=recipient, title=title, body=body,
+                url=f'/measurements/{measurement.id}',
+                data={'measurementId': measurement.id, 'orderId': order.id},
+            )
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).error(
+                'Ошибка push о неактуальности замера #%s: %s', measurement.id, exc,
+            )
 
     # ---- Повторный замер (менеджер возвращает выполненный замер СМ) ----
     @action(detail=True, methods=['post'], url_path='request_repeat')

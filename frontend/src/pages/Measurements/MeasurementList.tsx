@@ -13,10 +13,13 @@ const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: 'today', label: 'Сегодня замер', color: 'bg-amber-100 text-amber-700' },
   { key: 'drafts', label: 'Черновики', color: 'bg-yellow-100 text-yellow-700' },
   { key: 'done', label: 'Выполненные', color: 'bg-green-100 text-green-700' },
+  { key: 'irrelevant', label: 'Неактуальные', color: 'bg-gray-200 text-gray-700' },
   { key: 'mine', label: 'Мои', color: 'bg-purple-100 text-purple-700' },
 ]
 
-const VALID_FOLDERS: MeasurementFolder[] = ['', 'unscheduled', 'scheduled', 'today', 'drafts', 'done', 'mine']
+const VALID_FOLDERS: MeasurementFolder[] = [
+  '', 'unscheduled', 'scheduled', 'today', 'drafts', 'done', 'irrelevant', 'mine',
+]
 
 const MeasurementList = () => {
   const navigate = useNavigate()
@@ -203,6 +206,16 @@ const MeasurementList = () => {
                         {m.is_draft && !m.is_done && (
                           <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
                             📝 Черновик
+                          </span>
+                        )}
+                        {m.irrelevant_requested_at && !m.is_irrelevant && (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+                            Неактуален? ждёт решения
+                          </span>
+                        )}
+                        {m.is_irrelevant && (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-700">
+                            Неактуален
                           </span>
                         )}
                       </div>

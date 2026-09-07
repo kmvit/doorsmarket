@@ -593,6 +593,32 @@ class Measurement(models.Model):
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата обработки')
+    # «Неактуален»: СМ видит на объекте, что замер не нужен (клиент передумал,
+    # объект не готов), и помечает замер. Само решение за менеджером — до его
+    # подтверждения замер остаётся в работе и виден в заявках, иначе заявка
+    # тихо исчезала бы у менеджера из-под носа.
+    irrelevant_requested_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Помечен неактуальным',
+    )
+    irrelevant_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='irrelevant_measurement_requests', verbose_name='Кто пометил',
+    )
+    irrelevant_reason = models.CharField(
+        max_length=500, blank=True, verbose_name='Причина неактуальности',
+    )
+    is_irrelevant = models.BooleanField(
+        default=False, verbose_name='Неактуален',
+        help_text='Менеджер подтвердил неактуальность — замер уходит из работы.',
+    )
+    irrelevant_confirmed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Неактуальность подтверждена',
+    )
+    irrelevant_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='confirmed_irrelevant_measurements', verbose_name='Кто подтвердил',
+    )
+
     # СМ дополняет замер после нажатия «Замер выполнен» — например, доснимает
     # проём, который пропустил. Отмечаем это, чтобы менеджер видел: данные
     # изменились уже после того, как замер был закрыт.

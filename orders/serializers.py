@@ -614,6 +614,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
     floor_number = serializers.CharField(source='request.order.floor_number', read_only=True, allow_blank=True)
     floor_readiness = serializers.CharField(source='request.order.floor_readiness', read_only=True, allow_blank=True)
 
+    irrelevant_requested_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Measurement
         fields = [
@@ -622,6 +624,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'client_access_token', 'short_code', 'is_draft', 'draft_saved_at',
             'is_done', 'done_at', 'is_processed', 'processed_at', 'updated_after_done_at',
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
+            'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
+            'irrelevant_requested_by_name', 'irrelevant_confirmed_at',
             'created_at', 'updated_at',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
@@ -637,6 +641,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'is_processed', 'processed_at', 'client_access_token', 'short_code',
             'updated_after_done_at',
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
+            'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
+            'irrelevant_confirmed_at',
             'service_manager',
         ]
         extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}
@@ -703,6 +709,13 @@ class MeasurementSerializer(serializers.ModelSerializer):
         return OrderAttachmentSerializer(atts, many=True, context=self.context).data
 
 
+    def get_irrelevant_requested_by_name(self, obj):
+        """Кто пометил замер неактуальным — менеджеру важно видеть автора."""
+        user = obj.irrelevant_requested_by
+        if not user:
+            return ''
+        return f'{user.first_name} {user.last_name}'.strip() or user.username
+
 class MeasurementListSerializer(serializers.ModelSerializer):
     """Краткий сериализатор для списка замеров."""
     order_id = serializers.IntegerField(source='request.order_id', read_only=True)
@@ -726,6 +739,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
             'desired_date', 'payer_display',
             'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
             'updated_after_done_at',
+            'is_irrelevant', 'irrelevant_requested_at',
             'repeat_count',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',
