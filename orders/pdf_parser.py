@@ -109,6 +109,46 @@ END_MARKER = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# ---------- итоговый блок ----------
+
+# Суммы в подвале КП: «Стоимость товара:636900.00», «Итого968650.00»,
+# «% 142080», «Общая стоимость826570.00». Число может быть приклеено к
+# подписи, а слева от подписи стоит мусор из соседней колонки
+# («Представитель Горизонт Итого968650.00») — поэтому якорь только на подпись,
+# а число читаем сразу справа от неё, не переходя на другую строку.
+TOTALS_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ('goods_amount', re.compile(r'Стоимость\s+товара\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    ('glass_amount', re.compile(r'Стоимость\s+стекла\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    ('products_amount', re.compile(r'Стоимость\s+изделий\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    ('services_amount', re.compile(r'Стоимость\s+услуг\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    # «Общая стоимость» проверяем раньше «Итого»: обе подписи в одном блоке,
+    # и обе про итог, но это разные суммы — до скидки и после.
+    ('total_with_discount', re.compile(r'Общая\s+стоимость\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    ('total_amount', re.compile(r'Итого\s*:?[ \t]*(\d+(?:[.,]\d+)?)', re.IGNORECASE)),
+    ('discount_amount', re.compile(r'%[ \t]*(\d+(?:[.,]\d+)?)')),
+]
+
+TOTALS_KEYS = [key for key, _ in TOTALS_PATTERNS]
+
+
+def _extract_totals(text: str) -> Dict[str, Optional[Decimal]]:
+    """
+    Суммы из подвала КП. Ключ отсутствует в тексте → None: в некоторых КП
+    итоги ещё не посчитаны («стоимость товара и расчет услуг будут
+    сформированы»), и подставлять туда нули нельзя.
+    """
+    totals: Dict[str, Optional[Decimal]] = {key: None for key in TOTALS_KEYS}
+    # Итоговый блок всегда в конце документа; ограничиваем зону поиска, чтобы
+    # «Итого» из середины таблицы не перебило настоящий итог.
+    start = text.rfind('Стоимость товара')
+    zone = text[start:] if start >= 0 else text
+    for key, pattern in TOTALS_PATTERNS:
+        match = pattern.search(zone)
+        if match:
+            totals[key] = _to_decimal(match.group(1))
+    return totals
+
+
 # ---------- регулярки на размеры / открывания ----------
 
 SIZE_RE = re.compile(r'(\d+)(?:полотно)?\s*\*\s*(\d+)')
@@ -567,6 +607,7 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
         'manager_name': '',
         'items': [],
         'addons': [],
+        'totals': {key: None for key in TOTALS_KEYS},
     }
 
     try:
@@ -584,6 +625,7 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
             result['address'] = _extract_address(normalized)
             result['manager_name'] = _extract_manager_name(normalized)
             result['kp_date'] = _extract_kp_date(full_text)
+            result['totals'] = _extract_totals(full_text)
 
             # Секции
             sections = _split_into_sections(full_text)

@@ -7,7 +7,9 @@ from .models import (
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog, OVERDUE_STATUSES,
+    OfferTextPreset, PrettyOffer, PrettyOfferAttachment, PrettyOfferItem,
 )
+from catalog.serializers import DoorImageSerializer
 
 User = get_user_model()
 
@@ -232,6 +234,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number',
             'floor_readiness', 'comment',
+            'goods_amount', 'glass_amount', 'products_amount', 'services_amount',
+            'total_amount', 'discount_amount', 'total_with_discount',
             'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
             'attachments',
             'production_start_date', 'production_deadline', 'is_overdue',
@@ -816,3 +820,114 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
         if not m:
             return None
         return f'{m.first_name} {m.last_name}'.strip() or m.username
+
+
+# ==================== Красивое КП ====================
+
+
+class OfferTextPresetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OfferTextPreset
+        fields = ['id', 'name', 'is_default', 'header_text', 'included_text', 'features_text']
+
+
+class PrettyOfferAttachmentSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrettyOfferAttachment
+        fields = ['id', 'offer', 'offer_item', 'image', 'image_url', 'caption', 'position']
+        extra_kwargs = {'image': {'write_only': True}}
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(obj.image.url) if request else obj.image.url
+
+
+class PrettyOfferItemSerializer(serializers.ModelSerializer):
+    """Проём красивого КП: что распознали и что менеджер поправил."""
+    opening_number = serializers.IntegerField(source='order_item.opening_number', read_only=True)
+    room_name = serializers.CharField(source='order_item.room_name', read_only=True)
+    model_name = serializers.CharField(source='order_item.model_name', read_only=True)
+    door_height = serializers.IntegerField(source='order_item.door_height', read_only=True)
+    door_width = serializers.IntegerField(source='order_item.door_width', read_only=True)
+    opening_type_display = serializers.CharField(
+        source='order_item.get_opening_type_display', read_only=True,
+    )
+    amount = serializers.DecimalField(
+        source='order_item.amount', max_digits=12, decimal_places=2, read_only=True,
+    )
+    front_image_detail = DoorImageSerializer(source='front_image', read_only=True)
+    back_image_detail = DoorImageSerializer(source='back_image', read_only=True)
+    front_image_url = serializers.SerializerMethodField()
+    back_image_url = serializers.SerializerMethodField()
+    needs_clarification = serializers.BooleanField(read_only=True)
+    attachments = PrettyOfferAttachmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PrettyOfferItem
+        fields = [
+            'id', 'offer', 'order_item', 'opening_number', 'room_name', 'model_name',
+            'door_height', 'door_width', 'opening_type_display', 'amount',
+            'description', 'preset', 'two_sided',
+            'front_image', 'back_image', 'front_image_detail', 'back_image_detail',
+            'front_custom_image', 'back_custom_image',
+            'front_image_url', 'back_image_url',
+            'needs_clarification', 'attachments', 'position',
+        ]
+        read_only_fields = ['offer', 'order_item']
+        extra_kwargs = {
+            'front_custom_image': {'write_only': True},
+            'back_custom_image': {'write_only': True},
+        }
+
+    def _absolute(self, url):
+        if not url:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if request else url
+
+    def get_front_image_url(self, obj):
+        return self._absolute(obj.front_image_url)
+
+    def get_back_image_url(self, obj):
+        return self._absolute(obj.back_image_url)
+
+
+class PrettyOfferSerializer(serializers.ModelSerializer):
+    """
+    Красивое КП целиком. Суммы отдаём двумя наборами: `totals` — то, что
+    попадёт в PDF (правка менеджера либо посчитанное из заказа), а поля
+    `*_override` — собственно правки, чтобы фронт видел, где ручное значение.
+    """
+    items = PrettyOfferItemSerializer(many=True, read_only=True)
+    attachments = serializers.SerializerMethodField()
+    totals = serializers.SerializerMethodField()
+    needs_clarification_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrettyOffer
+        fields = [
+            'id', 'order', 'preset', 'comment',
+            'goods_amount_override', 'services_amount_override',
+            'total_amount_override', 'total_with_discount_override',
+            'totals', 'items', 'attachments', 'needs_clarification_count',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['order', 'created_at', 'updated_at']
+
+    def get_attachments(self, obj):
+        """Только общие картинки КП — по проёмам они лежат внутри проёмов."""
+        qs = obj.attachments.filter(offer_item__isnull=True)
+        return PrettyOfferAttachmentSerializer(qs, many=True, context=self.context).data
+
+    def get_totals(self, obj):
+        return {
+            key: (str(value) if value is not None else None)
+            for key, value in obj.resolved_totals().items()
+        }
+
+    def get_needs_clarification_count(self, obj):
+        return sum(1 for item in obj.items.all() if item.needs_clarification)

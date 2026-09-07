@@ -24,6 +24,7 @@ import OrderCreate from './pages/Orders/OrderCreate'
 import OrderEdit from './pages/Orders/OrderEdit'
 import OrderReplaceKp from './pages/Orders/OrderReplaceKp'
 import OrderAppendKp from './pages/Orders/OrderAppendKp'
+import PrettyOfferPage from './pages/Orders/PrettyOfferPage'
 import Workshop from './pages/Orders/Workshop'
 import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
@@ -267,6 +268,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <OrderAppendKp />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:id/pretty-offer"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PrettyOfferPage />
                     </Layout>
                   </ProtectedRoute>
                 }

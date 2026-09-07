@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import mixins, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
@@ -8,7 +8,9 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from marketingdoors.search import NumberAwareSearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import timedelta
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q, Prefetch
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
 
@@ -17,6 +19,7 @@ from .models import (
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
     MeasurementRequestFile,
+    OfferTextPreset, PrettyOffer, PrettyOfferAttachment, PrettyOfferItem,
 )
 from . import sms_templates
 from .serializers import (
@@ -36,6 +39,10 @@ from .serializers import (
     MeasurementOpeningWriteSerializer,
     MeasurementAttachmentSerializer,
     OrderActivityLogSerializer,
+    OfferTextPresetSerializer,
+    PrettyOfferSerializer,
+    PrettyOfferItemSerializer,
+    PrettyOfferAttachmentSerializer,
 )
 from .pdf_parser import parse_kp_pdf
 from .recommendations import (
@@ -73,6 +80,21 @@ def get_orders_queryset_for_user(user):
             return qs.filter(salon=user.salon)
         return qs.filter(manager=user)
     return qs.none()
+
+
+def _totals_kwargs(totals):
+    """
+    Итоговые суммы из распарсенного КП → поля заказа.
+
+    Ключа нет или он пустой — поле не трогаем: в части КП итоги ещё не
+    посчитаны, и записывать туда ноль нельзя, это разные вещи.
+    """
+    from .pdf_parser import TOTALS_KEYS
+    return {
+        key: totals[key]
+        for key in TOTALS_KEYS
+        if totals.get(key) not in (None, '')
+    }
 
 
 def send_client_sms(order, phone, message, *, actor=None, meta=None):
@@ -281,6 +303,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             for key in ('price', 'amount'):
                 if item.get(key) is not None:
                     item[key] = str(item[key])
+        data['totals'] = {
+            key: (str(value) if value is not None else None)
+            for key, value in (data.get('totals') or {}).items()
+        }
         return Response(data)
 
     @action(detail=False, methods=['post'])
@@ -313,6 +339,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         items = data.pop('items', []) or []
         addons = data.pop('addons', []) or []
+        totals = data.pop('totals', None) or {}
 
         order_kwargs = {
             'salon_id': salon_id,
@@ -326,6 +353,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'status': OrderStatus.ACTIVE,
             'last_activity_at': timezone.now(),
             'last_activity_kind': ActivityKind.CREATED,
+            **_totals_kwargs(totals),
         }
         order = Order.objects.create(**order_kwargs)
 
@@ -388,8 +416,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         items = data.pop('items', []) or []
         addons = data.pop('addons', []) or []
+        totals = data.pop('totals', None) or {}
 
         with transaction.atomic():
+            for field, value in _totals_kwargs(totals).items():
+                setattr(order, field, value)
             order.client_name = (data.get('client_name') or '').strip()[:255] or order.client_name
             order.contact_phone = (data.get('contact_phone') or '')[:50] or order.contact_phone
             order.address = (data.get('address') or '')[:500] or order.address
@@ -775,6 +806,88 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         logs = order.activity_logs.select_related('actor')[:200]
         return Response(OrderActivityLogSerializer(logs, many=True).data)
+
+    # ---------- красивое КП ----------
+
+    @action(detail=True, methods=['get', 'post'], url_path='pretty-offer')
+    def pretty_offer(self, request, pk=None):
+        """
+        GET — красивое КП по заказу, POST — «Сформировать красивое КП» (п.3 ТЗ).
+
+        POST идемпотентен: повторное нажатие подтягивает новые проёмы заказа и
+        пробует подобрать картинки тем, у кого их нет, ничего не затирая.
+        """
+        from .pretty_offer import build_or_refresh
+
+        order = self.get_object()
+        if request.method == 'POST':
+            offer = build_or_refresh(order, actor=request.user)
+        else:
+            offer = getattr(order, 'pretty_offer', None)
+            if offer is None:
+                return Response(
+                    {'detail': 'Красивое КП по этому заказу ещё не сформировано.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        serializer = PrettyOfferSerializer(offer, context={'request': request})
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if request.method == 'POST' else status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['get'], url_path='pretty-offer/clarifications')
+    def pretty_offer_clarifications(self, request, pk=None):
+        """
+        Проёмы, по которым не удалось однозначно определить модель и цвет,
+        вместе с тем, что распознал матчер, — данные окна уточнения (п.5 ТЗ).
+        """
+        from .pretty_offer import clarification_items
+
+        offer = self._get_pretty_offer()
+        if offer is None:
+            return Response(
+                {'detail': 'Красивое КП по этому заказу ещё не сформировано.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(clarification_items(offer))
+
+    @action(detail=True, methods=['get'], url_path='pretty-offer/source-images')
+    def pretty_offer_source_images(self, request, pk=None):
+        """Картинки заказа и замера, которые можно вставить в КП (п.11 ТЗ)."""
+        from .pretty_offer import available_source_images
+
+        order = self.get_object()
+        return Response(available_source_images(order))
+
+    @action(detail=True, methods=['get'], url_path='pretty-offer/pdf')
+    def pretty_offer_pdf(self, request, pk=None):
+        """Готовый PDF красивого КП."""
+        from django.http import HttpResponse
+        from .pdf_pretty_offer import render_pretty_offer
+
+        offer = self._get_pretty_offer()
+        if offer is None:
+            return Response(
+                {'detail': 'Красивое КП по этому заказу ещё не сформировано.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            pdf = render_pretty_offer(offer)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Ошибка генерации красивого КП по заказу #%s: %s', offer.order_id, exc
+            )
+            return Response(
+                {'detail': 'Не удалось сгенерировать PDF.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="kp_{offer.order_id}.pdf"'
+        return response
+
+    def _get_pretty_offer(self):
+        return getattr(self.get_object(), 'pretty_offer', None)
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):
@@ -1766,3 +1879,101 @@ class OrderAttachmentViewSet(viewsets.ModelViewSet):
         order = instance.order or (instance.order_item.order if instance.order_item_id else None)
         if order:
             order.touch_activity(ActivityKind.FILE_ATTACHED)
+
+
+# ==================== Красивое КП: правки менеджера ====================
+
+
+class PrettyOfferViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.UpdateModelMixin):
+    """Правка КП в целом: комментарий, текстовый блок, суммы (п.9, п.10 ТЗ)."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = PrettyOfferSerializer
+    # POST нужен вложенному действию add-image, самого создания КП здесь нет:
+    # его делает кнопка на заказе (`/orders/{id}/pretty-offer/`).
+    http_method_names = ['get', 'post', 'patch', 'put', 'head', 'options']
+
+    def get_queryset(self):
+        accessible = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
+        return PrettyOffer.objects.filter(order_id__in=list(accessible)).select_related('order')
+
+    @action(detail=True, methods=['post'], url_path='add-image',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def add_image(self, request, pk=None):
+        """
+        Добавляет картинку в КП (п.11 ТЗ) — либо своим файлом (`image`), либо
+        копией уже вложенного в заказ или замер (`kind` + `source_id`).
+        `offer_item` пустой — картинка идёт ко всему КП, иначе к проёму.
+        """
+        from .pretty_offer import copy_source_image
+
+        offer = self.get_object()
+        offer_item = None
+        offer_item_id = request.data.get('offer_item')
+        if offer_item_id:
+            offer_item = get_object_or_404(offer.items, pk=offer_item_id)
+
+        caption = (request.data.get('caption') or '').strip()
+
+        if request.data.get('kind'):
+            try:
+                attachment = copy_source_image(
+                    offer,
+                    request.data['kind'],
+                    request.data.get('source_id'),
+                    offer_item=offer_item,
+                    caption=caption,
+                )
+            except (ValueError, ObjectDoesNotExist) as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        elif request.FILES.get('image'):
+            attachment = PrettyOfferAttachment.objects.create(
+                offer=offer, offer_item=offer_item,
+                image=request.FILES['image'], caption=caption,
+            )
+        else:
+            return Response(
+                {'detail': 'Передайте файл в поле image либо источник (kind + source_id).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            PrettyOfferAttachmentSerializer(attachment, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PrettyOfferItemViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.UpdateModelMixin):
+    """
+    Правка проёма в красивом КП: описание (п.9), выбор модели/цвета/варианта
+    из окна уточнения (п.5) и своя картинка, если в каталоге нужной нет (п.7).
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PrettyOfferItemSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    http_method_names = ['get', 'patch', 'put', 'head', 'options']
+
+    def get_queryset(self):
+        accessible = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
+        return PrettyOfferItem.objects.filter(
+            offer__order_id__in=list(accessible)
+        ).select_related('offer', 'order_item', 'front_image', 'back_image')
+
+
+class PrettyOfferAttachmentViewSet(viewsets.GenericViewSet, mixins.DestroyModelMixin,
+                                   mixins.UpdateModelMixin):
+    """Удаление и правка подписи у картинок красивого КП."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = PrettyOfferAttachmentSerializer
+    http_method_names = ['patch', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        accessible = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
+        return PrettyOfferAttachment.objects.filter(offer__order_id__in=list(accessible))
+
+
+class OfferTextPresetViewSet(viewsets.ReadOnlyModelViewSet):
+    """Готовые текстовые блоки слайда — их менеджер выбирает, а правит в админке."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = OfferTextPresetSerializer
+    queryset = OfferTextPreset.objects.all()
+    pagination_class = None

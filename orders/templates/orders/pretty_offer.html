@@ -1,0 +1,267 @@
+{% load humanize_offer %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Слайд 720×540 pt = 254×190.5 мм — как в исходном шаблоне Академии.
+     Размер зашит в CSS намеренно: через переменную шаблона Django выводит
+     дробное число по русской локали («190,5мм»), и правило ломается. */
+  @page { size: 254mm 190.5mm; margin: 0; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "PT Sans", "DejaVu Sans", "Arial", sans-serif;
+    color: #1a1a1a;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+
+  .slide {
+    position: relative;
+    width: 254mm;
+    height: 190.5mm;
+    padding: 5mm 6mm;
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .slide:last-child { page-break-after: auto; }
+
+  /* ---- шапка слайда ---- */
+  .top { display: flex; gap: 4mm; height: 26mm; }
+  .logo-block {
+    width: 76mm;
+    background: #595959;
+    border-radius: 13mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .logo-block img { width: 46mm; }
+  .top-title {
+    flex: 1;
+    background: #fdf7f7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2mm 4mm;
+    font-size: 12pt;
+    color: #333;
+  }
+
+  /* ---- серые плашки-заголовки колонок ---- */
+  .bars { display: flex; gap: 4mm; margin-top: 3mm; }
+  .bar {
+    background: #d9d9d9;
+    color: #ffffff;
+    text-align: center;
+    padding: 1.8mm 2mm;
+    font-size: 10pt;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .bar.col-1 { width: 76mm; }
+  .bar.col-2 { width: 62mm; }
+  .bar.col-3 { flex: 1; }
+
+  /* ---- три колонки ---- */
+  .columns { display: flex; gap: 4mm; margin-top: 3mm; height: 132mm; }
+  .col-left { width: 76mm; display: flex; flex-direction: column; gap: 3mm; }
+  .col-mid { width: 62mm; background: #fdf7f7; padding: 6mm 5mm; }
+  .col-right { flex: 1; background: #fdf7f7; padding: 3mm; display: flex; gap: 2mm; }
+
+  .blob {
+    background: #f2f2f2;
+    border-radius: 0 34mm 34mm 0;
+    padding: 4mm 12mm 4mm 5mm;
+    overflow: hidden;
+  }
+  .blob.model { flex: 0 0 auto; }
+  .blob.spec { flex: 1; }
+  .blob-title { color: #ff0000; font-size: 9.5pt; margin-bottom: 1.5mm; }
+  .model-name { font-size: 10pt; font-weight: 700; line-height: 1.3; }
+  .item-description { margin-top: 2mm; font-size: 8.5pt; color: #444; }
+  ul.compact { margin: 0; padding-left: 4mm; }
+  ul.compact li { margin-bottom: 0.6mm; }
+  .plain-list div { margin-bottom: 0.6mm; }
+
+  /* ---- средняя колонка: размер, открывание, цена ---- */
+  .spec-row { margin-bottom: 4mm; }
+  .spec-label { color: #777; font-size: 8.5pt; }
+  .spec-value { font-size: 12pt; }
+  .price { font-size: 16pt; margin-top: 6mm; }
+
+  /* ---- картинки дверей ---- */
+  .door { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  .door img { max-width: 100%; max-height: 118mm; object-fit: contain; }
+  .door-caption { font-size: 8pt; color: #777; margin-bottom: 1mm; }
+  /* Блок, а не flex: внутри flex-контейнера <br> порождает второй
+     анонимный flex-элемент, и подпись разъезжается в две колонки. */
+  .no-image {
+    flex: 1; display: block; align-self: center;
+    color: #b00; font-size: 9pt; text-align: center; padding: 4mm;
+  }
+
+  /* ---- полоса доп. картинок под колонками ---- */
+  .extras { display: flex; gap: 3mm; margin-top: 3mm; height: 18mm; }
+  .extras img { max-height: 18mm; max-width: 46mm; object-fit: contain; }
+
+  /* ---- обложка ---- */
+  .cover { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+  .cover .logo-block { width: 96mm; height: 30mm; margin-bottom: 14mm; }
+  .cover h1 { font-size: 22pt; font-weight: 400; letter-spacing: 0.6mm; margin: 0 0 3mm; }
+  .cover .kp-meta { margin-top: 10mm; font-size: 11pt; color: #444; }
+  .cover .kp-meta div { margin-bottom: 2mm; }
+
+  /* ---- итоги ---- */
+  .totals { margin-top: 6mm; width: 150mm; }
+  .totals tr td { padding: 2.4mm 3mm; border-bottom: 0.4pt solid #ddd; font-size: 11pt; }
+  .totals td.value { text-align: right; white-space: nowrap; }
+  .totals tr.grand td { font-size: 14pt; font-weight: 700; border-bottom: none; }
+  .totals tr.grand td.value { color: #ff0000; }
+  .offer-comment { margin-top: 6mm; font-size: 9.5pt; color: #444; white-space: pre-line; }
+  .gallery { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 5mm; }
+  .gallery img { max-height: 46mm; max-width: 76mm; object-fit: contain; }
+</style>
+</head>
+<body>
+
+{# ===================== Обложка ===================== #}
+<div class="slide">
+  <div class="cover">
+    <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
+    <h1>КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ</h1>
+    <div class="kp-meta">
+      <div>{{ order.client_name|default:"—" }}</div>
+      {% if order.kp_number %}<div>КП № {{ order.kp_number }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>{% endif %}
+      {% if order.address %}<div>{{ order.address }}</div>{% endif %}
+      {% if manager_name %}<div>Менеджер: {{ manager_name }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+{# ===================== Слайд на каждый проём ===================== #}
+{% for slide in slides %}
+<div class="slide">
+  <div class="top">
+    <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
+    <div class="top-title">
+      {% for line in slide.header_lines %}<div>{{ line }}</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="bars">
+    <div class="bar col-1">{{ slide.opening_title }}</div>
+    <div class="bar col-2">Размер и открывание</div>
+    <div class="bar col-3">Модель</div>
+  </div>
+
+  <div class="columns">
+    <div class="col-left">
+      <div class="blob model">
+        <div class="model-name">{{ slide.model_name|default:"—" }}</div>
+        {% if slide.description %}<div class="item-description">{{ slide.description }}</div>{% endif %}
+      </div>
+      {% if slide.included_lines or slide.feature_lines %}
+      <div class="blob spec">
+        {% if slide.included_lines %}
+          <div class="blob-title">В стоимость комплекта входит:</div>
+          <div class="plain-list">
+            {% for line in slide.included_lines %}<div>{{ line }}</div>{% endfor %}
+          </div>
+        {% endif %}
+        {% if slide.feature_lines %}
+          <ul class="compact" style="margin-top:2.5mm;">
+            {% for line in slide.feature_lines %}<li>{{ line }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="col-mid">
+      <div class="spec-row">
+        <div class="spec-label">Размер полотна, мм</div>
+        <div class="spec-value">{{ slide.size|default:"—" }}</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-label">Открывание</div>
+        <div class="spec-value">{{ slide.opening_type|default:"—" }}</div>
+      </div>
+      {% if slide.order_item.quantity and slide.order_item.quantity > 1 %}
+      <div class="spec-row">
+        <div class="spec-label">Количество</div>
+        <div class="spec-value">{{ slide.order_item.quantity }} шт.</div>
+      </div>
+      {% endif %}
+      {% if slide.order_item.amount %}
+      <div class="price">{{ slide.order_item.amount|money }}</div>
+      {% endif %}
+    </div>
+
+    <div class="col-right">
+      {% if slide.front_path %}
+        <div class="door">
+          {% if slide.back_path %}<div class="door-caption">Лицо</div>{% endif %}
+          <img src="file://{{ slide.front_path }}" alt="Дверь">
+        </div>
+        {% if slide.back_path %}
+        <div class="door">
+          <div class="door-caption">Оборот</div>
+          <img src="file://{{ slide.back_path }}" alt="Дверь, оборот">
+        </div>
+        {% endif %}
+      {% else %}
+        <div class="no-image">Картинка не подобрана —<br>уточните модель и цвет по проёму</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if slide.extra_paths %}
+  <div class="extras">
+    {% for path in slide.extra_paths %}<img src="file://{{ path }}" alt="Дополнительно">{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{# ===================== Итоги ===================== #}
+<div class="slide">
+  <div class="top">
+    <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
+    <div class="top-title"><div>Стоимость</div></div>
+  </div>
+
+  <table class="totals">
+    <tr>
+      <td>Стоимость товара и изделий без скидки</td>
+      <td class="value">{{ totals.goods_amount|money }}</td>
+    </tr>
+    <tr>
+      <td>Стоимость услуг</td>
+      <td class="value">{{ totals.services_amount|money }}</td>
+    </tr>
+    <tr>
+      <td>Итого без скидки</td>
+      <td class="value">{{ totals.total_amount|money }}</td>
+    </tr>
+    <tr class="grand">
+      <td>Итого со скидкой</td>
+      <td class="value">{{ totals.total_with_discount|money }}</td>
+    </tr>
+  </table>
+
+  {% if offer.comment %}<div class="offer-comment">{{ offer.comment }}</div>{% endif %}
+
+  {% if general_attachments %}
+  <div class="gallery">
+    {% for path in general_attachments %}<img src="file://{{ path }}" alt="Дополнительно">{% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>

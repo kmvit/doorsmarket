@@ -1,6 +1,8 @@
 import uuid
 import secrets
 import string
+from decimal import Decimal
+
 from django.db import models
 from django.conf import settings
 
@@ -107,6 +109,37 @@ class Order(models.Model):
         choices=OrderStatus.choices,
         default=OrderStatus.DRAFT,
         verbose_name='Статус',
+    )
+    # Итоговые суммы, как они посчитаны в самом КП. Хранятся отдельными
+    # полями, а не одной суммой, потому что красивое КП показывает их
+    # раздельно: товар с изделиями, услуги, итого до и после скидки.
+    goods_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость товара',
+    )
+    glass_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость стекла',
+    )
+    products_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость изделий',
+    )
+    services_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость услуг',
+    )
+    total_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Итого без скидки',
+    )
+    discount_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Скидка',
+    )
+    total_with_discount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Итого со скидкой',
     )
     commercial_offer = models.FileField(
         upload_to='orders/commercial_offers/',
@@ -711,6 +744,246 @@ class MeasurementAttachment(models.Model):
 
     def __str__(self):
         return self.name or self.file.name
+
+
+# ==================== Красивое КП ====================
+
+
+class OfferTextPreset(models.Model):
+    """
+    Постоянные тексты слайда красивого КП: заголовок покрытия, состав
+    комплекта и список преимуществ.
+
+    В шаблоне они фиксированные, но разные для разных покрытий: у Secret свой
+    состав комплекта, у EVO — свой. Поэтому это справочник, а не константы
+    в коде: менеджер меняет тексты в админке, не трогая шаблон.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name='Название')
+    is_default = models.BooleanField(default=False, verbose_name='По умолчанию')
+    header_text = models.TextField(
+        blank=True, verbose_name='Заголовок слайда',
+        help_text='Например: «Искусственное покрытие EVO / современное решение для мебели и интерьеров»',
+    )
+    included_text = models.TextField(
+        blank=True, verbose_name='В стоимость комплекта входит',
+        help_text='По одному пункту в строке.',
+    )
+    features_text = models.TextField(
+        blank=True, verbose_name='Преимущества',
+        help_text='По одному пункту в строке.',
+    )
+    position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
+
+    class Meta:
+        verbose_name = 'Текстовый блок КП'
+        verbose_name_plural = 'Текстовые блоки КП'
+        ordering = ['position', 'name']
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def _lines(text):
+        return [line.strip() for line in (text or '').splitlines() if line.strip()]
+
+    def included_lines(self):
+        return self._lines(self.included_text)
+
+    def feature_lines(self):
+        return self._lines(self.features_text)
+
+    def header_lines(self):
+        return self._lines(self.header_text)
+
+    @classmethod
+    def get_default(cls):
+        return cls.objects.filter(is_default=True).first() or cls.objects.first()
+
+
+class PrettyOffer(models.Model):
+    """
+    Красивое КП по заказу — презентационная версия для клиента.
+
+    Позиции и суммы берутся из заказа, но менеджер может их дополнить и
+    поправить, поэтому правки живут здесь, а не в самом заказе: заказ
+    остаётся тем, что распарсили из КП фабрики.
+    """
+    order = models.OneToOneField(
+        Order, on_delete=models.CASCADE, related_name='pretty_offer',
+        verbose_name='Заказ',
+    )
+    preset = models.ForeignKey(
+        OfferTextPreset, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='offers', verbose_name='Текстовый блок',
+    )
+    comment = models.TextField(
+        blank=True, verbose_name='Комментарий к КП',
+        help_text='Выводится внизу, под всеми проёмами.',
+    )
+    # Суммы: пусто — берём из заказа как есть; заполнено — менеджер поправил.
+    goods_amount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость товара и изделий (правка)',
+    )
+    services_amount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Стоимость услуг (правка)',
+    )
+    total_amount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Итого без скидки (правка)',
+    )
+    total_with_discount_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Итого со скидкой (правка)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pretty_offers', verbose_name='Кто сформировал',
+    )
+
+    class Meta:
+        verbose_name = 'Красивое КП'
+        verbose_name_plural = 'Красивые КП'
+
+    def __str__(self):
+        return f'Красивое КП по заказу #{self.order_id}'
+
+    def resolved_totals(self):
+        """
+        Четыре суммы для подвала КП (п.10 ТЗ). Товар и изделия показываются
+        одной строкой, поэтому складываем их со стеклом; правка менеджера,
+        если она есть, перебивает посчитанное.
+        """
+        order = self.order
+        goods_parts = [order.goods_amount, order.products_amount, order.glass_amount]
+        goods = sum((part for part in goods_parts if part is not None), Decimal('0'))
+        if all(part is None for part in goods_parts):
+            goods = None
+        return {
+            'goods_amount': self.goods_amount_override if self.goods_amount_override is not None else goods,
+            'services_amount': (
+                self.services_amount_override
+                if self.services_amount_override is not None else order.services_amount
+            ),
+            'total_amount': (
+                self.total_amount_override
+                if self.total_amount_override is not None else order.total_amount
+            ),
+            'total_with_discount': (
+                self.total_with_discount_override
+                if self.total_with_discount_override is not None else order.total_with_discount
+            ),
+        }
+
+
+class PrettyOfferItem(models.Model):
+    """Проём в красивом КП: что показать на его слайде."""
+    offer = models.ForeignKey(
+        PrettyOffer, on_delete=models.CASCADE, related_name='items', verbose_name='КП',
+    )
+    order_item = models.ForeignKey(
+        OrderItem, on_delete=models.CASCADE, related_name='pretty_offer_items',
+        verbose_name='Позиция заказа',
+    )
+    description = models.TextField(
+        blank=True, verbose_name='Описание проёма',
+        help_text='Выводится отдельным полем рядом с моделью.',
+    )
+    preset = models.ForeignKey(
+        OfferTextPreset, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='offer_items', verbose_name='Текстовый блок',
+        help_text='Пусто — берётся блок всего КП.',
+    )
+    two_sided = models.BooleanField(default=False, verbose_name='Двусторонняя дверь')
+    front_image = models.ForeignKey(
+        'catalog.DoorImage', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Картинка (лицо)',
+    )
+    back_image = models.ForeignKey(
+        'catalog.DoorImage', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Картинка (оборот)',
+    )
+    # Картинки, загруженные менеджером со стороны, когда в каталоге нужной нет.
+    front_custom_image = models.ImageField(
+        upload_to='orders/pretty_offer/', blank=True, verbose_name='Своя картинка (лицо)',
+    )
+    back_custom_image = models.ImageField(
+        upload_to='orders/pretty_offer/', blank=True, verbose_name='Своя картинка (оборот)',
+    )
+    position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
+
+    class Meta:
+        verbose_name = 'Проём красивого КП'
+        verbose_name_plural = 'Проёмы красивого КП'
+        ordering = ['position', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['offer', 'order_item'], name='orders_prettyofferitem_unique_order_item',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Проём {self.order_item.opening_number} в КП #{self.offer_id}'
+
+    def effective_preset(self):
+        return self.preset or self.offer.preset
+
+    def _side_image_url(self, custom, catalog_image):
+        if custom:
+            return custom.url
+        if catalog_image and catalog_image.image:
+            return catalog_image.image.url
+        return ''
+
+    @property
+    def front_image_url(self):
+        return self._side_image_url(self.front_custom_image, self.front_image)
+
+    @property
+    def back_image_url(self):
+        return self._side_image_url(self.back_custom_image, self.back_image)
+
+    @property
+    def needs_clarification(self):
+        """
+        Картинки не хватает — менеджеру надо уточнить модель и цвет по проёму
+        (п.5 ТЗ). Для двусторонней двери нужны обе стороны.
+        """
+        if not self.front_image_url:
+            return True
+        return self.two_sided and not self.back_image_url
+
+
+class PrettyOfferAttachment(models.Model):
+    """
+    Дополнительная картинка в красивом КП: чертёж, схема, фото.
+
+    Привязана либо к проёму, либо ко всему КП (offer_item пустой).
+    Файл всегда копируется к себе — исходное вложение заказа или замера
+    могут удалить, а КП должно остаться целым.
+    """
+    offer = models.ForeignKey(
+        PrettyOffer, on_delete=models.CASCADE, related_name='attachments', verbose_name='КП',
+    )
+    offer_item = models.ForeignKey(
+        PrettyOfferItem, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='attachments', verbose_name='Проём',
+    )
+    image = models.ImageField(upload_to='orders/pretty_offer/', verbose_name='Картинка')
+    caption = models.CharField(max_length=255, blank=True, verbose_name='Подпись')
+    position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Картинка красивого КП'
+        verbose_name_plural = 'Картинки красивого КП'
+        ordering = ['position', 'id']
+
+    def __str__(self):
+        return self.caption or self.image.name
 
 
 # ==================== Phase 5: журнал событий заказа ====================

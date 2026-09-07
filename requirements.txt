@@ -14,3 +14,6 @@ cryptography>=46.0.0
 requests>=2.31.0
 pdfplumber>=0.11.0
 weasyprint>=66.0
+# Каталог дверей хранит картинки в ImageField — Pillow нужен явно,
+# а не транзитом через weasyprint.
+Pillow>=10.0.0

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    OfferTextPreset, PrettyOffer, PrettyOfferItem,
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
@@ -104,3 +105,25 @@ class OrderActivityLogAdmin(admin.ModelAdmin):
     raw_id_fields = ('order', 'actor')
     date_hierarchy = 'created_at'
     readonly_fields = ('created_at',)
+
+
+@admin.register(OfferTextPreset)
+class OfferTextPresetAdmin(admin.ModelAdmin):
+    """Постоянные тексты слайдов красивого КП — менеджер правит их здесь."""
+    list_display = ('name', 'is_default', 'position')
+    list_editable = ('is_default', 'position')
+    search_fields = ('name',)
+
+
+class PrettyOfferItemInline(admin.TabularInline):
+    model = PrettyOfferItem
+    extra = 0
+    autocomplete_fields = ('front_image', 'back_image')
+    fields = ('order_item', 'two_sided', 'front_image', 'back_image', 'description', 'position')
+
+
+@admin.register(PrettyOffer)
+class PrettyOfferAdmin(admin.ModelAdmin):
+    list_display = ('order', 'preset', 'created_by', 'created_at')
+    search_fields = ('order__kp_number', 'order__client_name')
+    inlines = [PrettyOfferItemInline]
