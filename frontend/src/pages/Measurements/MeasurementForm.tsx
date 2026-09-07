@@ -52,10 +52,20 @@ const MeasurementForm = () => {
   const [draftNotice, setDraftNotice] = useState<string | null>(null)
   const [requestingRepeat, setRequestingRepeat] = useState(false)
 
-  const canEditOpenings = !m?.is_done && (
+  // Проёмы редактируются и после «Замер выполнен»: СМ часто дозаполняет данные
+  // или доснимает пропущенный проём уже после закрытия замера. Граница —
+  // обработка менеджером: после неё размеры перенесены в заказ, и правки идут
+  // только через повторный замер.
+  const canEditOpenings = !m?.is_processed && (
     user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
   )
-  const canMarkDone = canEditOpenings
+  // Закрыть замер можно только один раз — кнопка живёт до «выполнен».
+  const canMarkDone = !m?.is_done && canEditOpenings
+  // Замер закрыт, но менеджер ещё не обработал — СМ может дополнить.
+  const canAmendAfterDone = Boolean(m?.is_done) && canEditOpenings
+  // Предупреждение про правки после закрытия нужно тем, кто замер обрабатывает,
+  // а не тому, кто их только что внёс.
+  const showAmendedNotice = Boolean(m?.updated_after_done_at) && ['manager', 'admin', 'leader'].includes(user?.role || '')
   const canMarkProcessed = m?.is_done && !m?.is_processed && (user?.role === 'manager' || user?.role === 'admin')
   // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
   const canRequestRepeat = Boolean(
@@ -604,6 +614,21 @@ const MeasurementForm = () => {
 
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{actionError}</div>
+      )}
+      {/* Замер закрыт, но ещё не обработан — СМ может дополнить его, не дожидаясь
+          повторного замера. Менеджеру же важно видеть, что данные поменялись
+          уже после закрытия. */}
+      {canAmendAfterDone && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-xl mb-4">
+          <span className="font-semibold">Замер выполнен.</span>{' '}
+          Проёмы ещё можно дополнить и поправить — пока менеджер не обработал замер.
+        </div>
+      )}
+      {showAmendedNotice && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl mb-4">
+          <span className="font-semibold">Замер дополнялся после выполнения:</span>{' '}
+          {new Date(m.updated_after_done_at!).toLocaleString('ru-RU')}. Проверьте проёмы перед обработкой.
+        </div>
       )}
       {/* Менеджер вернул замер на повторный выезд — СМ должен видеть это и причину */}
       {m.repeat_count > 0 && !m.is_done && (

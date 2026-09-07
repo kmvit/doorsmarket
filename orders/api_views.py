@@ -1464,6 +1464,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.is_processed = False
         m.processed_at = None
         m.is_draft = False
+        m.updated_after_done_at = None
         # Дату сбрасываем: замер нужно заново запланировать (папка «Назначить замер»)
         m.measurement_date = None
         m.repeat_count = (m.repeat_count or 0) + 1
@@ -1471,6 +1472,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.repeat_reason = reason
         m.save(update_fields=[
             'is_done', 'done_at', 'is_processed', 'processed_at', 'is_draft',
+            'updated_after_done_at',
             'measurement_date', 'repeat_count', 'repeat_requested_at', 'repeat_reason',
             'updated_at',
         ])
@@ -1650,7 +1652,17 @@ class PublicRecommendationsPdfView(APIView):
 
 
 class MeasurementOpeningViewSet(viewsets.ModelViewSet):
-    """CRUD проёмов замера. Авто-расчёт рекомендаций при сохранении."""
+    """
+    CRUD проёмов замера. Авто-расчёт рекомендаций при сохранении.
+
+    Проёмы можно править и после «Замер выполнен»: СМ нередко обнаруживает
+    пропущенный проём уже на объекте или уточняет размеры по горячим следам,
+    и заставлять менеджера ради этого назначать повторный замер — лишний круг.
+    Граница — обработка замера менеджером: после неё размеры уже перенесены
+    в заказ, и менять их задним числом нельзя (для этого есть повторный замер).
+    Каждая такая правка помечается в замере и попадает в журнал заказа, чтобы
+    менеджер не пропустил изменения в уже закрытом замере.
+    """
     permission_classes = [IsAuthenticated]
     serializer_class = MeasurementOpeningSerializer
 
@@ -1662,6 +1674,35 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
             qs = qs.filter(measurement_id=m_id)
         return qs.prefetch_related('attachments')
 
+    def _check_editable(self, measurement):
+        """
+        Обработанный замер не редактируем: его размеры уже перенесены в заказ.
+        """
+        from rest_framework.exceptions import ValidationError
+        if measurement.is_processed:
+            raise ValidationError({
+                'detail': 'Замер уже обработан менеджером — проёмы изменить нельзя. '
+                          'Если нужны правки, менеджер назначает повторный замер.',
+            })
+
+    def _mark_edited_after_done(self, measurement):
+        """
+        Помечает, что выполненный замер дополнили. Первое изменение после
+        закрытия пишем в журнал заказа: менеджер мог уже посмотреть замер.
+        """
+        if not measurement.is_done:
+            return
+        first_change = measurement.updated_after_done_at is None
+        measurement.updated_after_done_at = timezone.now()
+        measurement.save(update_fields=['updated_after_done_at', 'updated_at'])
+        if first_change:
+            order = measurement.request.order
+            order.log_activity(
+                ActivityKind.MEASUREMENT_DONE,
+                actor=self.request.user,
+                description='Замер дополнен после выполнения: изменены проёмы',
+            )
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import PermissionDenied, ValidationError
         validated = serializer.validated_data
@@ -1672,6 +1713,7 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         accessible = get_measurements_queryset_for_user(self.request.user).filter(id=measurement.id).exists()
         if not accessible:
             raise PermissionDenied('Нет доступа к этому замеру')
+        self._check_editable(measurement)
         # Если СМ нажал «+ Добавить проём» без указания номера — берём max+1 по замеру
         if not validated.get('opening_number'):
             last = MeasurementOpening.objects.filter(
@@ -1680,10 +1722,19 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
             serializer.validated_data['opening_number'] = (last.opening_number + 1) if last else 1
         instance = serializer.save()
         self._recalc_recommendations(instance, manual_door=self._door_edited_manually())
+        self._mark_edited_after_done(measurement)
 
     def perform_update(self, serializer):
+        self._check_editable(serializer.instance.measurement)
         instance = serializer.save()
         self._recalc_recommendations(instance, manual_door=self._door_edited_manually())
+        self._mark_edited_after_done(instance.measurement)
+
+    def perform_destroy(self, instance):
+        measurement = instance.measurement
+        self._check_editable(measurement)
+        instance.delete()
+        self._mark_edited_after_done(measurement)
 
     def _door_edited_manually(self):
         """Запрос содержит рек. размер двери — СМ редактирует его вручную."""

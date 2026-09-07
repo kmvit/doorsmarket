@@ -593,6 +593,12 @@ class Measurement(models.Model):
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата обработки')
+    # СМ дополняет замер после нажатия «Замер выполнен» — например, доснимает
+    # проём, который пропустил. Отмечаем это, чтобы менеджер видел: данные
+    # изменились уже после того, как замер был закрыт.
+    updated_after_done_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Дополнен после выполнения',
+    )
     # Повторный замер: менеджер возвращает выполненный замер СМ на доработку.
     # Замер тот же (СМ корректирует существующие проёмы), счётчик — сколько раз возвращали.
     repeat_count = models.PositiveSmallIntegerField(default=0, verbose_name='Повторных замеров')

@@ -68,6 +68,8 @@ export interface Measurement {
   is_done: boolean
   done_at: string | null
   is_processed: boolean
+  /** Когда СМ дополнял замер уже после «Замер выполнен» (null — не дополнял) */
+  updated_after_done_at?: string | null
   processed_at: string | null
   // Повторный замер: сколько раз менеджер возвращал замер СМ на доработку
   repeat_count: number
@@ -121,6 +123,8 @@ export interface MeasurementListItem {
   is_done: boolean
   done_at: string | null
   is_processed: boolean
+  /** Когда СМ дополнял замер уже после «Замер выполнен» (null — не дополнял) */
+  updated_after_done_at?: string | null
   processed_at: string | null
   repeat_count: number
   service_manager: number | null
