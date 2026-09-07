@@ -40,6 +40,15 @@ FILENAME_SPLIT_RE = re.compile(r'\s+[-–—]\s+')
 
 
 def _is_image(name: str) -> bool:
+    """
+    Картинка каталога, а не служебный файл.
+
+    macOS кладёт рядом с каждым файлом AppleDouble-двойник «._имя.jpg», и он
+    тоже оканчивается на .jpg — без этой проверки каталог набивается мусорными
+    вариантами вроде «._Brussel GF4». Windows аналогично оставляет Thumbs.db.
+    """
+    if name.startswith('.'):
+        return False
     return name.lower().endswith(IMAGE_EXTS)
 
 

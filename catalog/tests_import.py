@@ -113,6 +113,19 @@ class ImportDoorCatalogTest(TestCase):
         self.assertEqual(DoorSeries.objects.first().name, 'Модерн')
         self.assertEqual(DoorImage.objects.count(), self.file_count)
 
+    def test_macos_service_files_are_skipped(self):
+        # macOS кладёт рядом AppleDouble-двойник «._имя.jpg» — тоже с .jpg
+        # в конце. Без фильтра он заводил бы вариант «._AC36».
+        directory = os.path.join(self.source, 'Модерн', 'Alfa', 'Венге')
+        write_png(os.path.join(directory, '._AC36 - Венге.png'))
+        with open(os.path.join(directory, 'Thumbs.db'), 'wb') as fh:
+            fh.write(b'x')
+
+        call_command('import_door_catalog', self.source, verbosity=0)
+
+        self.assertEqual(DoorImage.objects.count(), self.file_count)
+        self.assertNotIn('._AC36', set(DoorImage.objects.values_list('variant', flat=True)))
+
     def test_dry_run_writes_nothing(self):
         call_command('import_door_catalog', self.source, dry_run=True, verbosity=0)
 
