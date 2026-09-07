@@ -13,8 +13,24 @@ import os
 
 from django.conf import settings
 from django.template.loader import render_to_string
+from django.utils import timezone
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'orders', 'pretty_offer')
+
+# Постоянные картинки шаблона: обложка, слайды «о компании» и контакты.
+# Вырезаны из исходного PDF Академии, лежат рядом с шаблоном.
+ASSET_FILES = {
+    'wordmark': 'academy-wordmark.png',
+    'logo_academy': 'logo-academy.png',
+    'logo_academy_red': 'logo-academy-red.png',
+    'logo_jaguar': 'logo-jaguar.png',
+    'cover_door': 'cover-door.jpg',
+    'cover_handle': 'cover-handle.png',
+    'about_salon': 'about-salon.jpg',
+    'about_moto': 'about-moto.jpg',
+    'about_worker': 'about-worker.jpg',
+    'about_folder': 'about-folder.jpg',
+}
 
 
 def _abs_path(filefield):
@@ -95,6 +111,7 @@ def build_context(offer):
     if manager:
         manager_name = f'{manager.first_name} {manager.last_name}'.strip() or manager.username
 
+    salon = order.salon
     return {
         'offer': offer,
         'order': order,
@@ -102,7 +119,15 @@ def build_context(offer):
         'totals': offer.resolved_totals(),
         'general_attachments': general_attachments,
         'manager_name': manager_name,
-        'wordmark_path': os.path.join(ASSETS_DIR, 'academy-wordmark.png'),
+        'salon_address': getattr(salon, 'address', '') or '',
+        'salon_phone': getattr(salon, 'phone', '') or '',
+        # Год на обложке — из даты КП, иначе текущий.
+        'offer_year': (order.kp_date or timezone.localdate()).year,
+        'assets': {
+            key: os.path.join(ASSETS_DIR, filename)
+            for key, filename in ASSET_FILES.items()
+        },
+        'wordmark_path': os.path.join(ASSETS_DIR, ASSET_FILES['wordmark']),
     }
 
 

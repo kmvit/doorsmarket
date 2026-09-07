@@ -125,22 +125,94 @@
   .offer-comment { margin-top: 6mm; font-size: 9.5pt; color: #444; white-space: pre-line; }
   .gallery { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 5mm; }
   .gallery img { max-height: 46mm; max-width: 76mm; object-fit: contain; }
+
+  /* ---- обложка и слайды «о компании»: раскладка 1:1 с исходным шаблоном.
+     Координаты в pt — слайд ровно 720×540 pt, поэтому позиции из макета
+     переносятся сюда без пересчёта. ---- */
+  .slide.plain { padding: 0; }
+  .abs { position: absolute; }
+
+  .cover-door { left: 360pt; top: 0; width: 360pt; height: 540pt; object-fit: cover; }
+  .cover-handle { left: 294pt; top: 318pt; width: 66pt; height: 108pt; }
+  .cover-logo { left: 111pt; top: 163pt; width: 135pt; }
+  .cover-tagline {
+    left: 111pt; top: 193pt; width: 135pt;
+    font-size: 7.5pt; letter-spacing: 1.4pt; color: #1a1a1a; text-align: center;
+  }
+  .cover-title {
+    left: 40pt; top: 272pt; width: 300pt; text-align: center;
+    font-size: 15pt; letter-spacing: 0.8pt; line-height: 1.5; color: #1a1a1a;
+  }
+  .cover-meta {
+    left: 40pt; top: 340pt; width: 300pt; text-align: center;
+    font-size: 10pt; color: #444; line-height: 1.7;
+  }
+  .cover-arch {
+    left: 148pt; top: 470pt; width: 78pt; height: 70pt;
+    background: #d9d9d9; border-radius: 39pt 39pt 0 0;
+  }
+  .cover-year {
+    left: 148pt; top: 496pt; width: 78pt; text-align: center;
+    font-size: 14pt; color: #ffffff;
+  }
+
+  /* Фото с округлой правой стороной — как в исходных слайдах «о компании». */
+  .round-right { border-radius: 0 90pt 90pt 0; object-fit: cover; }
+  .about-1 { left: 0; top: 12pt; width: 126pt; height: 162pt; }
+  .about-2 { left: 0; top: 187pt; width: 127pt; height: 162pt; }
+  .about-3 { left: 0; top: 365pt; width: 127pt; height: 162pt; }
+  .about-title { left: 271pt; top: 218pt; width: 380pt; color: #1a1a1a; }
+  .about-title .brand { font-size: 17pt; letter-spacing: 0.6pt; }
+  .about-title .ru { font-size: 22pt; letter-spacing: 0.6pt; margin-top: 2pt; }
+  .about-title .en { font-size: 12pt; letter-spacing: 0.6pt; color: #555; margin-top: 3pt; }
+
+  /* У большого фото правая сторона — почти полукруг, как в макете. */
+  .about-photo { left: 0; top: 120pt; width: 258pt; height: 318pt; border-radius: 0 130pt 130pt 0; }
+  .about-lead {
+    left: 280pt; top: 40pt; width: 400pt; text-align: right;
+    font-size: 11pt; line-height: 1.7; color: #1a1a1a;
+  }
+  .about-lead img { height: 15pt; vertical-align: -2pt; margin: 0 3pt; }
+  .about-body {
+    left: 280pt; top: 150pt; width: 400pt; text-align: right;
+    font-size: 10pt; line-height: 1.8; color: #1a1a1a;
+  }
+  .about-body .brand { font-size: 15pt; display: block; margin-bottom: 6pt; }
+
+  .contacts-academy { left: 252pt; top: 80pt; width: 95pt; }
+  .contacts-jaguar { left: 384pt; top: 104pt; width: 66pt; }
+  .contacts-text {
+    left: 110pt; top: 172pt; width: 500pt; text-align: center;
+    font-size: 12pt; line-height: 1.35; color: #1a1a1a;
+  }
+  .contacts-manager {
+    left: 110pt; top: 240pt; width: 500pt; text-align: center;
+    font-size: 10pt; line-height: 1.6; color: #555;
+  }
+  .contacts-arch {
+    left: 285pt; top: 430pt; width: 150pt; height: 110pt;
+    background: #d9d9d9; border-radius: 75pt 75pt 0 0;
+  }
 </style>
 </head>
 <body>
 
 {# ===================== Обложка ===================== #}
-<div class="slide">
-  <div class="cover">
-    <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
-    <h1>КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ</h1>
-    <div class="kp-meta">
-      <div>{{ order.client_name|default:"—" }}</div>
-      {% if order.kp_number %}<div>КП № {{ order.kp_number }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>{% endif %}
-      {% if order.address %}<div>{{ order.address }}</div>{% endif %}
-      {% if manager_name %}<div>Менеджер: {{ manager_name }}</div>{% endif %}
-    </div>
+<div class="slide plain">
+  <img class="abs cover-door" src="file://{{ assets.cover_door }}" alt="">
+  <img class="abs cover-handle" src="file://{{ assets.cover_handle }}" alt="">
+  <img class="abs cover-logo" src="file://{{ assets.logo_academy }}" alt="ACADEMY">
+  <div class="abs cover-tagline">двери и перегородки</div>
+  <div class="abs cover-title">
+    КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ<br>COMMERCIAL OFFER FOR
   </div>
+  <div class="abs cover-meta">
+    <div>{{ order.client_name|default:"—" }}</div>
+    {% if order.kp_number %}<div>КП № {{ order.kp_number }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>{% endif %}
+    {% if order.address %}<div>{{ order.address }}</div>{% endif %}
+  </div>
+  <div class="abs cover-arch"></div>
+  <div class="abs cover-year">{{ offer_year }}</div>
 </div>
 
 {# ===================== Слайд на каждый проём ===================== #}
@@ -261,6 +333,54 @@
     {% for path in general_attachments %}<img src="file://{{ path }}" alt="Дополнительно">{% endfor %}
   </div>
   {% endif %}
+</div>
+
+{# ===================== О компании ===================== #}
+<div class="slide plain">
+  <img class="abs round-right about-1" src="file://{{ assets.about_salon }}" alt="">
+  <img class="abs round-right about-2" src="file://{{ assets.about_moto }}" alt="">
+  <img class="abs round-right about-3" src="file://{{ assets.about_worker }}" alt="">
+  <div class="abs about-title">
+    <div class="brand">ACADEMY</div>
+    <div class="ru">О КОМПАНИИ</div>
+    <div class="en">ABOUT COMPANY</div>
+  </div>
+</div>
+
+<div class="slide plain">
+  <img class="abs round-right about-photo" src="file://{{ assets.about_folder }}" alt="">
+  <div class="abs about-lead">
+    Группа компаний <img src="file://{{ assets.logo_jaguar }}" alt="ДВЕРИ ЯГУАР">
+    представляет сеть фирменных салонов «ACADEMY».<br>
+    Компания основана в 1991 году.
+  </div>
+  <div class="abs about-body">
+    <span class="brand">ACADEMY</span>
+    Современная клиентоориентированная компания предлагает только
+    высококачественные изделия, проработанные до мельчайших деталей,
+    эксклюзивный сервис по сопровождению клиентов, гарантийное и
+    постгарантийное обслуживание, лучшие цены от производителя.
+    В производстве используется иностранное оборудование и современные
+    технологии. Двери разработаны таким образом, чтобы Вы получили всё
+    необходимое для эстетического и функционального удовлетворения.
+  </div>
+</div>
+
+{# ===================== Контакты ===================== #}
+<div class="slide plain">
+  <img class="abs contacts-academy" src="file://{{ assets.logo_academy_red }}" alt="ACADEMY">
+  <img class="abs contacts-jaguar" src="file://{{ assets.logo_jaguar }}" alt="ДВЕРИ ЯГУАР">
+  <div class="abs contacts-text">
+    Торгово-производственная компания ACADEMY<br>
+    Межкомнатные двери / Входные двери /<br>
+    Перегородки, г. Казань
+  </div>
+  <div class="abs contacts-manager">
+    {% if manager_name %}<div>Ваш менеджер: {{ manager_name }}</div>{% endif %}
+    {% if salon_address %}<div>{{ salon_address }}</div>{% endif %}
+    {% if salon_phone %}<div>{{ salon_phone }}</div>{% endif %}
+  </div>
+  <div class="abs contacts-arch"></div>
 </div>
 
 </body>

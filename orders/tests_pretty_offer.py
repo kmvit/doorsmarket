@@ -297,8 +297,8 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf)) as document:
-            # Обложка + три проёма + итоги.
-            self.assertEqual(len(document.pages), 5)
+            # Обложка + три проёма + итоги + «о компании» (2) + контакты.
+            self.assertEqual(len(document.pages), 8)
             text = '\n'.join((page.extract_text() or '') for page in document.pages)
         # Извлечённый из PDF текст переносится по строкам колонок — сравниваем
         # по строке без переносов, иначе тест ловит вёрстку, а не содержимое.
@@ -314,6 +314,10 @@ class PrettyOfferFlowTest(TestCase):
         self.assertIn('В стоимость комплекта входит', text)
         # Итоги.
         self.assertIn('Итого со скидкой', text)
+        # Постоянные слайды шаблона: о компании и контакты.
+        self.assertIn('О КОМПАНИИ', text)
+        self.assertIn('Компания основана в 1991 году', flat)
+        self.assertIn('Торгово-производственная компания ACADEMY', flat)
 
     def test_pdf_marks_openings_without_a_picture(self):
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
