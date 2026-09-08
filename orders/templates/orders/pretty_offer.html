@@ -112,7 +112,9 @@
   .price { font-size: 16pt; margin-top: 6mm; }
 
   /* ---- картинки дверей ---- */
-  .door { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  /* По центру, а не по низу: у лица и оборота разные пропорции, и при
+     выравнивании по низу снимки висели на разной высоте с пустотой сверху. */
+  .door { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   /* Явная ширина, а не только flex: фотографии лица и оборота приходят с
      разным разрешением, и WeasyPrint делил место по их собственным размерам —
      широкий снимок вытеснял узкий почти за край. */
