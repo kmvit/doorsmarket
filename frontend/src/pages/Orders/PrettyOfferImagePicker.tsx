@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { prettyOfferAPI } from '../../api/prettyOffer'
+import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import { SourceImage } from '../../types/prettyOffer'
 
 interface Props {
@@ -24,6 +26,8 @@ const PrettyOfferImagePicker = ({ open, orderId, title, onAdd, onClose }: Props)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [caption, setCaption] = useState('')
+
+  useBodyScrollLock(open)
 
   useEffect(() => {
     if (!open) return
@@ -52,10 +56,20 @@ const PrettyOfferImagePicker = ({ open, orderId, title, onAdd, onClose }: Props)
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[92vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+  // В body: transform у любого предка ломает position:fixed, и окно начинает
+  // ездить вместе со страницей.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/40 p-0 sm:p-4"
+      style={{ height: '100dvh' }}
+    >
+      {/* dvh вместо vh: на телефоне vh считается без учёта панелей браузера,
+          и низ окна уезжал под них. */}
+      <div
+        className="bg-white w-full h-full sm:h-auto sm:max-w-2xl sm:rounded-2xl shadow-xl sm:max-h-[92vh] flex flex-col"
+        style={{ maxHeight: '100dvh' }}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           <button
             type="button"
@@ -67,7 +81,11 @@ const PrettyOfferImagePicker = ({ open, orderId, title, onAdd, onClose }: Props)
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto space-y-4">
+        {/* min-h-0 — иначе flex-элемент не сжимается и содержимое уезжает за край. */}
+        <div
+          className="p-4 flex-1 min-h-0 overflow-y-auto space-y-4"
+          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 p-3">
               {error}
@@ -139,7 +157,8 @@ const PrettyOfferImagePicker = ({ open, orderId, title, onAdd, onClose }: Props)
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

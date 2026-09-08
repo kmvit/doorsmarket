@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { doorCatalogAPI } from '../../api/prettyOffer'
+import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import {
   DoorColorRef,
   DoorImageRef,
@@ -49,6 +51,8 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   const [isUploading, setIsUploading] = useState(false)
 
   const variantsRef = useRef<HTMLDivElement>(null)
+
+  useBodyScrollLock(open)
 
   // Открыли окно — грузим модели и предвыбираем то, что распознал матчер.
   useEffect(() => {
@@ -126,25 +130,45 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
     ? models.filter((m) => m.name.toLowerCase().includes(search.trim().toLowerCase()))
     : models
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-3xl sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[92vh] flex flex-col">
-        <div className="flex items-start justify-between p-4 border-b border-gray-200 shrink-0">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+  // Рендерим в body: если у любого предка окажется transform, filter или
+  // backdrop-filter, он становится точкой отсчёта для position:fixed, и окно
+  // начинает ездить вместе со страницей (на iOS это и происходило).
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/40 p-0 sm:p-4"
+      style={{ height: '100dvh' }}
+    >
+      {/* dvh вместо vh: на телефоне vh считается без учёта панелей браузера,
+          и нижняя часть окна вместе с кнопкой подтверждения уезжала под них. */}
+      <div
+        className="bg-white w-full h-full sm:h-auto sm:max-w-3xl sm:rounded-2xl shadow-xl sm:max-h-[92vh] flex flex-col"
+        style={{ maxHeight: '100dvh' }}
+      >
+        {/* Кнопка подтверждения — в шапке, а не только внизу: низ экрана на
+            телефоне занимают панели браузера, и подвал окна туда уезжал. */}
+        <div className="flex items-center gap-3 p-3 border-b border-gray-200 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg shrink-0"
+          >
+            Отмена
+          </button>
+          <div className="flex-1 min-w-0 text-center">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">{title}</h3>
             {hint?.problems?.length ? (
-              <p className="text-xs text-amber-700 mt-1">
+              <p className="text-[11px] text-amber-700 truncate">
                 {hint.problems.map((p) => MATCH_PROBLEM_TEXT[p] || p).join(' · ')}
               </p>
             ) : null}
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2"
-            aria-label="Закрыть"
+            onClick={() => selectedImage && onPick(selectedImage)}
+            disabled={!selectedImage}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
-            ×
+            Выбрать
           </button>
         </div>
 
@@ -302,38 +326,21 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
           )}
         </div>
 
-        {/* Подтверждение выбора отдельной кнопкой — она всегда на виду,
-            даже когда сетка вариантов не помещается в экран. */}
         {!showUpload && (
-          <div className="flex items-center justify-between gap-3 p-4 border-t border-gray-200 shrink-0">
-            <span className="text-xs text-gray-500 truncate">
-              {selectedImage
-                ? `Выбрано: ${selectedImage.model_name} · ${selectedImage.color_name}${
-                    selectedImage.variant ? ` · ${selectedImage.variant}` : ''
-                  }`
-                : 'Выберите модель, цвет и вариант полотна'}
-            </span>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={() => selectedImage && onPick(selectedImage)}
-                disabled={!selectedImage}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Выбрать
-              </button>
-            </div>
+          <div
+            className="px-4 py-2 border-t border-gray-200 shrink-0 text-xs text-gray-500 truncate"
+            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+          >
+            {selectedImage
+              ? `Выбрано: ${selectedImage.model_name} · ${selectedImage.color_name}${
+                  selectedImage.variant ? ` · ${selectedImage.variant}` : ''
+                }`
+              : 'Выберите модель, цвет и вариант полотна'}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
