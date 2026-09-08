@@ -329,6 +329,49 @@ class PrettyOfferFlowTest(TestCase):
             text = '\n'.join((page.extract_text() or '') for page in document.pages)
         self.assertIn('уточните модель и цвет', text)
 
+    def test_long_model_name_does_not_break_other_columns(self):
+        """
+        Название модели приходит из КП свободным текстом и бывает на десяток
+        строк. Раньше переполнение левой колонки роняло соседние: WeasyPrint
+        не рисовал ни размеры, ни картинки дверей.
+        """
+        # Строка из реального КП, растянутая до предела поля (500 символов):
+        # на боевом сервере шрифты шире, чем на машине разработчика, и там
+        # переполнение начиналось раньше — тест не должен зависеть от шрифта.
+        self.item_ok.model_name = (
+            'SKY. Лицо -Грунт , Оборот-Зеркало серебро(обычное) . 65мм. '
+            'Алюминиевая кромка с 4 сторон (анодированный алюминий)! Без верхней '
+            'ступеньки (полотно в потолок, для короба 2 стойки)! Врезка под 4 '
+            'скрытые ACADEMY 8000 петли и замок,ручка, фиксатор. Двухсторонняя Д5. '
+            'Дополнительно: притвор модифицированный, кромка в цвет полотна с '
+            'четырёх сторон, фабричная врезка под фурнитуру, ответная планка '
+            'магнитная, доводчик скрытый, уплотнитель по периметру короба.'
+        )[:500]
+        self.item_ok.save(update_fields=['model_name'])
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        item = offer.items.get(order_item=self.item_ok)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'two_sided': True, 'front_image': self.img_1.pk, 'back_image': self.img_oak.pk},
+            format='json',
+        )
+
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        self.assertEqual(response.status_code, 200)
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            slide = document.pages[1]
+            text = ' '.join((slide.extract_text() or '').split())
+            # Логотип + обе двери: средняя и правая колонки на месте.
+            self.assertEqual(len(slide.images), 3)
+
+        self.assertIn('Размер полотна', text)
+        self.assertIn('2000 × 800', text)
+        self.assertIn('Двухсторонняя Д5', text)
+
     def test_pdf_requires_offer_to_exist(self):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         self.assertEqual(response.status_code, 404)

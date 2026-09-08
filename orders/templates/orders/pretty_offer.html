@@ -67,11 +67,25 @@
   .bar.col-2 { width: 62mm; }
   .bar.col-3 { flex: 1; }
 
-  /* ---- три колонки ---- */
-  .columns { display: flex; gap: 4mm; margin-top: 3mm; height: 132mm; }
-  .col-left { width: 76mm; display: flex; flex-direction: column; gap: 3mm; }
-  .col-mid { width: 62mm; background: #fdf7f7; padding: 6mm 5mm; }
-  .col-right { flex: 1; background: #fdf7f7; padding: 3mm; display: flex; gap: 2mm; }
+  /* ---- три колонки ----
+     Колонки позиционируются абсолютно, а не строкой flex. Название модели
+     приходит из КП свободным текстом и бывает на десяток строк; в flex-строке
+     с фиксированной высотой переполнение левой колонки роняло соседние —
+     WeasyPrint просто не рисовал среднюю и правую. При абсолютных координатах
+     длина текста в одной колонке на соседние не влияет вообще. */
+  .columns { position: absolute; left: 17pt; right: 17pt; top: 129pt; height: 374pt; }
+  .col-left {
+    position: absolute; left: 0; top: 0; width: 215pt; height: 374pt;
+    display: flex; flex-direction: column; gap: 3mm; overflow: hidden;
+  }
+  .col-mid {
+    position: absolute; left: 226pt; top: 0; width: 176pt; height: 374pt;
+    background: #fdf7f7; padding: 6mm 5mm; overflow: hidden;
+  }
+  .col-right {
+    position: absolute; left: 413pt; top: 0; right: 0; height: 374pt;
+    background: #fdf7f7; padding: 3mm; display: flex; gap: 2mm; overflow: hidden;
+  }
 
   .blob {
     background: #f2f2f2;
@@ -80,7 +94,10 @@
     overflow: hidden;
   }
   .blob.model { flex: 0 0 auto; }
-  .blob.spec { flex: 1; }
+  /* min-height:0 — иначе flex-элемент не сжимается и вылезает за колонку.
+     Обрезается именно этот блок: он одинаковый на всех слайдах, а название
+     модели по ТЗ выводится полностью. */
+  .blob.spec { flex: 1; min-height: 0; }
   .blob-title { color: #ff0000; font-size: 9.5pt; margin-bottom: 1.5mm; }
   .model-name { font-size: 10pt; font-weight: 700; line-height: 1.3; }
   .item-description { margin-top: 2mm; font-size: 8.5pt; color: #444; }
@@ -95,8 +112,8 @@
   .price { font-size: 16pt; margin-top: 6mm; }
 
   /* ---- картинки дверей ---- */
-  .door { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
-  .door img { max-width: 100%; max-height: 118mm; object-fit: contain; }
+  .door { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  .door img { max-width: 100%; max-height: 340pt; object-fit: contain; }
   .door-caption { font-size: 8pt; color: #777; margin-bottom: 1mm; }
   /* Блок, а не flex: внутри flex-контейнера <br> порождает второй
      анонимный flex-элемент, и подпись разъезжается в две колонки. */
@@ -105,9 +122,20 @@
     color: #b00; font-size: 9pt; text-align: center; padding: 4mm;
   }
 
-  /* ---- полоса доп. картинок под колонками ---- */
-  .extras { display: flex; gap: 3mm; margin-top: 3mm; height: 18mm; }
-  .extras img { max-height: 18mm; max-width: 46mm; object-fit: contain; }
+  /* ---- полоса доп. картинок под колонками ----
+     Тоже абсолютно: колонки вышли из потока, а в прежней вёрстке полоса и
+     вовсе не помещалась в слайд (её высота была больше остатка). Когда
+     картинки есть, колонки укорачиваются — освобождают ей место. */
+  .extras {
+    position: absolute; left: 17pt; right: 17pt; top: 457pt; height: 55pt;
+    display: flex; gap: 3mm;
+  }
+  .extras img { max-height: 55pt; max-width: 130pt; object-fit: contain; }
+  .slide.has-extras .columns,
+  .slide.has-extras .col-left,
+  .slide.has-extras .col-mid,
+  .slide.has-extras .col-right { height: 320pt; }
+  .slide.has-extras .door img { max-height: 290pt; }
 
   /* ---- обложка ---- */
   .cover { display: flex; flex-direction: column; justify-content: center; height: 100%; }
@@ -217,7 +245,7 @@
 
 {# ===================== Слайд на каждый проём ===================== #}
 {% for slide in slides %}
-<div class="slide">
+<div class="slide{% if slide.extra_paths %} has-extras{% endif %}">
   <div class="top">
     <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
     <div class="top-title">
