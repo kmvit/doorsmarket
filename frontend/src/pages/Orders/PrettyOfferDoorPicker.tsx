@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { doorCatalogAPI } from '../../api/prettyOffer'
 import {
   DoorColorRef,
@@ -24,9 +24,13 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 /**
  * Окно уточнения модели и цвета по проёму (п.5 ТЗ).
  *
- * Менеджер идёт по цепочке модель → цвет → вариант полотна. Если нужной
- * картинки в каталоге нет, здесь же грузит свою (п.7) — она попадает в
- * каталог, и следующему заказу подберётся сама.
+ * Менеджер идёт по цепочке модель → цвет → вариант полотна и подтверждает
+ * выбор кнопкой. Клик по картинке только помечает вариант: на телефоне сетка
+ * вариантов уходит под нижний край, и «клик = сохранение» там не читался —
+ * казалось, что подтвердить выбор нечем.
+ *
+ * Если нужной картинки в каталоге нет, здесь же грузится своя (п.7) — она
+ * попадает в каталог, и следующему заказу подберётся сама.
  */
 const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) => {
   const [models, setModels] = useState<DoorModelRef[]>([])
@@ -34,6 +38,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   const [images, setImages] = useState<DoorImageRef[]>([])
   const [modelId, setModelId] = useState<number | null>(null)
   const [colorId, setColorId] = useState<number | null>(null)
+  const [selectedImage, setSelectedImage] = useState<DoorImageRef | null>(null)
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,12 +48,15 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
 
+  const variantsRef = useRef<HTMLDivElement>(null)
+
   // Открыли окно — грузим модели и предвыбираем то, что распознал матчер.
   useEffect(() => {
     if (!open) return
     setError(null)
     setShowUpload(false)
     setUploadFile(null)
+    setSelectedImage(null)
     setUploadVariant(hint?.variant || '')
     setModelId(hint?.model_id ?? null)
     setColorId(hint?.color_id ?? null)
@@ -78,7 +86,14 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
     }
     doorCatalogAPI
       .getImages(modelId, colorId)
-      .then(setImages)
+      .then((loaded) => {
+        setImages(loaded)
+        // Вариант один — выбирать не из чего, помечаем сразу.
+        setSelectedImage(loaded.length === 1 ? loaded[0] : null)
+        // Подтягиваем варианты в видимую часть: на телефоне они оказываются
+        // ниже списков модели и цвета, и их легко не заметить.
+        variantsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
       .catch(() => setError('Не удалось загрузить картинки'))
   }, [open, modelId, colorId])
 
@@ -114,7 +129,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
       <div className="bg-white w-full sm:max-w-3xl sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[92vh] flex flex-col">
-        <div className="flex items-start justify-between p-4 border-b border-gray-200">
+        <div className="flex items-start justify-between p-4 border-b border-gray-200 shrink-0">
           <div>
             <h3 className="text-base font-semibold text-gray-900">{title}</h3>
             {hint?.problems?.length ? (
@@ -133,7 +148,9 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto space-y-4">
+        {/* min-h-0 обязателен: без него flex-элемент не сжимается, и вместо
+            прокрутки содержимое уезжает за нижний край окна. */}
+        <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-4">
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 p-3">
               {error}
@@ -155,10 +172,14 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
                 size={6}
                 value={modelId ?? ''}
                 onChange={(e) => {
-                  setModelId(Number(e.target.value))
+                  setModelId(e.target.value ? Number(e.target.value) : null)
                   setColorId(null)
+                  setSelectedImage(null)
                 }}
               >
+                {/* Пустой пункт: иначе список показывает первую модель так,
+                    будто она уже выбрана, хотя выбора ещё не было. */}
+                <option value="">— выберите модель —</option>
                 {visibleModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.series_name} / {model.name}
@@ -175,8 +196,12 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
                   className={fieldCls}
                   size={8}
                   value={colorId ?? ''}
-                  onChange={(e) => setColorId(Number(e.target.value))}
+                  onChange={(e) => {
+                    setColorId(e.target.value ? Number(e.target.value) : null)
+                    setSelectedImage(null)
+                  }}
                 >
+                  <option value="">— выберите цвет —</option>
                   {colors.map((color) => (
                     <option key={color.id} value={color.id}>
                       {color.name}
@@ -193,7 +218,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
           </div>
 
           {modelId && colorId && (
-            <div>
+            <div ref={variantsRef}>
               <div className="flex items-center justify-between mb-2">
                 <span className={labelCls}>Вариант полотна</span>
                 <button
@@ -245,30 +270,68 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
                 </p>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                  {images.map((image) => (
-                    <button
-                      key={image.id}
-                      type="button"
-                      onClick={() => onPick(image)}
-                      className="border border-gray-200 rounded-lg p-1.5 hover:border-primary-500 hover:shadow text-left"
-                    >
-                      {image.image_url && (
-                        <img
-                          src={image.image_url}
-                          alt={image.variant}
-                          className="w-full h-28 object-contain"
-                        />
-                      )}
-                      <span className="block text-[11px] text-gray-600 truncate mt-1">
-                        {image.variant || '—'}
-                      </span>
-                    </button>
-                  ))}
+                  {images.map((image) => {
+                    const isSelected = selectedImage?.id === image.id
+                    return (
+                      <button
+                        key={image.id}
+                        type="button"
+                        onClick={() => setSelectedImage(image)}
+                        className={`border rounded-lg p-1.5 text-left ${
+                          isSelected
+                            ? 'border-primary-600 ring-2 ring-primary-500 bg-primary-50'
+                            : 'border-gray-200 hover:border-primary-500 hover:shadow'
+                        }`}
+                      >
+                        {image.image_url && (
+                          <img
+                            src={image.image_url}
+                            alt={image.variant}
+                            className="w-full h-28 object-contain"
+                          />
+                        )}
+                        <span className="block text-[11px] text-gray-600 truncate mt-1">
+                          {image.variant || '—'}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
           )}
         </div>
+
+        {/* Подтверждение выбора отдельной кнопкой — она всегда на виду,
+            даже когда сетка вариантов не помещается в экран. */}
+        {!showUpload && (
+          <div className="flex items-center justify-between gap-3 p-4 border-t border-gray-200 shrink-0">
+            <span className="text-xs text-gray-500 truncate">
+              {selectedImage
+                ? `Выбрано: ${selectedImage.model_name} · ${selectedImage.color_name}${
+                    selectedImage.variant ? ` · ${selectedImage.variant}` : ''
+                  }`
+                : 'Выберите модель, цвет и вариант полотна'}
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedImage && onPick(selectedImage)}
+                disabled={!selectedImage}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Выбрать
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
