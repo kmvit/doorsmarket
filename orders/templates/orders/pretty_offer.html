@@ -113,6 +113,10 @@
 
   /* ---- картинки дверей ---- */
   .door { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  /* Явная ширина, а не только flex: фотографии лица и оборота приходят с
+     разным разрешением, и WeasyPrint делил место по их собственным размерам —
+     широкий снимок вытеснял узкий почти за край. */
+  .col-right.two-sided .door { flex: 0 0 49%; width: 49%; }
   .door img { max-width: 100%; max-height: 340pt; object-fit: contain; }
   .door-caption { font-size: 8pt; color: #777; margin-bottom: 1mm; }
   /* Блок, а не flex: внутри flex-контейнера <br> порождает второй
@@ -302,7 +306,7 @@
       {% endif %}
     </div>
 
-    <div class="col-right">
+    <div class="col-right{% if slide.back_path %} two-sided{% endif %}">
       {% if slide.front_path %}
         <div class="door">
           {% if slide.back_path %}<div class="door-caption">Лицо</div>{% endif %}
