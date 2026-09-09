@@ -44,8 +44,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     }
   }, [isAuthenticated, isLoading, checkAuth])
 
-  // Показываем загрузку, пока проверяем или загружаем
-  if (isLoading || (!isAuthenticated && hasCheckedAuth.current === false)) {
+  // Показываем загрузку, пока проверяем или загружаем.
+  // Если сессия уже есть (сохранена локально), фоновую проверку не ждём —
+  // офлайн и на слабой связи она может отвечать долго, а страница нужна сразу.
+  if ((isLoading && !isAuthenticated) || (!isAuthenticated && hasCheckedAuth.current === false)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>

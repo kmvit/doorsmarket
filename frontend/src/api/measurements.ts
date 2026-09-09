@@ -241,10 +241,18 @@ const filterMeasurementsBySearch = (list: MeasurementListItem[], search?: string
 const filterMeasurementsFinished = (list: MeasurementListItem[]): MeasurementListItem[] =>
   list.filter((m) => !m.is_done && m.order_status !== 'cancelled')
 
+// Текущий пользователь для офлайн-фильтра «Мои». Берём из хранилища zustand
+// (ключ auth-storage) — отдельного ключа 'user' в localStorage приложение не пишет,
+// из-за чего офлайн во вкладке «Мои» показывались замеры всех СМ.
 const currentUserIdFromStorage = (): number | null => {
   try {
-    const raw = localStorage.getItem('user')
-    return raw ? (JSON.parse(raw)?.id ?? null) : null
+    const raw = localStorage.getItem('auth-storage')
+    if (raw) {
+      const id = JSON.parse(raw)?.state?.user?.id
+      if (id != null) return id
+    }
+    const legacy = localStorage.getItem('user')
+    return legacy ? (JSON.parse(legacy)?.id ?? null) : null
   } catch {
     return null
   }

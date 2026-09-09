@@ -45,8 +45,12 @@ function App() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Показываем загрузку во время инициализации
-  if (isInitializing || isLoading) {
+  // Показываем загрузку во время инициализации.
+  // ВАЖНО: уже вошедшего пользователя за этим экраном не держим. checkAuth() идёт
+  // фоном, и при плохой связи он отвечает не сразу — раньше приложение всё это
+  // время висело на «Загрузка приложения…», и офлайн-режим для замерщика просто
+  // не начинался. Сессия сохранена локально, поэтому рисуем интерфейс сразу.
+  if (isInitializing || (isLoading && !isAuthenticated)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

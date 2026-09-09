@@ -10,9 +10,20 @@ export const resetRedirectFlag = () => {
   isRedirecting = false
 }
 
+// Таймауты запросов. Без них axios ждёт ответа бесконечно: в поле у замерщика
+// связь чаще не «выключена», а еле живая — сокет висит, navigator.onLine = true,
+// офлайн-фолбэк не срабатывает, и приложение замирает на «Загрузка…».
+// По таймауту запрос падает с ECONNABORTED, isNetworkError() его распознаёт,
+// и данные берутся из IndexedDB (а мутации уходят в очередь синхронизации).
+const DEFAULT_TIMEOUT = 20 * 1000
+// Загрузка файлов и генерация PDF законно занимают минуты на медленной сети —
+// им короткий таймаут не ставим (иначе получим дубли вложений при повторе)
+const LONG_TIMEOUT = 3 * 60 * 1000
+
 // Создаем экземпляр axios
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  timeout: DEFAULT_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,6 +39,13 @@ const apiClient: AxiosInstance = axios.create({
 // Интерцептор для добавления токена
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // Файлы и PDF отдаём на длинный таймаут, остальное — на короткий
+    if (!config.timeout || config.timeout === DEFAULT_TIMEOUT) {
+      const isUpload = typeof FormData !== 'undefined' && config.data instanceof FormData
+      const isBinary = config.responseType === 'blob' || config.responseType === 'arraybuffer'
+      if (isUpload || isBinary) config.timeout = LONG_TIMEOUT
+    }
+
     const token = localStorage.getItem('access_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
@@ -120,7 +138,7 @@ apiClient.interceptors.response.use(
           try {
             const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
               refresh: refreshToken,
-            })
+            }, { timeout: DEFAULT_TIMEOUT })
 
             const { access } = response.data
             localStorage.setItem('access_token', access)
@@ -216,7 +234,7 @@ apiClient.interceptors.response.use(
         console.log('Refresh token present:', !!refreshToken, 'Preview:', refreshToken ? refreshToken.substring(0, 20) + '...' : 'none')
         const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
           refresh: refreshToken,
-        })
+        }, { timeout: DEFAULT_TIMEOUT })
 
         const { access, refresh: newRefreshToken } = response.data
         

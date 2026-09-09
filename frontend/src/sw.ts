@@ -40,6 +40,28 @@ registerRoute(navigationRoute)
 // например, вручную заданный рек. размер двери откатывался к авторасчёту.
 // Оффлайн-чтение API обслуживает слой IndexedDB (services/offline.ts).
 
+// Файлы замера и заказа (/media/): планы открывания, фото проёмов, документы.
+// Маршрут стоит ПЕРЕД картинками, чтобы всё содержимое /media/ (в том числе PDF
+// плана открывания) лежало в одном кеше — его наполняет кнопка «Скачать для
+// офлайна» (services/prefetch.ts, MEDIA_CACHE).
+registerRoute(
+  ({ url, request }) =>
+    request.method === 'GET' &&
+    url.origin === self.location.origin &&
+    url.pathname.startsWith('/media/'),
+  new CacheFirst({
+    cacheName: 'offline-media',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 500,
+        maxAgeSeconds: 30 * 24 * 60 * 60,
+        purgeOnQuotaError: true,
+      }),
+    ],
+  }),
+  'GET',
+)
+
 registerRoute(
   /\.(?:png|jpg|jpeg|jfif|jpe|svg|gif|webp|bmp|heic|heif|avif)$/i,
   new CacheFirst({

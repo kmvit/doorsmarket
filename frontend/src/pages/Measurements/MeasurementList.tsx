@@ -4,6 +4,7 @@ import { measurementsAPI } from '../../api/measurements'
 import { MeasurementListItem, MeasurementFolder } from '../../types/measurements'
 import { ORDER_STATUS_COLOR } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
+import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
 import { usePersistedState } from '../../utils/persistedState'
 
 const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
@@ -82,6 +83,9 @@ const MeasurementList = () => {
         <h1 className="text-2xl font-bold text-gray-900">Замеры</h1>
         <p className="text-sm text-gray-500 mt-1">Заявки на замер, запланированные и выполненные замеры</p>
       </div>
+
+      {/* Подготовка к выезду: скачать замеры в память телефона, пока есть связь */}
+      <OfflinePrefetchButton />
 
       {/* Папки-фильтры */}
       <div className="flex flex-wrap gap-2 mb-4">
