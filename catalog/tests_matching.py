@@ -227,6 +227,17 @@ class MatchModelNameTests(SimpleTestCase):
         result = match_model_name('Alfa AC36 неизвестный цвет', index)
         self.assertIn('color_not_found', result.front.problems)
 
+    def test_variant_matches_despite_space_before_suffix(self):
+        """В КП пишут «Nova 1 ПГ», в каталоге вариант назван «Nova 1ПГ»."""
+        index = CatalogIndex(
+            models=[CatalogEntry.build(1, 'Nova', series_name='Окрашенные')],
+            colors=[CatalogEntry.build(2, 'RAL 1013')],
+            images={(1, 2): {'Nova 1ПГ': 10, 'Nova 11ПГ': 11}},
+        )
+        result = match_model_name('Nova 1 ПГ, 59 мм эмаль спальня RAL 1013', index)
+        self.assertEqual(result.front.variant, 'Nova 1ПГ')
+        self.assertEqual(result.front.image_pk, 10)
+
     def test_variant_is_recognised_even_without_color(self):
         """
         В КП фабрики цвет часто не указан вовсе («Nova 1ПГ 59 мм эмаль»), а код

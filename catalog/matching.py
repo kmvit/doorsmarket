@@ -16,10 +16,29 @@
 Модуль чистый: `match_model_name` работает над `CatalogIndex`, который можно
 собрать как из БД (`build_index`), так и из обычных списков в тестах.
 """
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .normalize import normalize
+
+_CODE_PARTS_RE = re.compile(r'\d+|[^\W\d_]+')
+
+
+def _variant_pattern(norm_code: str) -> Optional['re.Pattern']:
+    """
+    Регулярка для кода варианта, нечувствительная к пробелам на стыках:
+    в КП пишут «Nova 1 ПГ», а в каталоге вариант назван «Nova 1ПГ».
+
+    Пробел делаем необязательным только между частями самого кода — числами и
+    буквенными кусками. Склеивать текст целиком нельзя: тогда «пг» слипается
+    с соседним «59», и код перестаёт находиться вовсе.
+    """
+    parts = _CODE_PARTS_RE.findall(norm_code)
+    if not parts:
+        return None
+    body = ' ?'.join(re.escape(part) for part in parts)
+    return re.compile(rf'(?<![0-9a-zа-я]){body}(?![0-9a-zа-я])')
 
 # Маркеры сторон двусторонней двери. Нормализуем сразу — сравнивать
 # приходится с нормализованным текстом.
@@ -271,7 +290,8 @@ def _detect_variant(padded_text: str, variants, model_occurrence: Optional[Occur
         (numeric_codes if code.isdigit() else alnum_codes).append(code)
 
     for code in sorted(alnum_codes, key=lambda c: -len(normalize(c))):
-        if f' {normalize(code)} ' in padded_text:
+        pattern = _variant_pattern(normalize(code))
+        if pattern is not None and pattern.search(padded_text):
             return code
 
     if model_occurrence is not None and numeric_codes:
