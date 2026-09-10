@@ -37,7 +37,7 @@ export type MatchProblem =
 
 export const MATCH_PROBLEM_TEXT: Record<MatchProblem, string> = {
   model_not_found: 'Модель не найдена в каталоге',
-  color_not_found: 'Цвет не найден в каталоге',
+  color_not_found: 'Цвет по КП не определён — выберите',
   no_image_for_color: 'Для этого цвета нет картинок',
   variant_ambiguous: 'Не указан вариант полотна',
 }

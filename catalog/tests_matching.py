@@ -220,6 +220,25 @@ class MatchModelNameTests(SimpleTestCase):
         result = match_model_name('Alfa AC36 неизвестный цвет', index)
         self.assertIn('color_not_found', result.front.problems)
 
+    def test_variant_is_recognised_even_without_color(self):
+        """
+        В КП фабрики цвет часто не указан вовсе («Nova 1ПГ 59 мм эмаль»), а код
+        варианта — есть. Его надо вернуть менеджеру подсказкой, иначе в окне
+        уточнения он ищет нужное полотно среди сотни картинок руками.
+        """
+        index = CatalogIndex(
+            models=[CatalogEntry.build(1, 'Nova', series_name='Окрашенные')],
+            colors=[CatalogEntry.build(2, 'RAL 1013'), CatalogEntry.build(3, 'Графит')],
+            images={(1, 2): {'Nova 1ПГ': 10, 'Nova 2': 11}, (1, 3): {'Nova 1ПГ': 12}},
+        )
+        result = match_model_name('Nova 1ПГ 59 мм эмаль спальня', index)
+        self.assertFalse(result.is_resolved)
+        self.assertIn('color_not_found', result.front.problems)
+        self.assertEqual(result.front.model.name, 'Nova')
+        # Картинку не выбираем — цвет неизвестен, но подсказку отдаём.
+        self.assertIsNone(result.front.image_pk)
+        self.assertEqual(result.front.variant, 'Nova 1ПГ')
+
     def test_to_dict_shape(self):
         data = match_model_name('Nord 1 ПГ Милк', self.index).to_dict()
         self.assertTrue(data['resolved'])

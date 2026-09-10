@@ -151,6 +151,18 @@ class CatalogIndex:
     def variants_for(self, model_pk: int, color_pk: int) -> Dict[str, int]:
         return self.images.get((model_pk, color_pk), {})
 
+    def all_variants_of(self, model_pk: int) -> Dict[str, int]:
+        """
+        Все варианты полотна модели, по всем её цветам. Нужны, когда цвет в КП
+        не указан: код варианта в строке обычно есть («Nova 1ПГ»), и подсветить
+        его в окне уточнения можно ещё до выбора цвета.
+        """
+        merged: Dict[str, int] = {}
+        for (model, _color), variants in self.images.items():
+            if model == model_pk:
+                merged.update(variants)
+        return merged
+
     def only_placeholder_color(self, model_pk: int) -> Optional[CatalogEntry]:
         """
         Единственный цвет модели, и тот — заглушка «Без цвета».
@@ -288,6 +300,13 @@ def _resolve_image(
     if side.color is None:
         side.problems.append('color_not_found')
     if side.model is None or side.color is None:
+        if side.model is not None:
+            # Цвета нет, но вариант в строке обычно назван — запоминаем его,
+            # чтобы окно уточнения подсветило нужное полотно сразу, как только
+            # менеджер выберет цвет.
+            side.variant = _detect_variant(
+                padded_text, index.all_variants_of(side.model.pk), model_occurrence,
+            )
         return
 
     variants = index.variants_for(side.model.pk, side.color.pk)

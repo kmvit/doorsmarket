@@ -92,14 +92,20 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
       .getImages(modelId, colorId)
       .then((loaded) => {
         setImages(loaded)
-        // Вариант один — выбирать не из чего, помечаем сразу.
-        setSelectedImage(loaded.length === 1 ? loaded[0] : null)
+        // Вариант один — выбирать не из чего, помечаем сразу. Иначе берём тот,
+        // код которого матчер вычитал из КП: цвет там обычно не назван, а
+        // вариант («Nova 1ПГ») — почти всегда, и искать его среди сотни
+        // картинок вручную не нужно.
+        const hinted = hint?.variant
+          ? loaded.find((image) => image.variant === hint.variant)
+          : undefined
+        setSelectedImage(loaded.length === 1 ? loaded[0] : hinted ?? null)
         // Подтягиваем варианты в видимую часть: на телефоне они оказываются
         // ниже списков модели и цвета, и их легко не заметить.
         variantsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       })
       .catch(() => setError('Не удалось загрузить картинки'))
-  }, [open, modelId, colorId])
+  }, [open, modelId, colorId, hint?.variant])
 
   const handleUpload = async () => {
     if (!modelId || !colorId || !uploadFile || isUploading) return
