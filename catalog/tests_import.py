@@ -126,6 +126,108 @@ class ImportDoorCatalogTest(TestCase):
         self.assertEqual(DoorImage.objects.count(), self.file_count)
         self.assertNotIn('._AC36', set(DoorImage.objects.values_list('variant', flat=True)))
 
+    def test_model_coating_color_layout(self):
+        """Вторая раскладка фабрики: «Модель / Покрытие / Цвет», серия — покрытие."""
+        root = tempfile.mkdtemp(prefix='catalog-mcc-')
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        for model, coating, color, filename in [
+            ('Geometria', 'Окрашенные', 'RAL 8017', 'Geometria 3 vetro.jpg'),
+            ('Geometria', 'Окрашенные', 'RAL 8017', 'Geometria 4.jpg'),
+            ('Geometria', 'Шпон', 'Дуб', 'Geometria 1.jpg'),
+        ]:
+            directory = os.path.join(root, model, coating, color)
+            os.makedirs(directory, exist_ok=True)
+            write_png(os.path.join(directory, filename))
+
+        call_command('import_door_catalog', root, layout='model-coating-color', verbosity=0)
+
+        self.assertEqual(
+            set(DoorSeries.objects.values_list('name', flat=True)), {'Окрашенные', 'Шпон'},
+        )
+        # Модель одна и та же в двух покрытиях — это две записи в разных сериях.
+        self.assertEqual(DoorModel.objects.filter(name='Geometria').count(), 2)
+        self.assertEqual(DoorImage.objects.count(), 3)
+        # Разделителя « - » в именах нет: вариантом становится всё имя файла.
+        self.assertIn('Geometria 3 vetro', set(DoorImage.objects.values_list('variant', flat=True)))
+
+    def test_files_directly_in_model_folder_are_imported(self):
+        """
+        У части моделей (Secret, Diamante) нет разбивки по покрытию и цвету —
+        без этого они пропали бы из каталога целиком.
+        """
+        root = tempfile.mkdtemp(prefix='catalog-flat-')
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        os.makedirs(os.path.join(root, 'Secret'))
+        write_png(os.path.join(root, 'Secret', 'Secret 7.jpg'))
+
+        call_command('import_door_catalog', root, layout='model-coating-color', verbosity=0)
+
+        image = DoorImage.objects.get()
+        self.assertEqual(image.door_model.name, 'Secret')
+        self.assertEqual(image.door_model.series.name, 'Без покрытия')
+        self.assertEqual(image.color.name, 'Без цвета')
+        self.assertEqual(image.variant, 'Secret 7')
+
+    def test_replace_drops_old_catalog(self):
+        call_command('import_door_catalog', self.source, verbosity=0)
+        self.assertEqual(DoorImage.objects.count(), self.file_count)
+
+        other = tempfile.mkdtemp(prefix='catalog-new-')
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        directory = os.path.join(other, 'Новая серия', 'Nord', 'Милк')
+        os.makedirs(directory)
+        write_png(os.path.join(directory, '1 - Милк.png'))
+
+        call_command('import_door_catalog', other, replace=True, verbosity=0)
+
+        self.assertEqual(DoorImage.objects.count(), 1)
+        self.assertEqual(DoorImage.objects.get().door_model.name, 'Nord')
+        # Модели и серии прежнего каталога тоже убираются: пустые они только
+        # мешают в окне выбора.
+        self.assertFalse(DoorModel.objects.filter(name='Epsilon').exists())
+        self.assertFalse(DoorSeries.objects.filter(name='Модерн').exists())
+
+    def test_replace_keeps_images_used_in_offers(self):
+        """Картинку, уже выбранную в КП, замена каталога не трогает."""
+        from decimal import Decimal
+        from django.contrib.auth import get_user_model
+        from orders.models import (
+            Order, OrderItem, OrderStatus, PrettyOffer, PrettyOfferItem, Salon,
+        )
+        from users.models import City
+
+        call_command('import_door_catalog', self.source, verbosity=0)
+        used_image = DoorImage.objects.get(variant='AC36')
+
+        city = City.objects.create(name='Казань')
+        salon = Salon.objects.create(name='Салон', city=city)
+        manager = get_user_model().objects.create_user(
+            username='mgr', password='x', role='manager', city=city, salon=salon,
+        )
+        order = Order.objects.create(
+            manager=manager, salon=salon, client_name='Клиент', status=OrderStatus.ACTIVE,
+        )
+        order_item = OrderItem.objects.create(
+            order=order, opening_number=1, model_name='Alfa AC36 Венге',
+            amount=Decimal('1000'),
+        )
+        offer = PrettyOffer.objects.create(order=order)
+        PrettyOfferItem.objects.create(
+            offer=offer, order_item=order_item, front_image=used_image,
+        )
+
+        other = tempfile.mkdtemp(prefix='catalog-new-')
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        directory = os.path.join(other, 'Новая серия', 'Nord', 'Милк')
+        os.makedirs(directory)
+        write_png(os.path.join(directory, '1 - Милк.png'))
+
+        call_command('import_door_catalog', other, replace=True, verbosity=0)
+
+        used_image.refresh_from_db()
+        self.assertTrue(DoorImage.objects.filter(pk=used_image.pk).exists())
+        self.assertEqual(PrettyOfferItem.objects.get().front_image_id, used_image.pk)
+
     def test_dry_run_writes_nothing(self):
         call_command('import_door_catalog', self.source, dry_run=True, verbosity=0)
 
