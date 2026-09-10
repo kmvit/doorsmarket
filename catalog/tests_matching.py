@@ -193,6 +193,33 @@ class MatchModelNameTests(SimpleTestCase):
         result = match_model_name('SKY Капучино', self.index)
         self.assertIn('no_image_for_color', result.front.problems)
 
+    def test_model_without_colors_does_not_ask_about_color(self):
+        """
+        У Secret каталог не разбит по цветам — выбирать менеджеру не из чего,
+        и спрашивать про цвет незачем.
+        """
+        index = CatalogIndex(
+            models=[CatalogEntry.build(1, 'Secret', series_name='Без покрытия')],
+            colors=[CatalogEntry.build(2, 'Без цвета')],
+            images={(1, 2): {'Secret 7': 10, 'Secret 8': 11}},
+            placeholder_color_pks=frozenset({2}),
+        )
+        result = match_model_name('Secret 7 2100*900 ДП3', index)
+        self.assertTrue(result.is_resolved)
+        self.assertEqual(result.front.color.name, 'Без цвета')
+        self.assertEqual(result.front.variant, 'Secret 7')
+        self.assertEqual(result.front.image_pk, 10)
+
+    def test_color_is_not_guessed_when_model_has_real_colors(self):
+        """Если у модели есть настоящие цвета, подставлять один за менеджера нельзя."""
+        index = CatalogIndex(
+            models=[CatalogEntry.build(1, 'Alfa', series_name='Модерн')],
+            colors=[CatalogEntry.build(2, 'Венге')],
+            images={(1, 2): {'AC36': 10}},
+        )
+        result = match_model_name('Alfa AC36 неизвестный цвет', index)
+        self.assertIn('color_not_found', result.front.problems)
+
     def test_to_dict_shape(self):
         data = match_model_name('Nord 1 ПГ Милк', self.index).to_dict()
         self.assertTrue(data['resolved'])

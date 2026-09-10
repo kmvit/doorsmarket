@@ -36,6 +36,9 @@ _TWO_SIDED_MARKERS = [
 # число крупнее — это почти наверняка толщина или размер («50 мм», «65 мм»).
 _MAX_NUMERIC_VARIANT = 40
 
+# Так импорт подписывает цвет у моделей, каталог которых не разбит по цветам.
+PLACEHOLDER_COLOR = 'Без цвета'
+
 
 @dataclass(frozen=True)
 class CatalogEntry:
@@ -134,15 +137,36 @@ class CatalogIndex:
         models: List[CatalogEntry],
         colors: List[CatalogEntry],
         images: Optional[Dict[Tuple[int, int], Dict[str, int]]] = None,
+        placeholder_color_pks: frozenset = frozenset(),
     ):
         # Длинные названия проверяем первыми: «Дуб антик» должен выиграть у «Дуб».
         self.models = sorted(models, key=lambda e: -max(len(n) for n in e.norm_names or ['']))
         self.colors = sorted(colors, key=lambda e: -max(len(n) for n in e.norm_names or ['']))
         # {(model_pk, color_pk): {variant: image_pk}}
         self.images = images or {}
+        # Цвета-заглушки: у части моделей каталог не разбит по цветам вовсе.
+        self.placeholder_color_pks = placeholder_color_pks
+        self._colors_by_pk = {color.pk: color for color in colors}
 
     def variants_for(self, model_pk: int, color_pk: int) -> Dict[str, int]:
         return self.images.get((model_pk, color_pk), {})
+
+    def only_placeholder_color(self, model_pk: int) -> Optional[CatalogEntry]:
+        """
+        Единственный цвет модели, и тот — заглушка «Без цвета».
+
+        У Secret, Diamante и Line каталог не разбит по цветам, и выбирать
+        менеджеру не из чего: спрашивать про цвет там нечего. Подставляем сами
+        только в этом случае — если у модели есть настоящие цвета, угадывать
+        за менеджера нельзя.
+        """
+        color_pks = {color_pk for model, color_pk in self.images if model == model_pk}
+        if len(color_pks) != 1:
+            return None
+        color_pk = next(iter(color_pks))
+        if color_pk not in self.placeholder_color_pks:
+            return None
+        return self._colors_by_pk.get(color_pk)
 
 
 def build_index() -> CatalogIndex:
@@ -160,7 +184,11 @@ def build_index() -> CatalogIndex:
     images: Dict[Tuple[int, int], Dict[str, int]] = {}
     for img in DoorImage.objects.all().only('id', 'door_model_id', 'color_id', 'variant'):
         images.setdefault((img.door_model_id, img.color_id), {})[img.variant] = img.pk
-    return CatalogIndex(models, colors, images)
+    placeholder = frozenset(
+        DoorColor.objects.filter(norm_name=normalize(PLACEHOLDER_COLOR))
+        .values_list('id', flat=True)
+    )
+    return CatalogIndex(models, colors, images, placeholder_color_pks=placeholder)
 
 
 # ---------- поиск вхождений ----------
@@ -253,6 +281,8 @@ def _resolve_image(
     model_occurrence: Optional[Occurrence],
 ) -> None:
     """Доводит сторону до картинки либо заполняет `problems` для окна уточнения."""
+    if side.model is not None and side.color is None:
+        side.color = index.only_placeholder_color(side.model.pk)
     if side.model is None:
         side.problems.append('model_not_found')
     if side.color is None:
