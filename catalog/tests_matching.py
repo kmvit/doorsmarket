@@ -55,6 +55,13 @@ class NormalizeTests(SimpleTestCase):
         # «Nord» латиницей и «N\u043Erd» с кириллической «о» — одно и то же.
         self.assertEqual(normalize('N\u043Erd'), normalize('Nord'))
 
+    def test_digits_are_not_collapsed(self):
+        # Схлопывание повторов задумано для букв. Задень оно цифры —
+        # «Nova 11ПГ» слилась бы с «Nova 1ПГ», а «RAL 9003» с «RAL 903».
+        self.assertNotEqual(normalize('Nova 11ПГ'), normalize('Nova 1ПГ'))
+        self.assertNotEqual(normalize('RAL 9003'), normalize('RAL 903'))
+        self.assertEqual(normalize('RAL 9003'), normalize('ral 9003'))
+
     def test_macos_decomposed_letters_match(self):
         # macOS отдаёт имена папок в NFD: «й» = «и» + надстрочный знак.
         decomposed = unicodedata.normalize('NFD', 'Мелинга серый')
