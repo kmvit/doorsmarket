@@ -8,6 +8,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from marketingdoors.search import NumberAwareSearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import timedelta
+from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q, Prefetch
 from django.shortcuts import get_object_or_404
@@ -2100,6 +2101,35 @@ class PrettyOfferViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mix
     def get_queryset(self):
         accessible = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
         return PrettyOffer.objects.filter(order_id__in=list(accessible)).select_related('order')
+
+    @action(detail=True, methods=['post'], url_path='apply-color')
+    def apply_color(self, request, pk=None):
+        """
+        Разносит выбранный цвет по проёмам, где картинка ещё не подобрана.
+
+        В КП фабрики цвета нет, но внутри заказа он обычно один на все двери —
+        менеджер выбирает его один раз, вместо того чтобы повторять выбор
+        на каждом проёме.
+        """
+        from .pretty_offer import apply_color_to_items
+
+        offer = self.get_object()
+        color_id = request.data.get('color')
+        if not color_id:
+            return Response(
+                {'detail': 'Не указан цвет.'}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not DoorColor.objects.filter(pk=color_id).exists():
+            return Response(
+                {'detail': 'Такого цвета нет в каталоге.'}, status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        stats = apply_color_to_items(offer, int(color_id))
+        offer.refresh_from_db()
+        return Response({
+            'stats': stats,
+            'offer': PrettyOfferSerializer(offer, context={'request': request}).data,
+        })
 
     @action(detail=True, methods=['post'], url_path='add-image',
             parser_classes=[MultiPartParser, FormParser, JSONParser])

@@ -100,6 +100,50 @@ def match_missing_images(offer: PrettyOffer) -> int:
     return matched
 
 
+def apply_color_to_items(offer: PrettyOffer, color_id: int) -> dict:
+    """
+    Проставляет выбранный цвет всем проёмам, где картинка ещё не подобрана.
+
+    В КП фабрики цвет полотна не указан вовсе, зато внутри одного заказа он,
+    как правило, один на все двери. Поэтому менеджер выбирает цвет один раз,
+    а мы разносим его по остальным проёмам — но только там, где сомнений нет:
+    модель узнана и полотно определяется однозначно. Уже выбранное менеджером
+    не трогаем никогда.
+
+    Оборот двусторонней двери не заполняем: он для того и двусторонний, что
+    отделка сторон разная.
+    """
+    index = build_index()
+    result = {'filled': 0, 'no_model': 0, 'color_unavailable': 0, 'variant_ambiguous': 0}
+
+    for item in offer.items.select_related('order_item').all():
+        if item.front_image_url:
+            continue
+
+        side = match_model_name(item.order_item.model_name, index).front
+        if side.model is None:
+            result['no_model'] += 1
+            continue
+
+        variants = index.variants_for(side.model.pk, color_id)
+        if not variants:
+            result['color_unavailable'] += 1
+            continue
+
+        variant = side.variant if side.variant in variants else ''
+        if not variant and len(variants) == 1:
+            variant = next(iter(variants))
+        if not variant:
+            result['variant_ambiguous'] += 1
+            continue
+
+        item.front_image_id = variants[variant]
+        item.save(update_fields=['front_image'])
+        result['filled'] += 1
+
+    return result
+
+
 def clarification_items(offer: PrettyOffer):
     """
     Проёмы, по которым нужно уточнить модель и цвет, вместе с тем, что удалось

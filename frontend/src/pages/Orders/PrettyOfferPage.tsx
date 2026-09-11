@@ -39,6 +39,7 @@ const PrettyOfferPage = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [isBuilding, setIsBuilding] = useState(false)
   const [isPdfLoading, setIsPdfLoading] = useState(false)
+  const [applyColorNotice, setApplyColorNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [comment, setComment] = useState('')
@@ -184,6 +185,33 @@ const PrettyOfferPage = () => {
     setImagePicker(null)
   }
 
+  // Цвета в КП фабрики нет, а внутри заказа он обычно один на все двери:
+  // подобрали дверь на одном проёме — разносим этот цвет по остальным.
+  const handleApplyColorToAll = async (colorId: number, colorName: string) => {
+    if (!offer) return
+    const pending = offer.items.filter((item) => item.needs_clarification).length
+    if (!pending) {
+      setApplyColorNotice('Все проёмы уже с картинками — разносить цвет некуда.')
+      return
+    }
+    if (!confirm(`Проставить цвет «${colorName}» остальным проёмам (${pending})? Уже выбранное не изменится.`)) return
+    setError(null)
+    try {
+      const { stats, offer: updated } = await prettyOfferAPI.applyColor(offer.id, colorId)
+      applyOffer(updated)
+      await loadClarifications()
+      const rest: string[] = []
+      if (stats.variant_ambiguous) rest.push(`${stats.variant_ambiguous} — не понять вариант полотна`)
+      if (stats.color_unavailable) rest.push(`${stats.color_unavailable} — модели нет в этом цвете`)
+      if (stats.no_model) rest.push(`${stats.no_model} — модель не из каталога`)
+      setApplyColorNotice(
+        `Заполнено проёмов: ${stats.filled}.` + (rest.length ? ` Осталось вручную: ${rest.join(', ')}.` : ''),
+      )
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Не удалось проставить цвет')
+    }
+  }
+
   const handleDeleteImage = async (attachmentId: number) => {
     if (!offer) return
     try {
@@ -279,6 +307,19 @@ const PrettyOfferPage = () => {
         </div>
       ) : (
         <>
+          {applyColorNotice && (
+            <div className="rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-900 p-3 flex items-start justify-between gap-3">
+              <span>{applyColorNotice}</span>
+              <button
+                type="button"
+                onClick={() => setApplyColorNotice(null)}
+                className="text-blue-500 hover:text-blue-700 shrink-0"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {offer.needs_clarification_count > 0 && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 p-3">
               По {offer.needs_clarification_count}{' '}
@@ -292,6 +333,7 @@ const PrettyOfferPage = () => {
               <PrettyOfferOpeningCard
                 key={item.id}
                 item={item}
+                onApplyColorToAll={handleApplyColorToAll}
                 onPatch={(patch) => patchItem(item.id, patch)}
                 onUploadDoorImage={(side, file) => uploadDoorImage(item.id, side, file)}
                 onPickFromCatalog={(side) => setDoorPicker({ itemId: item.id, side })}

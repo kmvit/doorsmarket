@@ -4,6 +4,7 @@ import { PrettyOfferItem } from '../../types/prettyOffer'
 
 interface Props {
   item: PrettyOfferItem
+  onApplyColorToAll: (colorId: number, colorName: string) => void
   onPatch: (patch: Partial<PrettyOfferItem>) => Promise<void>
   onUploadDoorImage: (side: 'front' | 'back', file: File) => Promise<void>
   onPickFromCatalog: (side: 'front' | 'back') => void
@@ -75,6 +76,7 @@ const DoorSide = ({
  */
 const PrettyOfferOpeningCard = ({
   item,
+  onApplyColorToAll,
   onPatch,
   onUploadDoorImage,
   onPickFromCatalog,
@@ -87,6 +89,9 @@ const PrettyOfferOpeningCard = ({
   useEffect(() => setDescription(item.description), [item.description])
 
   const size = [item.door_height, item.door_width].filter(Boolean).join(' × ')
+  // Цвета в КП нет, но внутри заказа он обычно один: подобрали дверь на одном
+  // проёме — предлагаем разнести этот цвет по остальным.
+  const catalogColor = item.front_image_detail
 
   return (
     <div
@@ -119,6 +124,17 @@ const PrettyOfferOpeningCard = ({
           </p>
         </div>
 
+        <div className="flex items-center gap-3 shrink-0">
+        {catalogColor && (
+          <button
+            type="button"
+            onClick={() => onApplyColorToAll(catalogColor.color, catalogColor.color_name)}
+            className="text-xs text-primary-600 hover:underline whitespace-nowrap"
+            title={`Проставить цвет «${catalogColor.color_name}» остальным проёмам, где картинка не подобрана`}
+          >
+            Этот цвет — всем
+          </button>
+        )}
         <label className="flex items-center gap-2 text-sm text-gray-700 whitespace-nowrap">
           <input
             type="checkbox"
@@ -128,6 +144,7 @@ const PrettyOfferOpeningCard = ({
           />
           Двусторонняя
         </label>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

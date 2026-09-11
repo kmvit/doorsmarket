@@ -1,5 +1,6 @@
 import apiClient from './client'
 import {
+  ApplyColorStats,
   Clarification,
   DoorColorRef,
   DoorImageRef,
@@ -86,6 +87,18 @@ export const prettyOfferAPI = {
       source_id: payload.source?.id,
       offer_item: payload.offerItemId ?? null,
       caption: payload.caption ?? '',
+    })
+    return response.data
+  },
+
+  // Цвета в КП фабрики нет, но внутри заказа он обычно один на все двери:
+  // менеджер выбирает его один раз, а мы разносим по остальным проёмам.
+  applyColor: async (
+    offerId: number,
+    colorId: number,
+  ): Promise<{ stats: ApplyColorStats; offer: PrettyOffer }> => {
+    const response = await apiClient.post(`/pretty-offers/${offerId}/apply-color/`, {
+      color: colorId,
     })
     return response.data
   },

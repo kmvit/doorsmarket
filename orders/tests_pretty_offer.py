@@ -205,6 +205,79 @@ class PrettyOfferFlowTest(TestCase):
         item.refresh_from_db()
         self.assertFalse(item.needs_clarification)
 
+    # ---------- цвет на все проёмы ----------
+
+    def test_apply_color_fills_openings_where_only_color_was_missing(self):
+        """
+        В КП фабрики цвета нет, но внутри заказа он обычно один. Менеджер
+        выбирает его один раз — остальные проёмы заполняются сами.
+        """
+        # Обе двери Epsilon с указанным вариантом, но без цвета в тексте.
+        self.item_ok.model_name = 'Epsilon 12 без указания цвета'
+        self.item_ok.save(update_fields=['model_name'])
+        self.item_ambiguous.model_name = 'Epsilon 1 без указания цвета'
+        self.item_ambiguous.save(update_fields=['model_name'])
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        self.assertEqual(offer.items.filter(front_image__isnull=False).count(), 0)
+
+        response = self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-color/',
+            {'color': self.capuccino.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['stats']['filled'], 2)
+
+        by_opening = {i.order_item.opening_number: i for i in offer.items.all()}
+        # Вариант из текста уважается: 12-й и 1-й — разные полотна.
+        self.assertEqual(by_opening[1].front_image_id, self.img_12.pk)
+        self.assertEqual(by_opening[2].front_image_id, self.img_1.pk)
+
+    def test_apply_color_does_not_touch_manager_choice(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        item = offer.items.get(order_item=self.item_ambiguous)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'front_image': self.img_oak.pk}, format='json',
+        )
+
+        self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-color/',
+            {'color': self.capuccino.pk}, format='json',
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(item.front_image_id, self.img_oak.pk)
+
+    def test_apply_color_skips_models_without_that_color(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+
+        response = self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-color/',
+            {'color': self.capuccino.pk}, format='json',
+        )
+        stats = response.data['stats']
+        # Третий проём — модели нет в каталоге, её не заполнить ничем.
+        self.assertEqual(stats['no_model'], 1)
+
+    def test_apply_color_requires_known_color(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        self.assertEqual(
+            self.client.post(
+                f'/api/v1/pretty-offers/{offer.pk}/apply-color/', {}, format='json',
+            ).status_code, 400,
+        )
+        self.assertEqual(
+            self.client.post(
+                f'/api/v1/pretty-offers/{offer.pk}/apply-color/',
+                {'color': 999999}, format='json',
+            ).status_code, 400,
+        )
+
     # ---------- суммы ----------
 
     def test_totals_come_from_order_and_can_be_overridden(self):

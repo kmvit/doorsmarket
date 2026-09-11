@@ -62,6 +62,14 @@ export interface MatchResult {
   back: MatchSide | null
 }
 
+// Итог разноса цвета по проёмам: что заполнилось, а что осталось менеджеру.
+export interface ApplyColorStats {
+  filled: number
+  no_model: number
+  color_unavailable: number
+  variant_ambiguous: number
+}
+
 export interface Clarification {
   offer_item_id: number
   opening_number: number
