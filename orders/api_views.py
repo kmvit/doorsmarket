@@ -1313,9 +1313,13 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.measurement_date = date
         m.save(update_fields=['measurement_date', 'updated_at'])
         order = m.request.order
-        if order.status in (
+        # MEASUREMENT_NOT_DONE обязателен в списке: если дата прошла, крон
+        # помечает заказ «Замер не выполнен», и СМ переносит замер именно из
+        # этого состояния. Без него заказ так и оставался в папке «Не выполнен»
+        # с уже назначенной новой датой.
+        if not m.is_done and order.status in (
             OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED,
-            OrderStatus.MEASUREMENT_NOT_PLANNED,
+            OrderStatus.MEASUREMENT_NOT_PLANNED, OrderStatus.MEASUREMENT_NOT_DONE,
         ):
             order.status = OrderStatus.MEASUREMENT_SCHEDULED
             order.touch_activity(ActivityKind.MEASUREMENT_SCHEDULED, save=False)
