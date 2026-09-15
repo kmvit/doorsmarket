@@ -143,6 +143,25 @@ class MatchModelNameTests(SimpleTestCase):
         self.assertIsNone(result.back)
         self.assertEqual(result.front.image_pk, 400)
 
+    def test_word_from_model_name_is_not_taken_as_color(self):
+        """
+        «Piana Орех» — название модели. Раньше «Орех» засчитывался ещё и
+        цветом, строка выглядела двухцветной, дверь считалась двусторонней,
+        и картинка уезжала на оборот вместо лица.
+        """
+        index = CatalogIndex(
+            models=[CatalogEntry.build(1, 'Piana Орех', series_name='Шпон')],
+            colors=[CatalogEntry.build(2, 'Орех натуральный'), CatalogEntry.build(3, 'Орех')],
+            images={(1, 2): {'Piana Орех 1 PGT': 10}},
+        )
+        result = match_model_name(
+            'Piana Орех 1 PGT верт. 65 мм. ИНВЕРСО Орех натуральный', index,
+        )
+        self.assertFalse(result.two_sided)
+        self.assertIsNone(result.back)
+        self.assertEqual(result.front.color.name, 'Орех натуральный')
+        self.assertEqual(result.front.image_pk, 10)
+
     def test_two_colors_without_markers_mean_two_sided(self):
         result = match_model_name('Piana 1 PG Орех натуральный и Дуб натуральный шпон', self.index)
         self.assertTrue(result.two_sided)

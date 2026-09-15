@@ -224,15 +224,25 @@ def build_index() -> CatalogIndex:
 
 # ---------- поиск вхождений ----------
 
-def _find_occurrences(padded_text: str, entries: List[CatalogEntry]) -> List[Occurrence]:
+def _find_occurrences(
+    padded_text: str,
+    entries: List[CatalogEntry],
+    taken: Optional[List[Tuple[int, int]]] = None,
+) -> List[Occurrence]:
     """
     Все непересекающиеся вхождения записей справочника, длинные — в приоритете.
 
     `padded_text` — нормализованный текст, обрамлённый пробелами: так проверка
     границ слова сводится к обычному поиску подстроки ' название '.
+
+    `taken` — уже занятые куски строки. Список общий для моделей и цветов:
+    иначе слово из названия модели засчитывается ещё и цветом («Piana Орех»
+    давала цвет «Орех»), строка выглядит как двухцветная, и дверь ошибочно
+    считается двусторонней.
     """
     occurrences: List[Occurrence] = []
-    taken: List[Tuple[int, int]] = []
+    if taken is None:
+        taken = []
 
     for entry in entries:
         for norm_name in entry.norm_names:
@@ -359,8 +369,23 @@ def match_model_name(text: str, index: CatalogIndex) -> MatchResult:
     result = MatchResult(source_text=text or '')
     padded = f' {normalize(text)} '
 
-    all_models = _find_occurrences(padded, index.models)
-    all_colors = _find_occurrences(padded, index.colors)
+    # Модели и цвета ищем одним проходом с общим списком занятых кусков, а
+    # длинные названия — первыми: так самое длинное совпадение забирает свой
+    # кусок строки, кем бы оно ни было, и «Орех» из «Piana Орех» уже не станет
+    # отдельным цветом.
+    taken: List[Tuple[int, int]] = []
+    longest = lambda entry: -max(len(n) for n in entry.norm_names or [''])
+    ordered = sorted(
+        [('model', e) for e in index.models] + [('color', e) for e in index.colors],
+        key=lambda pair: longest(pair[1]),
+    )
+    all_models: List[Occurrence] = []
+    all_colors: List[Occurrence] = []
+    for kind, entry in ordered:
+        found = _find_occurrences(padded, [entry], taken)
+        (all_models if kind == 'model' else all_colors).extend(found)
+    all_models.sort(key=lambda o: o.position)
+    all_colors.sort(key=lambda o: o.position)
     model_occurrences = _dedupe_by_entry(all_models)
     color_occurrences = _dedupe_by_entry(all_colors)
 
