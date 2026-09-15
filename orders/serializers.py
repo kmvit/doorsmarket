@@ -49,9 +49,6 @@ class OrderAttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
             return obj.file.url
         return None
 
@@ -258,9 +255,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
     def get_commercial_offer_url(self, obj):
         if obj.commercial_offer:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.commercial_offer.url)
+            return obj.commercial_offer.url
         return None
 
 
@@ -392,17 +387,13 @@ class MeasurementRequestSerializer(serializers.ModelSerializer):
 
     def get_opening_plan_url(self, obj):
         if obj.opening_plan:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.opening_plan.url)
+            return obj.opening_plan.url
         return None
 
     def get_files(self, obj):
         """Все файлы заявки одним списком — первым идёт исторический opening_plan."""
-        request = self.context.get('request')
-
         def absolute(url):
-            return request.build_absolute_uri(url) if request else url
+            return url
 
         result = []
         if obj.opening_plan:
@@ -518,9 +509,7 @@ class MeasurementAttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
         return None
 
 
@@ -654,10 +643,9 @@ class MeasurementSerializer(serializers.ModelSerializer):
         return f'{u.first_name} {u.last_name}'.strip() or u.username
 
     def get_opening_plan_url(self, obj):
-        request = self.context.get('request')
         plan = obj.request.opening_plan if obj.request else None
-        if plan and request:
-            return request.build_absolute_uri(plan.url)
+        if plan:
+            return plan.url
         return None
 
     def get_opening_plan_urls(self, obj):
@@ -670,21 +658,20 @@ class MeasurementSerializer(serializers.ModelSerializer):
         if req.opening_plan:
             url = req.opening_plan.url
             result.append({
-                'url': request.build_absolute_uri(url) if request else url,
+                'url': url,
                 'name': req.opening_plan.name.rsplit('/', 1)[-1],
             })
         for f in req.files.all():
             url = f.file.url
             result.append({
-                'url': request.build_absolute_uri(url) if request else url,
+                'url': url,
                 'name': f.name or f.file.name.rsplit('/', 1)[-1],
             })
         return result
 
     def get_signature_photo_url(self, obj):
-        request = self.context.get('request')
-        if obj.signature_photo and request:
-            return request.build_absolute_uri(obj.signature_photo.url)
+        if obj.signature_photo:
+            return obj.signature_photo.url
         return None
 
     def get_lift_required(self, obj):
@@ -858,8 +845,7 @@ class PrettyOfferAttachmentSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         if not obj.image:
             return None
-        request = self.context.get('request')
-        return request.build_absolute_uri(obj.image.url) if request else obj.image.url
+        return obj.image.url
 
 
 class PrettyOfferItemSerializer(serializers.ModelSerializer):
@@ -900,10 +886,7 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
         }
 
     def _absolute(self, url):
-        if not url:
-            return None
-        request = self.context.get('request')
-        return request.build_absolute_uri(url) if request else url
+        return url or None
 
     def get_front_image_url(self, obj):
         return self._absolute(obj.front_image_url)

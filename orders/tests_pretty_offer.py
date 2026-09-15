@@ -469,6 +469,49 @@ class PrettyOfferFlowTest(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class RelativeMediaUrlsTest(TestCase):
+    """
+    Ссылки на файлы должны быть относительными.
+
+    TLS терминирует балансировщик хостинга, до Django запрос доходит по http,
+    и абсолютные ссылки получались с http:// на https-странице. Браузер
+    блокировал их как смешанное содержимое: скачивание офлайн-копии не
+    сохраняло ни одного файла.
+    """
+
+    def setUp(self):
+        city = City.objects.create(name='Казань')
+        salon = Salon.objects.create(name='Салон', city=city)
+        self.manager = User.objects.create_user(
+            username='mgr2', password='x', role='manager', city=city, salon=salon,
+        )
+        self.order = Order.objects.create(
+            manager=self.manager, salon=salon, client_name='Тест', status=OrderStatus.ACTIVE,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.manager)
+
+    def test_attachment_url_is_relative(self):
+        OrderAttachment.objects.create(
+            order=self.order, file=upload('plan.png'), name='План',
+        )
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/')
+        url = response.data['attachments'][0]['file_url']
+        self.assertTrue(url.startswith('/'), url)
+        self.assertNotIn('http', url)
+
+    def test_catalog_image_url_is_relative(self):
+        series = DoorSeries.objects.create(name='Модерн')
+        model = DoorModel.objects.create(series=series, name='Epsilon')
+        color = DoorColor.objects.create(name='Капучино')
+        DoorImage.objects.create(
+            door_model=model, color=color, variant='1', image=upload('door.png'),
+        )
+        response = self.client.get('/api/v1/door-images/')
+        url = response.data[0]['image_url']
+        self.assertTrue(url.startswith('/'), url)
+
+
 class OfferTextPresetTest(TestCase):
     def test_seeded_presets_exist(self):
         # Тексты слайдов заведены миграцией по образцу шаблона.
