@@ -206,13 +206,6 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Settings
-# TLS терминируется внешним балансировщиком хостинга: до Django запрос доходит
-# по http, и request.build_absolute_uri() строил ссылки на файлы с http://.
-# На https-странице браузер блокирует такие запросы как смешанное содержимое —
-# из-за этого «Скачать для офлайна» не сохраняла ни одного файла.
-# Заголовок ставит nginx, подставляя протокол исходного запроса.
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
 CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
     'https://16c90da0e1be.vps.myjino.ru,http://localhost:3000,http://127.0.0.1:3000'
