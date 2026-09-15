@@ -392,6 +392,13 @@ export interface MeasurementRequest {
   created_at: string
   created_by: number | null
   created_by_name: string | null
+  /** Заявка признана неактуальной — менеджер подтвердил отказ клиента */
+  is_irrelevant: boolean
+  /** СМ пометил заявку неактуальной; до решения менеджера она остаётся в работе */
+  irrelevant_requested_at: string | null
+  irrelevant_reason: string
+  irrelevant_requested_by_name: string
+  irrelevant_confirmed_at: string | null
 }
 
 export interface MeasurementRequestFile {

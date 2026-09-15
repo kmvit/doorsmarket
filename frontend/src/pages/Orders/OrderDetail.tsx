@@ -36,7 +36,26 @@ const OrderDetail = () => {
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
   const canManage = canEdit || user?.role === 'leader'
   const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
+  // «Неактуален» доступен с момента заявки: клиент может отказаться до того,
+  // как СМ назначил дату и замер вообще появился.
+  const irrelevantPending = Boolean(
+    measurementRequest?.irrelevant_requested_at && !measurementRequest?.is_irrelevant,
+  )
+  const canMarkIrrelevant = Boolean(
+    measurementRequest && !measurementRequest.is_irrelevant && !irrelevantPending &&
+    !measurement?.is_done &&
+    ['service_manager', 'admin', 'leader'].includes(user?.role || ''),
+  )
+  const canDecideIrrelevant = Boolean(
+    irrelevantPending && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+  )
   const [notifyingClient, setNotifyingClient] = useState(false)
+  const [markingIrrelevant, setMarkingIrrelevant] = useState(false)
+  const [irrelevantBusy, setIrrelevantBusy] = useState(false)
+  const [showIrrelevantModal, setShowIrrelevantModal] = useState(false)
+  // Окно показываем один раз за загрузку: менеджер мог закрыть его, чтобы
+  // сперва посмотреть заказ, и повторно оно лезть не должно.
+  const irrelevantModalShown = useRef(false)
   const [callNotifySent, setCallNotifySent] = useState(false)
 
   const handleNotifyClientCallFailed = async () => {
@@ -95,6 +114,14 @@ const OrderDetail = () => {
     load()
   }, [id])
 
+  // Менеджеру сразу показываем окно: СМ пометил замер неактуальным.
+  useEffect(() => {
+    if (canDecideIrrelevant && !irrelevantModalShown.current) {
+      irrelevantModalShown.current = true
+      setShowIrrelevantModal(true)
+    }
+  }, [canDecideIrrelevant])
+
   const reloadOrder = async () => {
     try {
       const data = await ordersAPI.getById(Number(id))
@@ -132,6 +159,39 @@ const OrderDetail = () => {
       alert(err?.response?.data?.detail || 'Не удалось назначить повторный замер')
     } finally {
       setRequestingRepeat(false)
+    }
+  }
+
+  const handleMarkIrrelevant = async () => {
+    if (!order || markingIrrelevant) return
+    if (!confirm('Пометить замер как неактуальный? Решение примет менеджер — до этого заявка останется в работе.')) return
+    const reason = prompt('Причина (её увидит менеджер):', '') ?? ''
+    setMarkingIrrelevant(true)
+    try {
+      await measurementsAPI.markIrrelevant(order.id, reason.trim())
+      await reloadOrder()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Не удалось пометить замер неактуальным')
+    } finally {
+      setMarkingIrrelevant(false)
+    }
+  }
+
+  const handleIrrelevantDecision = async (confirmed: boolean) => {
+    if (!order || irrelevantBusy) return
+    setIrrelevantBusy(true)
+    try {
+      if (confirmed) {
+        await measurementsAPI.confirmIrrelevant(order.id)
+      } else {
+        await measurementsAPI.keepRelevant(order.id)
+      }
+      setShowIrrelevantModal(false)
+      await reloadOrder()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Не удалось сохранить решение')
+    } finally {
+      setIrrelevantBusy(false)
     }
   }
 
@@ -647,7 +707,19 @@ const OrderDetail = () => {
       {measurementRequest && (
         <div className="bg-white rounded-xl shadow-sm border border-cyan-200 ring-1 ring-cyan-100 p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-cyan-700 uppercase tracking-wider">Замер</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm font-semibold text-cyan-700 uppercase tracking-wider">Замер</h2>
+              {measurementRequest?.is_irrelevant && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-300 text-gray-800">
+                  Неактуален
+                </span>
+              )}
+              {irrelevantPending && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+                  Помечен неактуальным — ждёт решения менеджера
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {measurement ? (
                 <>
@@ -677,6 +749,26 @@ const OrderDetail = () => {
                     Назначить дату замера
                   </button>
                 )
+              )}
+              {/* «Неактуален» — тоже с момента заявки: клиент может отказаться
+                  до того, как СМ назначил дату */}
+              {canMarkIrrelevant && (
+                <button
+                  onClick={handleMarkIrrelevant}
+                  disabled={markingIrrelevant}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 hover:bg-gray-200 rounded-lg disabled:opacity-60"
+                  title="Замер не нужен: клиент отказался, объект не готов. Решение примет менеджер"
+                >
+                  {markingIrrelevant ? 'Помечаем…' : 'Неактуален'}
+                </button>
+              )}
+              {canDecideIrrelevant && (
+                <button
+                  onClick={() => setShowIrrelevantModal(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-orange-800 bg-orange-100 border border-orange-300 hover:bg-orange-200 rounded-lg"
+                >
+                  Решить по неактуальности
+                </button>
               )}
               {/* Недозвон: кнопка у СМ с момента заявки (замер может быть ещё не создан) */}
               {!measurement?.is_done && ['service_manager', 'admin'].includes(user?.role || '') && (
@@ -1042,6 +1134,61 @@ const OrderDetail = () => {
       {pdfGenerating && (
         <LoadingOverlay message="Формируем PDF замера…" hint="Это может занять несколько секунд, не закрывайте страницу." />
       )}
+      {/* Окно менеджеру: СМ пометил замер неактуальным. Закрыть можно, не
+          решая, — тогда заявка просто остаётся в работе. */}
+      {showIrrelevantModal && measurementRequest?.irrelevant_requested_at && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Сервис-менеджер пометил замер как неактуальный
+            </h3>
+            <div className="mt-3 text-sm text-gray-700 space-y-1">
+              <p>
+                {measurementRequest.irrelevant_requested_by_name || 'Сервис-менеджер'} ·{' '}
+                {new Date(measurementRequest.irrelevant_requested_at).toLocaleString('ru-RU')}
+              </p>
+              {measurementRequest.irrelevant_reason ? (
+                <p className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+                  {measurementRequest.irrelevant_reason}
+                </p>
+              ) : (
+                <p className="text-gray-500">Причина не указана.</p>
+              )}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Подтвердите — замер уйдёт в «Неактуальные» и пропадёт из заявок. Оставите
+              актуальным — пометка снимется, замер останется в работе у сервис-менеджера.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIrrelevantModal(false)}
+                disabled={irrelevantBusy}
+                className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl disabled:opacity-60"
+              >
+                Решу позже
+              </button>
+              <button
+                type="button"
+                onClick={() => handleIrrelevantDecision(false)}
+                disabled={irrelevantBusy}
+                className="px-4 py-2 text-sm font-medium text-green-800 bg-green-100 border border-green-300 hover:bg-green-200 rounded-xl disabled:opacity-60"
+              >
+                Оставить актуальным
+              </button>
+              <button
+                type="button"
+                onClick={() => handleIrrelevantDecision(true)}
+                disabled={irrelevantBusy}
+                className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 rounded-xl disabled:opacity-60"
+              >
+                {irrelevantBusy ? 'Сохраняем…' : 'Подтвердить неактуальность'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

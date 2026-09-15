@@ -463,6 +463,32 @@ class MeasurementRequest(models.Model):
         verbose_name='Создал',
     )
 
+    # «Неактуален»: клиент отказался от замера. Признак живёт на заявке, а не
+    # на самом замере: отказаться могут ещё до того, как СМ назначил дату и
+    # замер вообще появился. Решение принимает менеджер — до его подтверждения
+    # заявка остаётся в работе, иначе она тихо исчезала бы у него из-под носа.
+    irrelevant_requested_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Помечена неактуальной',
+    )
+    irrelevant_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='irrelevant_measurement_requests', verbose_name='Кто пометил',
+    )
+    irrelevant_reason = models.CharField(
+        max_length=500, blank=True, verbose_name='Причина неактуальности',
+    )
+    is_irrelevant = models.BooleanField(
+        default=False, verbose_name='Неактуальна',
+        help_text='Менеджер подтвердил неактуальность — заявка уходит из работы.',
+    )
+    irrelevant_confirmed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Неактуальность подтверждена',
+    )
+    irrelevant_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='confirmed_irrelevant_measurements', verbose_name='Кто подтвердил',
+    )
+
     class Meta:
         verbose_name = 'Заявка на замер'
         verbose_name_plural = 'Заявки на замер'
@@ -593,32 +619,6 @@ class Measurement(models.Model):
     done_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата выполнения')
     is_processed = models.BooleanField(default=False, verbose_name='Замер обработан менеджером')
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата обработки')
-    # «Неактуален»: СМ видит на объекте, что замер не нужен (клиент передумал,
-    # объект не готов), и помечает замер. Само решение за менеджером — до его
-    # подтверждения замер остаётся в работе и виден в заявках, иначе заявка
-    # тихо исчезала бы у менеджера из-под носа.
-    irrelevant_requested_at = models.DateTimeField(
-        null=True, blank=True, verbose_name='Помечен неактуальным',
-    )
-    irrelevant_requested_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='irrelevant_measurement_requests', verbose_name='Кто пометил',
-    )
-    irrelevant_reason = models.CharField(
-        max_length=500, blank=True, verbose_name='Причина неактуальности',
-    )
-    is_irrelevant = models.BooleanField(
-        default=False, verbose_name='Неактуален',
-        help_text='Менеджер подтвердил неактуальность — замер уходит из работы.',
-    )
-    irrelevant_confirmed_at = models.DateTimeField(
-        null=True, blank=True, verbose_name='Неактуальность подтверждена',
-    )
-    irrelevant_confirmed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='confirmed_irrelevant_measurements', verbose_name='Кто подтвердил',
-    )
-
     # СМ дополняет замер после нажатия «Замер выполнен» — например, доснимает
     # проём, который пропустил. Отмечаем это, чтобы менеджер видел: данные
     # изменились уже после того, как замер был закрыт.
@@ -636,6 +636,24 @@ class Measurement(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+    # Неактуальность хранится на заявке: отказаться могут до появления замера.
+    @property
+    def is_irrelevant(self):
+        return self.request.is_irrelevant
+
+    @property
+    def irrelevant_requested_at(self):
+        return self.request.irrelevant_requested_at
+
+    @property
+    def irrelevant_reason(self):
+        return self.request.irrelevant_reason
+
+    @property
+    def irrelevant_confirmed_at(self):
+        return self.request.irrelevant_confirmed_at
 
     class Meta:
         verbose_name = 'Замер'

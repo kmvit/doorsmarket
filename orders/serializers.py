@@ -372,6 +372,8 @@ class MeasurementRequestSerializer(serializers.ModelSerializer):
     files = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
 
+    irrelevant_requested_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = MeasurementRequest
         fields = [
@@ -379,11 +381,24 @@ class MeasurementRequestSerializer(serializers.ModelSerializer):
             'desired_date', 'payer', 'payer_display', 'opening_plan', 'opening_plan_url',
             'files',
             'comment', 'created_at', 'created_by', 'created_by_name',
+            'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
+            'irrelevant_requested_by_name', 'irrelevant_confirmed_at',
         ]
-        read_only_fields = ['id', 'created_at', 'created_by', 'order']
+        read_only_fields = [
+            'id', 'created_at', 'created_by', 'order',
+            'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
+            'irrelevant_requested_by_name', 'irrelevant_confirmed_at',
+        ]
         extra_kwargs = {
             'opening_plan': {'write_only': True, 'required': False, 'allow_null': True},
         }
+
+    def get_irrelevant_requested_by_name(self, obj):
+        """Кто пометил замер неактуальным — менеджеру важно видеть автора."""
+        user = obj.irrelevant_requested_by
+        if not user:
+            return ''
+        return f'{user.first_name} {user.last_name}'.strip() or user.username
 
     def get_opening_plan_url(self, obj):
         if obj.opening_plan:
@@ -631,7 +646,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'updated_after_done_at',
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
             'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
-            'irrelevant_confirmed_at',
+            'irrelevant_confirmed_at', 'irrelevant_requested_by_name',
             'service_manager',
         ]
         extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}
@@ -698,7 +713,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
 
     def get_irrelevant_requested_by_name(self, obj):
         """Кто пометил замер неактуальным — менеджеру важно видеть автора."""
-        user = obj.irrelevant_requested_by
+        user = obj.request.irrelevant_requested_by
         if not user:
             return ''
         return f'{user.first_name} {user.last_name}'.strip() or user.username
@@ -780,6 +795,7 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
             'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer_display',
             'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'is_irrelevant', 'irrelevant_requested_at',
             'repeat_count',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',

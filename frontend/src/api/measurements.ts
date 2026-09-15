@@ -4,7 +4,7 @@ import {
   MeasurementOpening, MeasurementAttachment,
 } from '../types/measurements'
 import {
-  MeasurementFolderCount, DoorType, DOUBLE_DOOR_TYPE,
+  MeasurementFolderCount, MeasurementRequest, DoorType, DOUBLE_DOOR_TYPE,
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
 } from '../types/orders'
 import { measurementUtils, cacheUtils, withOfflineFallback, db } from '../services/offline'
@@ -339,22 +339,25 @@ export const measurementsAPI = {
     return requestWithQueue('POST', `/measurements/${id}/request_repeat/`, { reason: reason || '' })
   },
 
-  // «Неактуален»: СМ помечает невыполненный замер, решение принимает менеджер.
-  // До его решения замер остаётся в заявках — поэтому здесь очередь синхронизации:
-  // СМ жмёт кнопку на объекте, где сети может не быть.
-  markIrrelevant: async (id: number, reason?: string): Promise<Measurement> => {
-    return requestWithQueue('POST', `/measurements/${id}/mark_irrelevant/`, { reason: reason || '' })
+  // «Неактуален»: действия висят на заказе, а не на замере — клиент может
+  // отказаться ещё до того, как СМ назначил дату и замер появился.
+  // Пометка идёт через очередь синхронизации: СМ жмёт кнопку на объекте,
+  // где сети может не быть.
+  markIrrelevant: async (orderId: number, reason?: string): Promise<MeasurementRequest> => {
+    return requestWithQueue(
+      'POST', `/orders/${orderId}/mark_measurement_irrelevant/`, { reason: reason || '' },
+    )
   },
 
-  // Менеджер подтверждает: замер уходит в «Неактуальные» и из заявок пропадает
-  confirmIrrelevant: async (id: number): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/confirm_irrelevant/`)
+  // Менеджер подтверждает: заявка уходит в «Неактуальные» и из работы пропадает
+  confirmIrrelevant: async (orderId: number): Promise<MeasurementRequest> => {
+    const response = await apiClient.post(`/orders/${orderId}/confirm_measurement_irrelevant/`)
     return response.data
   },
 
-  // Менеджер оставляет замер актуальным: пометка снимается, замер в работе
-  keepRelevant: async (id: number, comment?: string): Promise<Measurement> => {
-    const response = await apiClient.post(`/measurements/${id}/keep_relevant/`, {
+  // Менеджер оставляет замер актуальным: пометка снимается
+  keepRelevant: async (orderId: number, comment?: string): Promise<MeasurementRequest> => {
+    const response = await apiClient.post(`/orders/${orderId}/keep_measurement_relevant/`, {
       comment: comment || '',
     })
     return response.data

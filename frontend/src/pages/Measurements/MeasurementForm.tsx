@@ -359,7 +359,8 @@ const MeasurementForm = () => {
     setMarkingIrrelevant(true)
     setActionError(null)
     try {
-      setM(await measurementsAPI.markIrrelevant(m.id, reason.trim()))
+      await measurementsAPI.markIrrelevant(m.order_id, reason.trim())
+      await load()
     } catch (err: any) {
       if (isQueuedError(err)) {
         setOfflineNotice('Нет сети: пометка сохранена и уйдёт менеджеру при появлении интернета.')
@@ -376,10 +377,12 @@ const MeasurementForm = () => {
     setIrrelevantBusy(true)
     setActionError(null)
     try {
-      const updated = confirmed
-        ? await measurementsAPI.confirmIrrelevant(m.id)
-        : await measurementsAPI.keepRelevant(m.id)
-      setM(updated)
+      if (confirmed) {
+        await measurementsAPI.confirmIrrelevant(m.order_id)
+      } else {
+        await measurementsAPI.keepRelevant(m.order_id)
+      }
+      await load()
       setShowIrrelevantModal(false)
     } catch (err: any) {
       setActionError(err.response?.data?.detail || 'Не удалось сохранить решение')
