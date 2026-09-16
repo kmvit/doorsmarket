@@ -234,6 +234,44 @@ class IrrelevantBeforeMeasurementTest(TestCase):
         self.assertTrue(self.request_obj.is_irrelevant)
         self.assertEqual(self.pending_rows(self.manager_client), [])
 
+    def test_confirmed_request_moves_to_irrelevant_folder(self):
+        """Заявка без замера не должна пропадать: её место — «Неактуальные»."""
+        self.sm_client.post(self.url('mark_measurement_irrelevant'), {}, format='json')
+        self.manager_client.post(self.url('confirm_measurement_irrelevant'), {}, format='json')
+
+        response = self.manager_client.get('/api/v1/measurements/', {'folder': 'irrelevant'})
+        self.assertEqual(response.status_code, 200)
+        rows = [r for r in response.data if r.get('is_request_only')]
+        self.assertEqual([r['order_id'] for r in rows], [self.order.pk])
+        self.assertTrue(rows[0]['is_irrelevant'])
+
+    def test_irrelevant_folder_count_includes_request_without_measurement(self):
+        self.sm_client.post(self.url('mark_measurement_irrelevant'), {}, format='json')
+        self.manager_client.post(self.url('confirm_measurement_irrelevant'), {}, format='json')
+
+        response = self.manager_client.get('/api/v1/measurements/folder_counts/')
+        counts = {row['folder']: row['count'] for row in response.data}
+        self.assertEqual(counts['irrelevant'], 1)
+        self.assertEqual(counts['unscheduled'], 0)
+
+    def test_marked_request_is_not_in_irrelevant_folder_until_confirmed(self):
+        self.sm_client.post(self.url('mark_measurement_irrelevant'), {}, format='json')
+        response = self.manager_client.get('/api/v1/measurements/', {'folder': 'irrelevant'})
+        self.assertEqual(list(response.data), [])
+
+    def test_irrelevant_folder_respects_search(self):
+        self.sm_client.post(self.url('mark_measurement_irrelevant'), {}, format='json')
+        self.manager_client.post(self.url('confirm_measurement_irrelevant'), {}, format='json')
+
+        found = self.manager_client.get(
+            '/api/v1/measurements/', {'folder': 'irrelevant', 'search': 'Сидоров'},
+        )
+        self.assertEqual([r['order_id'] for r in found.data], [self.order.pk])
+        missing = self.manager_client.get(
+            '/api/v1/measurements/', {'folder': 'irrelevant', 'search': 'Кто-то другой'},
+        )
+        self.assertEqual(list(missing.data), [])
+
     def test_kept_request_returns_to_list(self):
         self.sm_client.post(self.url('mark_measurement_irrelevant'), {}, format='json')
         self.manager_client.post(self.url('keep_measurement_relevant'), {}, format='json')

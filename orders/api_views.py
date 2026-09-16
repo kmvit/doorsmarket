@@ -1289,6 +1289,22 @@ def apply_measurement_folder(qs, folder, user):
     return qs
 
 
+def irrelevant_requests_without_measurement(user):
+    """
+    Заявки, признанные неактуальными до того, как СМ назначил замер.
+
+    Объекта замера у них нет, поэтому фильтр папки (он идёт по замерам) их не
+    видит — в «Неактуальных» такие заявки приходится добавлять отдельно.
+    Статус заказа здесь не важен: строка архивная, работать по ней не нужно.
+    """
+    accessible = get_orders_queryset_for_user(user).values_list('id', flat=True)
+    return MeasurementRequest.objects.filter(
+        order_id__in=list(accessible),
+        measurement__isnull=True,
+        is_irrelevant=True,
+    ).select_related('order', 'order__manager', 'order__salon')
+
+
 class MeasurementViewSet(viewsets.ModelViewSet):
     """
     CRUD замеров. Доступен СМ (свой город), менеджеру (свой салон), admin/leader.
@@ -1319,15 +1335,18 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     def folder_counts(self, request):
         """Счётчики по папкам замеров для дашборда СМ (Фаза 6)."""
         base = get_measurements_queryset_for_user(request.user)
-        if request.query_params.get('mine') == 'true':
+        mine = request.query_params.get('mine') == 'true'
+        if mine:
             base = base.filter(service_manager=request.user)
         result = []
         for folder, label in MEASUREMENT_FOLDERS:
-            result.append({
-                'folder': folder,
-                'label': label,
-                'count': apply_measurement_folder(base, folder, request.user).count(),
-            })
+            count = apply_measurement_folder(base, folder, request.user).count()
+            # Заявки без замера считаем так же, как показываем в списке. При
+            # mine=true их пропускаем: СМ у такой заявки ещё нет, «своей» она
+            # быть не может.
+            if folder == 'irrelevant' and not mine:
+                count += irrelevant_requests_without_measurement(request.user).count()
+            result.append({'folder': folder, 'label': label, 'count': count})
         return Response(result)
 
     def list(self, request, *args, **kwargs):
@@ -1349,10 +1368,19 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         ctx = self.get_serializer_context()
         rows = MeasurementListSerializer(qs, many=True, context=ctx).data
 
+        pending = None
         if folder in (None, '', 'unscheduled'):
             pending = self._pending_requests(request)
+        elif folder == 'irrelevant':
+            # Заявку могли признать неактуальной до того, как СМ назначил замер:
+            # объекта замера нет, и фильтр по замерам такую строку не найдёт —
+            # без этой ветки она исчезала бы из всех папок разом.
+            pending = self._search_requests(
+                irrelevant_requests_without_measurement(request.user), request,
+            )
+        if pending is not None:
             pending_rows = PendingMeasurementRequestListSerializer(pending, many=True, context=ctx).data
-            # Заявки без замера — сверху (их нужно взять в работу), затем существующие замеры
+            # Строки-заявки — сверху, затем существующие замеры
             rows = list(pending_rows) + list(rows)
 
         return Response(rows)
@@ -1367,7 +1395,11 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             # Признанные неактуальными заявки из работы уходят — как и замеры
             is_irrelevant=False,
         ).select_related('order', 'order__manager', 'order__salon')
+        return self._search_requests(qs, request)
 
+    @staticmethod
+    def _search_requests(qs, request):
+        """Поиск и порядок для строк-заявок: тот же, что у списка замеров."""
         search = (request.query_params.get('search') or '').strip()
         if search:
             qs = qs.filter(
