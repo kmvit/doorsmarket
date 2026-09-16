@@ -504,13 +504,29 @@ export const requestQueue = new RequestQueue()
 
 // Сетевая ошибка (нет соединения / сервер недоступен / таймаут) — от неё имеет смысл
 // уходить в офлайн-режим. Ответы с HTTP-статусом сетевой ошибкой не считаем.
-export const isNetworkError = (error: any): boolean =>
-  error?.response?.status === undefined &&
-  (!navigator.onLine ||
-    error?.code === 'ERR_NETWORK' ||
-    error?.code === 'ECONNABORTED' ||
-    error?.message?.includes('Network Error') ||
-    error?.message?.includes('timeout'))
+// «Сеть недоступна» — значит правку надо ставить в очередь, а не терять.
+//
+// Раньше условием было «ответа нет вовсе», и этого не хватало: в поле телефон
+// нередко получает не обрыв, а ответ шлюза (502/504) — до приложения запрос не
+// дошёл, но статус есть. Офлайн-ветка не срабатывала, и СМ видел «Не удалось
+// добавить проём» вместо тихой постановки в очередь. Чтение так не страдало:
+// оно откатывается в кеш при любой ошибке.
+export const isNetworkError = (error: any): boolean => {
+  const status = error?.response?.status
+  // Устройство само говорит, что сети нет: чем бы ни оказался ответ, доверять
+  // ему как ответу сервера нельзя.
+  if (!navigator.onLine) return true
+  if (status === undefined) {
+    return (
+      error?.code === 'ERR_NETWORK' ||
+      error?.code === 'ECONNABORTED' ||
+      error?.message?.includes('Network Error') ||
+      error?.message?.includes('timeout')
+    )
+  }
+  // Шлюз не достучался до приложения — для клиента это та же недоступность.
+  return status === 502 || status === 503 || status === 504
+}
 
 // Текст-маркер ошибки «запрос поставлен в очередь» — UI может показать
 // мягкое уведомление вместо ошибки

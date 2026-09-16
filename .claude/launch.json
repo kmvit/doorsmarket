@@ -4,14 +4,37 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "3005", "--strictPort"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3005",
+        "--strictPort"
+      ],
       "port": 3005
     },
     {
       "name": "backend",
       "runtimeExecutable": "venv/bin/python",
-      "runtimeArgs": ["manage.py", "runserver", "8000"],
+      "runtimeArgs": [
+        "manage.py",
+        "runserver",
+        "8000"
+      ],
       "port": 8000
+    },
+    {
+      "name": "backend-8010",
+      "runtimeExecutable": "venv/bin/python",
+      "runtimeArgs": [
+        "manage.py",
+        "runserver",
+        "8010"
+      ],
+      "port": 8010
     }
   ]
 }
