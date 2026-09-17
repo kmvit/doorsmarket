@@ -816,12 +816,13 @@ class OfferTextPreset(models.Model):
                   'место отдано колонкам. Поле оставлено, чтобы не терять тексты.',
     )
     included_text = models.TextField(
-        blank=True, verbose_name='В стоимость комплекта входит',
-        help_text='По одному пункту в строке.',
+        blank=True, verbose_name='В стоимость комплекта входит (не печатается)',
+        help_text='В красивое КП больше не выводится: в блоке «Комплектация и описание» '
+                  'теперь только набранное менеджером и выбранные позиции заказа.',
     )
     features_text = models.TextField(
-        blank=True, verbose_name='Преимущества',
-        help_text='По одному пункту в строке.',
+        blank=True, verbose_name='Преимущества (не печатается)',
+        help_text='В красивое КП больше не выводится — по той же причине, что и состав комплекта.',
     )
     position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
 

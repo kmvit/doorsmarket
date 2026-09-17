@@ -79,6 +79,11 @@ def _quantity_text(value) -> str:
     return f'{amount:f}'.replace('.', ',')
 
 
+def _text_lines(text: str) -> list:
+    """Строки описания, набранного менеджером, без пустых."""
+    return [line.strip() for line in (text or '').splitlines() if line.strip()]
+
+
 def _addon_line(addon) -> str:
     """
     Сопутствующая позиция строкой для слайда: «Короб Epsilon, 2100*70, 3 шт.».
@@ -145,17 +150,15 @@ def fit_font_scale(slide) -> int:
 def build_context(offer):
     """Данные для шаблона: обложка, слайды по проёмам, итоги."""
     order = offer.order
-    default_preset = offer.preset
 
     slides = []
     items = offer.items.select_related(
-        'order_item', 'preset', 'front_image', 'front_image__door_model',
+        'order_item', 'front_image', 'front_image__door_model',
         'front_image__color', 'back_image', 'back_image__door_model', 'back_image__color',
     ).prefetch_related('attachments', 'addons')
 
     for item in items:
         order_item = item.order_item
-        preset = item.preset or default_preset
         slides.append({
             'item': item,
             'order_item': order_item,
@@ -165,7 +168,9 @@ def build_context(offer):
                 ) if part
             ),
             'model_name': order_item.model_name,
-            'description': item.description,
+            # Описание менеджер набирает в столбик, по пункту в строке, — так
+            # и выводим, одним списком с подтянутыми позициями.
+            'description_lines': _text_lines(item.description),
             'addon_lines': [_addon_line(addon) for addon in item.addons.all()],
             'size': _door_size(order_item),
             'opening_type': order_item.get_opening_type_display() or '',
@@ -174,8 +179,6 @@ def build_context(offer):
                 _side_image_path(item.back_custom_image, item.back_image)
                 if item.two_sided else None
             ),
-            'included_lines': preset.included_lines() if preset else [],
-            'feature_lines': preset.feature_lines() if preset else [],
             'extra_paths': [
                 path for path in (
                     _abs_path(attachment.image) for attachment in item.attachments.all()

@@ -371,6 +371,78 @@ class PrettyOfferFlowTest(TestCase):
         # К КП в целом такая картинка не относится.
         self.assertEqual(offer.attachments.filter(offer_item__isnull=True).count(), 0)
 
+    def test_picked_image_can_be_spread_to_every_opening(self):
+        """
+        Внутри заказа двери обычно одинаковые: менеджер подбирает картинку на
+        одном проёме и ставит её всем, а потом правит те, где дверь другая.
+        """
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        source = offer.items.get(order_item=self.item_ok)
+        # На одном из проёмов менеджер уже выбрал другую картинку — её тоже
+        # перезаписываем: в этом и смысл «поставить всем».
+        other = offer.items.get(order_item=self.item_unknown)
+        other.front_image = self.img_oak
+        other.save(update_fields=['front_image'])
+
+        response = self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-image/',
+            {'offer_item': source.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['changed'], 2)
+
+        for item in offer.items.all():
+            self.assertEqual(item.front_image_id, self.img_12.pk)
+        # Уточнять больше нечего — картинки есть везде.
+        self.assertEqual(response.data['offer']['needs_clarification_count'], 0)
+
+        # И проём после этого правится как обычно.
+        item = offer.items.get(order_item=self.item_ambiguous)
+        patch = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'front_image': self.img_oak.pk}, format='json',
+        )
+        self.assertEqual(patch.status_code, 200, patch.data)
+        item.refresh_from_db()
+        self.assertEqual(item.front_image_id, self.img_oak.pk)
+        # Остальные проёмы при этом не поехали.
+        self.assertEqual(
+            offer.items.get(order_item=self.item_ok).front_image_id, self.img_12.pk,
+        )
+
+    def test_spreading_an_image_needs_a_picture_to_spread(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        empty = offer.items.get(order_item=self.item_unknown)
+
+        response = self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-image/',
+            {'offer_item': empty.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+
+    def test_own_uploaded_image_spreads_too(self):
+        """Своя картинка менеджера разносится так же, как каталожная."""
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        source = offer.items.get(order_item=self.item_unknown)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{source.pk}/',
+            {'front_custom_image': upload('own.png', (10, 20, 30))},
+            format='multipart',
+        )
+        source.refresh_from_db()
+
+        response = self.client.post(
+            f'/api/v1/pretty-offers/{offer.pk}/apply-image/',
+            {'offer_item': source.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        for item in offer.items.all():
+            self.assertEqual(item.front_custom_image.name, source.front_custom_image.name)
+            self.assertTrue(item.front_image_url)
+
     # ---------- комплектация проёма ----------
 
     def test_addons_can_be_attached_to_an_opening(self):
@@ -450,14 +522,57 @@ class PrettyOfferFlowTest(TestCase):
         self.assertNotIn('Короб Epsilon Капучино, 2100*70, 1 шт.', text)
         # Дробное количество — по-русски, без хвостовых нулей.
         self.assertIn('Наличник Epsilon Капучино, 2,5 шт.', text)
-        # Выбранные позиции вытесняют типовой состав комплекта из пресета.
-        self.assertNotIn('Короб компланарный', text)
 
-        # На соседнем проёме ничего не выбрано — там остаётся состав из пресета.
+        # На соседнем проёме ничего не набрано и не выбрано — блока нет вовсе:
+        # типовых текстов в КП больше не печатаем.
         with pdfplumber.open(io.BytesIO(response.content)) as document:
             other = ' '.join((document.pages[3].extract_text() or '').split())
         self.assertNotIn('Короб Epsilon Капучино', other)
-        self.assertIn('Короб компланарный', other)
+        self.assertNotIn('Комплектация и описание:', other)
+
+    def test_hand_written_description_keeps_its_own_lines(self):
+        """
+        Описание менеджер набирает в столбик, по пункту в строке. В КП пункты
+        так и должны идти — списком, одним набором с позициями из заказа, а не
+        слипшейся строкой другим кеглем.
+        """
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {
+                'description': 'Скрытые петли 2 шт\n\nМагнитный замок 1 шт\nАлюминиевый короб',
+                'addons': [self.box.pk],
+            },
+            format='json',
+        )
+
+        from orders.pdf_pretty_offer import build_context
+        offer = PrettyOffer.objects.get(order=self.order)
+        slide = next(
+            row for row in build_context(offer)['slides']
+            if row['order_item'].pk == self.item_ok.pk
+        )
+        # Пустая строка выброшена, остальные — отдельными пунктами.
+        self.assertEqual(slide['description_lines'], [
+            'Скрытые петли 2 шт', 'Магнитный замок 1 шт', 'Алюминиевый короб',
+        ])
+
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            page = document.pages[2]
+            text = ' '.join((page.extract_text() or '').split())
+            # Пункты набраны одним кеглем: и написанные руками, и из заказа.
+            sizes = {
+                round(char['size'], 1) for char in page.chars
+                if char['x0'] < 215 and 'Магнитный' in text
+                and char['top'] > 150 and char['top'] < 300
+            }
+        self.assertIn('Магнитный замок 1 шт', text)
+        self.assertIn('Короб Epsilon Капучино', text)
+        # Одна и та же строка в PDF разбита по пунктам — значит переносы живы.
+        self.assertLessEqual(len(sizes), 2, f'разнобой кеглей в блоке: {sizes}')
 
     def test_font_shrinks_until_the_opening_fits_one_slide(self):
         """
@@ -548,9 +663,9 @@ class PrettyOfferFlowTest(TestCase):
         # Полное название модели из КП, как требует п.8 ТЗ.
         self.assertIn('Полотно Epsilon 12 Капуччино', flat)
         self.assertIn('2000*800 Д1', flat)
-        # Фиксированные тексты из пресета — пока комплектация не выбрана.
-        self.assertIn('Комплектация и описание:', text)
-        self.assertIn('Короб компланарный', text)
+        # Типовые тексты пресета в КП не попадают: блок собирается руками.
+        self.assertNotIn('Короб компланарный', text)
+        self.assertNotIn('Искусственное покрытие EVO', text)
         # Итоги.
         self.assertIn('Итого со скидкой', text)
         # Постоянные слайды шаблона: о компании и контакты.

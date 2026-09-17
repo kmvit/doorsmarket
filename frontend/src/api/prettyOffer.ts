@@ -103,6 +103,18 @@ export const prettyOfferAPI = {
     return response.data
   },
 
+  // Внутри заказа двери обычно одинаковые: подобрали картинку на одном
+  // проёме — ставим её всем, а потом правим те, где дверь другая.
+  applyImage: async (
+    offerId: number,
+    offerItemId: number,
+  ): Promise<{ changed: number; offer: PrettyOffer }> => {
+    const response = await apiClient.post(`/pretty-offers/${offerId}/apply-image/`, {
+      offer_item: offerItemId,
+    })
+    return response.data
+  },
+
   deleteImage: async (attachmentId: number): Promise<void> => {
     await apiClient.delete(`/pretty-offer-attachments/${attachmentId}/`)
   },

@@ -7,6 +7,7 @@ interface Props {
   item: PrettyOfferItem
   orderAddons: OrderAddon[]
   onApplyColorToAll: (colorId: number, colorName: string) => void
+  onApplyImageToAll: () => void
   onPatch: (patch: Partial<PrettyOfferItem>) => Promise<void>
   onUploadDoorImage: (side: 'front' | 'back', file: File) => Promise<void>
   onPickFromCatalog: (side: 'front' | 'back') => void
@@ -95,6 +96,7 @@ const PrettyOfferOpeningCard = ({
   item,
   orderAddons,
   onApplyColorToAll,
+  onApplyImageToAll,
   onPatch,
   onUploadDoorImage,
   onPickFromCatalog,
@@ -170,6 +172,16 @@ const PrettyOfferOpeningCard = ({
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+        {item.front_image_url && (
+          <button
+            type="button"
+            onClick={onApplyImageToAll}
+            className="text-xs text-primary-600 hover:underline whitespace-nowrap"
+            title="Поставить эту картинку всем проёмам КП — потом любой можно заменить"
+          >
+            Эта картинка — всем
+          </button>
+        )}
         {catalogColor && (
           <button
             type="button"

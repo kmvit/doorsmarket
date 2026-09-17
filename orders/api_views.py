@@ -2179,6 +2179,37 @@ class PrettyOfferViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mix
             'offer': PrettyOfferSerializer(offer, context={'request': request}).data,
         })
 
+    @action(detail=True, methods=['post'], url_path='apply-image')
+    def apply_image(self, request, pk=None):
+        """
+        Ставит картинку указанного проёма всем остальным проёмам КП.
+
+        Внутри заказа двери обычно одинаковые: менеджер подбирает картинку
+        один раз и раскидывает её на все проёмы, а потом правит те, где дверь
+        другая. Поэтому здесь картинка перезаписывается, а не дополняет пустые.
+        """
+        from .pretty_offer import apply_image_to_items
+
+        offer = self.get_object()
+        offer_item_id = request.data.get('offer_item')
+        if not offer_item_id:
+            return Response(
+                {'detail': 'Не указан проём-источник.'}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        source = get_object_or_404(offer.items, pk=offer_item_id)
+        if not source.front_image_url:
+            return Response(
+                {'detail': 'У этого проёма ещё нет картинки.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        changed = apply_image_to_items(offer, source)
+        offer.refresh_from_db()
+        return Response({
+            'changed': changed,
+            'offer': PrettyOfferSerializer(offer, context={'request': request}).data,
+        })
+
     @action(detail=True, methods=['post'], url_path='add-image',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def add_image(self, request, pk=None):

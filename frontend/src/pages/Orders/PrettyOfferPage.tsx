@@ -212,6 +212,37 @@ const PrettyOfferPage = () => {
     }
   }
 
+  // Подобрали картинку на одном проёме — ставим её всем: внутри заказа двери
+  // обычно одинаковые. Потом любой проём правится как обычно.
+  const handleApplyImageToAll = async (itemId: number, openingNumber: number) => {
+    if (!offer) return
+    const others = offer.items.length - 1
+    if (others < 1) {
+      setApplyColorNotice('В КП всего один проём — разносить картинку некуда.')
+      return
+    }
+    if (
+      !confirm(
+        `Поставить картинку проёма № ${openingNumber} остальным проёмам (${others})? ` +
+          'Уже выбранные картинки заменятся — потом любой проём можно поправить.',
+      )
+    )
+      return
+    setError(null)
+    try {
+      const { changed, offer: updated } = await prettyOfferAPI.applyImage(offer.id, itemId)
+      applyOffer(updated)
+      await loadClarifications()
+      setApplyColorNotice(
+        changed
+          ? `Картинка проставлена проёмам: ${changed}.`
+          : 'Во всех проёмах уже стояла эта картинка.',
+      )
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Не удалось разнести картинку')
+    }
+  }
+
   const handleDeleteImage = async (attachmentId: number) => {
     if (!offer) return
     try {
@@ -335,6 +366,7 @@ const PrettyOfferPage = () => {
                 item={item}
                 orderAddons={order?.addons ?? []}
                 onApplyColorToAll={handleApplyColorToAll}
+                onApplyImageToAll={() => handleApplyImageToAll(item.id, item.opening_number)}
                 onPatch={(patch) => patchItem(item.id, patch)}
                 onUploadDoorImage={(side, file) => uploadDoorImage(item.id, side, file)}
                 onPickFromCatalog={(side) => setDoorPicker({ itemId: item.id, side })}

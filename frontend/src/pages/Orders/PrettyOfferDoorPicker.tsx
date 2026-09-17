@@ -51,6 +51,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   const [isUploading, setIsUploading] = useState(false)
 
   const variantsRef = useRef<HTMLDivElement>(null)
+  const selectedModelRef = useRef<HTMLButtonElement>(null)
 
   useBodyScrollLock(open)
 
@@ -107,6 +108,13 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
       .catch(() => setError('Не удалось загрузить картинки'))
   }, [open, modelId, colorId, hint?.variant])
 
+  // Модель, которую распознал матчер, может лежать в середине каталога —
+  // подкручиваем список к ней, иначе кажется, что ничего не выбрано.
+  useEffect(() => {
+    if (!open || !modelId || models.length === 0) return
+    selectedModelRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [open, modelId, models.length])
+
   const handleUpload = async () => {
     if (!modelId || !colorId || !uploadFile || isUploading) return
     setIsUploading(true)
@@ -132,8 +140,13 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
 
   if (!open) return null
 
-  const visibleModels = search.trim()
-    ? models.filter((m) => m.name.toLowerCase().includes(search.trim().toLowerCase()))
+  // Ищем по серии, названию и синонимам: в каталоге сотни моделей, и менеджер
+  // набирает то, что видит в КП, — иногда это серия, иногда артикул.
+  const query = search.trim().toLowerCase()
+  const visibleModels = query
+    ? models.filter((model) =>
+        `${model.series_name} ${model.name} ${model.aliases || ''}`.toLowerCase().includes(query),
+      )
     : models
 
   // Рендерим в body: если у любого предка окажется transform, filter или
@@ -194,55 +207,72 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Поиск по названию"
+                placeholder="Поиск: серия, модель, артикул"
                 className={`${fieldCls} mb-2`}
               />
-              <select
-                className={fieldCls}
-                size={6}
-                value={modelId ?? ''}
-                onChange={(e) => {
-                  setModelId(e.target.value ? Number(e.target.value) : null)
-                  setColorId(null)
-                  setSelectedImage(null)
-                }}
-              >
-                {/* Пустой пункт: иначе список показывает первую модель так,
-                    будто она уже выбрана, хотя выбора ещё не было. */}
-                <option value="">— выберите модель —</option>
-                {visibleModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.series_name} / {model.name}
-                  </option>
-                ))}
-              </select>
-              {isLoading && <p className="text-xs text-gray-500 mt-1">Загружаем каталог…</p>}
+              {/* Свой список, а не <select>: нативный список на телефоне
+                  открывается поверх поля поиска, и искать в нём нечем —
+                  приходилось прокручивать весь каталог. */}
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
+                {visibleModels.length === 0 ? (
+                  <p className="px-2 py-3 text-sm text-gray-500">
+                    {isLoading ? 'Загружаем каталог…' : 'Ничего не нашлось'}
+                  </p>
+                ) : (
+                  visibleModels.map((model) => (
+                    <button
+                      key={model.id}
+                      ref={model.id === modelId ? selectedModelRef : null}
+                      type="button"
+                      onClick={() => {
+                        setModelId(model.id)
+                        setColorId(null)
+                        setSelectedImage(null)
+                      }}
+                      className={`block w-full text-left px-2 py-2 text-sm ${
+                        model.id === modelId
+                          ? 'bg-primary-50 text-primary-800 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="text-gray-400">{model.series_name} / </span>
+                      {model.name}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
 
             <div>
               <label className={labelCls}>Цвет</label>
               {modelId ? (
-                <select
-                  className={fieldCls}
-                  size={8}
-                  value={colorId ?? ''}
-                  onChange={(e) => {
-                    setColorId(e.target.value ? Number(e.target.value) : null)
-                    setSelectedImage(null)
-                  }}
-                >
-                  <option value="">— выберите цвет —</option>
-                  {colors.map((color) => (
-                    <option key={color.id} value={color.id}>
-                      {color.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
+                  {colors.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-gray-500">
+                      У этой модели нет цветов в каталоге
+                    </p>
+                  ) : (
+                    colors.map((color) => (
+                      <button
+                        key={color.id}
+                        type="button"
+                        onClick={() => {
+                          setColorId(color.id)
+                          setSelectedImage(null)
+                        }}
+                        className={`block w-full text-left px-2 py-2 text-sm ${
+                          color.id === colorId
+                            ? 'bg-primary-50 text-primary-800 font-medium'
+                            : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {color.name}
+                      </button>
+                    ))
+                  )}
+                </div>
               ) : (
                 <p className="text-sm text-gray-500 py-2">Сначала выберите модель</p>
-              )}
-              {modelId && colors.length === 0 && (
-                <p className="text-xs text-gray-500 mt-1">У этой модели нет цветов в каталоге</p>
               )}
             </div>
           </div>

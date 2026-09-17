@@ -144,6 +144,35 @@ def apply_color_to_items(offer: PrettyOffer, color_id: int) -> dict:
     return result
 
 
+def apply_image_to_items(offer: PrettyOffer, source_item: PrettyOfferItem) -> int:
+    """
+    Ставит картинку лица выбранного проёма всем остальным проёмам КП.
+
+    В отличие от разноса цвета здесь картинка именно перезаписывается: внутри
+    заказа двери обычно одинаковые, менеджер подбирает одну и раскидывает её
+    на все проёмы, а потом правит отдельные — для этого и нужна перезапись.
+    Оборот двусторонней двери не трогаем: он для того и двусторонний.
+
+    Возвращает число изменённых проёмов.
+    """
+    changed = 0
+    for item in offer.items.exclude(pk=source_item.pk):
+        fields = []
+        if item.front_image_id != source_item.front_image_id:
+            item.front_image_id = source_item.front_image_id
+            fields.append('front_image')
+        # Файл не копируем, а ссылаемся на тот же: перезалив картинки в проёме
+        # пишет новый файл под новым именем, старый остаётся на месте, так что
+        # общая ссылка не рвётся.
+        if item.front_custom_image.name != source_item.front_custom_image.name:
+            item.front_custom_image.name = source_item.front_custom_image.name
+            fields.append('front_custom_image')
+        if fields:
+            item.save(update_fields=fields)
+            changed += 1
+    return changed
+
+
 def clarification_items(offer: PrettyOffer):
     """
     Проёмы, по которым нужно уточнить модель и цвет, вместе с тем, что удалось
