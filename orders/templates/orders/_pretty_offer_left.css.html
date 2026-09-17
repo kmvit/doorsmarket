@@ -1,0 +1,23 @@
+  /* Стили левой колонки слайда. Общие со страницей-пробником, которым
+     подбирается кегль: мерить надо ровно то, что потом и выведем. */
+  .blob {
+    background: #f2f2f2;
+    border-radius: 0 34mm 34mm 0;
+    padding: 4mm 12mm 4mm 5mm;
+    overflow: hidden;
+  }
+  .blob.model { flex: 0 0 auto; }
+  /* min-height:0 — иначе flex-элемент не сжимается и вылезает за колонку.
+     Обрезается именно этот блок: до обрезки дело доходит, только если текст
+     не влез и на самом мелком кегле. */
+  .blob.spec { flex: 1; min-height: 0; }
+  /* Кегли — в em от кегля самой колонки: он уменьшается на слайдах, где
+     комплектация не помещается (`fit_font_scale` в pdf_pretty_offer.py).
+     100% колонки = 9pt body, от них и посчитаны доли. */
+  .blob-title { color: #ff0000; font-size: 1.06em; margin-bottom: 1.5mm; }
+  .model-name { font-size: 1.11em; font-weight: 700; line-height: 1.3; }
+  .item-description { font-size: 0.94em; color: #444; }
+  .kit-list { margin-top: 1.5mm; }
+  ul.compact { margin: 0; padding-left: 4mm; }
+  ul.compact li { margin-bottom: 0.6mm; }
+  .plain-list div { margin-bottom: 0.6mm; }

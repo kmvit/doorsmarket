@@ -89,6 +89,53 @@ def _addon_line(addon) -> str:
     return ', '.join(parts)
 
 
+# Лестница кеглей левой колонки, в процентах от базовых 9pt. Шаг мелкий: от
+# кегля зависят переносы строк, и высота падает ступеньками — на грубой
+# лестнице колонка то и дело набиралась заметно мельче, чем нужно.
+# Ниже 56% текст уже не прочесть, а переносить проём на следующий слайд
+# нельзя — один проём, один слайд, — поэтому на самом мелком шаге содержимое
+# обрезается, как обрезалось и раньше.
+FIT_SCALES = tuple(range(100, 54, -2))
+
+
+def _left_column_fits(slide, scale: int) -> bool:
+    """
+    Влезает ли левая колонка целиком, если набрать её кеглем `scale`.
+
+    Меряем пробным рендером страницы ровно в размер колонки: не влезло —
+    WeasyPrint разложит содержимое на две страницы.
+    """
+    from weasyprint import HTML  # ленивый импорт, как и в рендере КП
+
+    html = render_to_string(
+        'orders/pretty_offer_left_probe.html', {'slide': slide, 'font_scale': scale},
+    )
+    return len(HTML(string=html).render().pages) == 1
+
+
+def fit_font_scale(slide) -> int:
+    """
+    Самый крупный кегль из `FIT_SCALES`, при котором «Комплектация и описание»
+    помещается в колонку.
+
+    Обычный случай — всё влезает без уменьшения, он и стоит один рендер;
+    остальное добираем двоичным поиском по лестнице, а не перебором.
+    """
+    if _left_column_fits(slide, FIT_SCALES[0]):
+        return FIT_SCALES[0]
+
+    # Ищем наименьший индекс (самый крупный кегль), который ещё влезает.
+    low, high, best = 1, len(FIT_SCALES) - 1, FIT_SCALES[-1]
+    while low <= high:
+        middle = (low + high) // 2
+        if _left_column_fits(slide, FIT_SCALES[middle]):
+            best = FIT_SCALES[middle]
+            high = middle - 1
+        else:
+            low = middle + 1
+    return best
+
+
 def build_context(offer):
     """Данные для шаблона: обложка, слайды по проёмам, итоги."""
     order = offer.order
@@ -130,6 +177,9 @@ def build_context(offer):
                 ) if path
             ],
         })
+        # Кегль колонки подбираем по уже собранному слайду: он зависит и от
+        # названия модели, и от описания с комплектацией разом.
+        slides[-1]['font_scale'] = fit_font_scale(slides[-1])
 
     general_attachments = [
         path for path in (

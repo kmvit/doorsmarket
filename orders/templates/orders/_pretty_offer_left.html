@@ -1,0 +1,33 @@
+{% comment %}
+Левая колонка слайда: название модели и блок «Комплектация и описание».
+Общая со страницей-пробником, подбирающим кегль колонки.
+{% endcomment %}
+      <div class="blob model">
+        <div class="model-name">{{ slide.model_name|default:"—" }}</div>
+      </div>
+      {% if slide.description or slide.addon_lines or slide.included_lines or slide.feature_lines %}
+      <div class="blob spec">
+        {% if slide.description or slide.addon_lines or slide.included_lines %}
+          <div class="blob-title">Комплектация и описание:</div>
+          {% if slide.description %}<div class="item-description">{{ slide.description }}</div>{% endif %}
+          {% if slide.addon_lines %}
+            {% comment %}
+            Выбранные менеджером сопутствующие позиции. Пока он ничего не
+            выбрал, показываем типовой состав комплекта из пресета.
+            {% endcomment %}
+            <ul class="compact kit-list">
+              {% for line in slide.addon_lines %}<li>{{ line }}</li>{% endfor %}
+            </ul>
+          {% elif slide.included_lines %}
+            <div class="plain-list kit-list">
+              {% for line in slide.included_lines %}<div>{{ line }}</div>{% endfor %}
+            </div>
+          {% endif %}
+        {% endif %}
+        {% if slide.feature_lines %}
+          <ul class="compact" style="margin-top:2.5mm;">
+            {% for line in slide.feature_lines %}<li>{{ line }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+      {% endif %}

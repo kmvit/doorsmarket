@@ -442,18 +442,80 @@ class PrettyOfferFlowTest(TestCase):
         with pdfplumber.open(io.BytesIO(response.content)) as document:
             text = ' '.join((document.pages[1].extract_text() or '').split())
 
+        self.assertIn('Комплектация и описание:', text)
         self.assertIn('Скрытые петли', text)
-        self.assertIn('Комплектация:', text)
         # Размер идёт следом за наименованием; количество «1 шт.» не шумит.
         self.assertIn('Короб Epsilon Капучино, 2100*70', text)
         self.assertNotIn('Короб Epsilon Капучино, 2100*70, 1 шт.', text)
         # Дробное количество — по-русски, без хвостовых нулей.
         self.assertIn('Наличник Epsilon Капучино, 2,5 шт.', text)
+        # Выбранные позиции вытесняют типовой состав комплекта из пресета.
+        self.assertNotIn('Короб компланарный', text)
 
-        # Соседний проём комплектацию не наследует.
+        # На соседнем проёме ничего не выбрано — там остаётся состав из пресета.
         with pdfplumber.open(io.BytesIO(response.content)) as document:
             other = ' '.join((document.pages[2].extract_text() or '').split())
-        self.assertNotIn('Комплектация:', other)
+        self.assertNotIn('Короб Epsilon Капучино', other)
+        self.assertIn('Короб компланарный', other)
+
+    def test_font_shrinks_until_the_opening_fits_one_slide(self):
+        """
+        Проём — всегда один слайд, переносить остаток некуда. Длинное название
+        плюс комплектация из десятка позиций должны уместиться за счёт кегля.
+        """
+        long_item = OrderItem.objects.create(
+            order=self.order, opening_number=4, room_name='Гостиная',
+            model_name=(
+                'Piana 1 PGT верт. 65 мм. ИНВЕРСО Без верхней ступеньки (полотно в потолок, '
+                'для короба 2 стойки)! Врезка под скрытые 4 петли ACADEMY 8000, замок, ручка, '
+                'фиксатор. Орех натуральный СМЕШАННОЕ НАПРАВЛЕНИЕ ШПОНА Д3'
+            ),
+            door_height=2786, door_width=1100, position=3,
+        )
+        many = [
+            OrderAddon.objects.create(
+                order=self.order, kind=AddonKind.EXTRA,
+                name=f'Сопутствующая позиция номер {number} с размером', size='2100*70',
+                quantity=Decimal('2.00'), position=10 + number,
+            ).pk
+            for number in range(1, 11)
+        ]
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=long_item)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': many, 'description': 'Полотно в потолок, короб на две стойки'},
+            format='json',
+        )
+
+        from orders.pdf_pretty_offer import build_context
+        offer = PrettyOffer.objects.get(order=self.order)
+        slide = next(
+            row for row in build_context(offer)['slides']
+            if row['order_item'].pk == long_item.pk
+        )
+        # Кегль ужат, и на нём содержимое колонки уже помещается целиком.
+        self.assertLess(slide['font_scale'], 100)
+        from orders.pdf_pretty_offer import _left_column_fits
+        self.assertTrue(_left_column_fits(slide, slide['font_scale']))
+
+        # Проёму без комплектации ужимать нечего — он идёт обычным кеглем.
+        plain = next(
+            row for row in build_context(offer)['slides']
+            if row['order_item'].pk == self.item_ok.pk
+        )
+        self.assertEqual(plain['font_scale'], 100)
+
+        # И всё это по-прежнему один слайд на проём.
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            self.assertEqual(len(document.pages), 9)
+            text = ' '.join((document.pages[4].extract_text() or '').split())
+        # Последние позиции списка не обрезались.
+        self.assertIn('Сопутствующая позиция номер 10', text)
+        self.assertIn('СМЕШАННОЕ НАПРАВЛЕНИЕ ШПОНА Д3', text)
 
     # ---------- PDF ----------
 
@@ -481,8 +543,9 @@ class PrettyOfferFlowTest(TestCase):
         # Полное название модели из КП, как требует п.8 ТЗ.
         self.assertIn('Полотно Epsilon 12 Капуччино', flat)
         self.assertIn('2000*800 Д1', flat)
-        # Фиксированные тексты из пресета.
-        self.assertIn('В стоимость комплекта входит', text)
+        # Фиксированные тексты из пресета — пока комплектация не выбрана.
+        self.assertIn('Комплектация и описание:', text)
+        self.assertIn('Короб компланарный', text)
         # Итоги.
         self.assertIn('Итого со скидкой', text)
         # Постоянные слайды шаблона: о компании и контакты.

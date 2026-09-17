@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Пробная страница ровно в размер левой колонки слайда: если содержимое в
+     неё не влезло, WeasyPrint разложит его на две страницы — по числу страниц
+     и судим о переполнении. Размер зашит в CSS, как и у самого слайда: через
+     переменную шаблона Django выведет дробь по русской локали и сломает
+     правило. */
+  @page { size: 215pt 374pt; margin: 0; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "PT Sans", "DejaVu Sans", "Arial", sans-serif;
+    color: #1a1a1a;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .col-left { width: 215pt; }
+
+{% include "orders/_pretty_offer_left.css.html" %}
+
+  /* Отличия пробника от слайда — только в механике измерения.
+     Блоки идут обычными блоками с отступом вместо flex с gap: колонки flex
+     WeasyPrint по страницам не делит, а нам нужно именно деление.
+     Высота — естественная, без обрезки: её и меряем. */
+  .blob + .blob { margin-top: 3mm; }
+  .blob { overflow: visible; }
+  .blob.spec { flex: none; min-height: auto; }
+</style>
+</head>
+<body>
+<div class="col-left" style="font-size: {{ font_scale }}%">
+{% include "orders/_pretty_offer_left.html" %}
+</div>
+</body>
+</html>

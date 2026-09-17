@@ -216,7 +216,7 @@ const PrettyOfferOpeningCard = ({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={saveDescription}
-            placeholder="Выводится в КП рядом с моделью"
+            placeholder="Уходит в блок «Комплектация и описание» на слайде проёма"
             minRows={3}
             className="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
           />
