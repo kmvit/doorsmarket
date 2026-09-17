@@ -811,8 +811,9 @@ class OfferTextPreset(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name='Название')
     is_default = models.BooleanField(default=False, verbose_name='По умолчанию')
     header_text = models.TextField(
-        blank=True, verbose_name='Заголовок слайда',
-        help_text='Например: «Искусственное покрытие EVO / современное решение для мебели и интерьеров»',
+        blank=True, verbose_name='Заголовок слайда (не печатается)',
+        help_text='В красивое КП больше не выводится: шапку слайда убрали, '
+                  'место отдано колонкам. Поле оставлено, чтобы не терять тексты.',
     )
     included_text = models.TextField(
         blank=True, verbose_name='В стоимость комплекта входит',

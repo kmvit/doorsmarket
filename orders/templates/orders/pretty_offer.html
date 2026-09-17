@@ -27,29 +27,19 @@
   }
   .slide:last-child { page-break-after: auto; }
 
-  /* ---- шапка слайда ---- */
-  .top { display: flex; gap: 4mm; height: 26mm; }
+  /* ---- шапка слайда ----
+     Логотип вчетверо меньше исходного макета, а текстовой плашки рядом нет:
+     освободившиеся 19.5 мм отданы колонкам — им места не хватало. */
+  .top { display: flex; height: 6.5mm; }
   .logo-block {
-    width: 76mm;
+    width: 19mm;
     background: #595959;
-    border-radius: 13mm;
+    border-radius: 3.25mm;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  .logo-block img { width: 46mm; }
-  .top-title {
-    flex: 1;
-    background: #fdf7f7;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 2mm 4mm;
-    font-size: 12pt;
-    color: #333;
-  }
+  .logo-block img { width: 11.5mm; }
 
   /* ---- серые плашки-заголовки колонок ---- */
   .bars { display: flex; gap: 4mm; margin-top: 3mm; }
@@ -73,17 +63,17 @@
      с фиксированной высотой переполнение левой колонки роняло соседние —
      WeasyPrint просто не рисовал среднюю и правую. При абсолютных координатах
      длина текста в одной колонке на соседние не влияет вообще. */
-  .columns { position: absolute; left: 17pt; right: 17pt; top: 129pt; height: 374pt; }
+  .columns { position: absolute; left: 17pt; right: 17pt; top: 74pt; height: 429pt; }
   .col-left {
-    position: absolute; left: 0; top: 0; width: 215pt; height: 374pt;
+    position: absolute; left: 0; top: 0; width: 215pt; height: 429pt;
     display: flex; flex-direction: column; gap: 3mm; overflow: hidden;
   }
   .col-mid {
-    position: absolute; left: 226pt; top: 0; width: 176pt; height: 374pt;
+    position: absolute; left: 226pt; top: 0; width: 176pt; height: 429pt;
     background: #fdf7f7; padding: 6mm 5mm; overflow: hidden;
   }
   .col-right {
-    position: absolute; left: 413pt; top: 0; right: 0; height: 374pt;
+    position: absolute; left: 413pt; top: 0; right: 0; height: 429pt;
     background: #fdf7f7; padding: 3mm; display: flex; gap: 2mm; overflow: hidden;
   }
 
@@ -106,8 +96,8 @@
   /* Лицо и оборот выравниваем по высоте, а не по ширине. Кадры у каталожных
      картинок чуть разных пропорций, и при подгонке по ширине двери выходили
      разной высоты — выглядело так, будто это двери разного размера. */
-  .col-right.two-sided .door img { max-height: 265pt; }
-  .door img { max-width: 100%; max-height: 340pt; object-fit: contain; }
+  .col-right.two-sided .door img { max-height: 320pt; }
+  .door img { max-width: 100%; max-height: 395pt; object-fit: contain; }
   .door-caption { font-size: 8pt; color: #777; margin-bottom: 1mm; }
   /* Блок, а не flex: внутри flex-контейнера <br> порождает второй
      анонимный flex-элемент, и подпись разъезжается в две колонки. */
@@ -128,8 +118,8 @@
   .slide.has-extras .columns,
   .slide.has-extras .col-left,
   .slide.has-extras .col-mid,
-  .slide.has-extras .col-right { height: 320pt; }
-  .slide.has-extras .door img { max-height: 290pt; }
+  .slide.has-extras .col-right { height: 375pt; }
+  .slide.has-extras .door img { max-height: 345pt; }
 
   /* ---- обложка ---- */
   .cover { display: flex; flex-direction: column; justify-content: center; height: 100%; }
@@ -175,6 +165,41 @@
   }
   .cover-year {
     left: 148pt; top: 496pt; width: 78pt; text-align: center;
+    font-size: 14pt; color: #ffffff;
+  }
+
+  /* ---- слайд о компании цифрами: третий слайд исходного шаблона ---- */
+  .facts-wordmark { left: 612pt; top: 31pt; width: 60pt; }
+  .facts-tagline {
+    left: 552pt; top: 46pt; width: 180pt; text-align: center; white-space: nowrap;
+    font-size: 9pt; letter-spacing: 1.8pt; color: #1a1a1a;
+  }
+  /* Левая сторона фото — полукруг: радиус равен половине высоты. */
+  .facts-photo {
+    left: 432pt; top: 79pt; width: 288pt; height: 381pt;
+    border-radius: 190pt 0 0 190pt; object-fit: cover;
+  }
+  /* Плашки уходят за левый край слайда, поэтому содержимое центруется не по
+     всей ширине, а по видимой части — отсюда правый отступ. */
+  .facts-pill {
+    left: 0; width: 90pt; height: 87pt;
+    background: #d9d9d9; border-radius: 0 44pt 44pt 0;
+    padding-right: 18pt;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .facts-num { font-size: 32pt; line-height: 1; color: #ffffff; }
+  .facts-cap { font-size: 10.5pt; color: #ffffff; margin-top: 2pt; }
+  .facts-icon { width: 42pt; height: 42pt; }
+  .facts-h { font-size: 14pt; color: #8c8c8c; }
+  .facts-line { font-size: 11pt; color: #3a3a3a; }
+  .facts-line.muted { color: #9a9a9a; }
+  .facts-arch {
+    left: 574pt; top: 476pt; width: 90pt; height: 64pt;
+    background: #d9d9d9; border-radius: 45pt 45pt 0 0;
+  }
+  .facts-year {
+    left: 574pt; top: 509pt; width: 90pt; text-align: center;
     font-size: 14pt; color: #ffffff;
   }
 
@@ -226,15 +251,60 @@
   <img class="abs cover-logo" src="file://{{ assets.logo_academy }}" alt="ACADEMY">
   <div class="abs cover-tagline">двери и перегородки</div>
   <div class="abs cover-title">
-    КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ<br>COMMERCIAL OFFER FOR
+    КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ
   </div>
   <div class="abs cover-meta">
     <div>{{ order.client_name|default:"—" }}</div>
     {% if order.kp_number %}<div>КП № {{ order.kp_number }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>{% endif %}
-    {% if order.address %}<div>{{ order.address }}</div>{% endif %}
   </div>
   <div class="abs cover-arch"></div>
   <div class="abs cover-year">{{ offer_year }}</div>
+</div>
+
+{# ============ О компании цифрами: третий слайд шаблона Академии ============ #}
+<div class="slide plain">
+  <img class="abs facts-wordmark" src="file://{{ assets.logo_academy }}" alt="ACADEMY">
+  <div class="abs facts-tagline">двери и перегородки</div>
+  <img class="abs facts-photo" src="file://{{ assets.facts_interior }}" alt="">
+
+  <div class="abs facts-pill" style="top: 46pt;">
+    <div class="facts-num">{{ years_on_market }}</div>
+    <div class="facts-cap">лет на рынке</div>
+  </div>
+  <div class="abs facts-pill" style="top: 158pt;">
+    <div class="facts-num">62</div>
+    <div class="facts-cap">Города</div>
+  </div>
+  <div class="abs facts-pill" style="top: 270pt;">
+    <img class="facts-icon" src="file://{{ assets.facts_ruble }}" alt="">
+  </div>
+  <div class="abs facts-pill" style="top: 373pt;">
+    {# Сердце рисуем вектором: в шаблоне это фигура, а не картинка и не символ шрифта. #}
+    <svg class="facts-icon" viewBox="0 0 24 24">
+      <path fill="#ffffff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+    </svg>
+  </div>
+
+  <div class="abs facts-h" style="left: 107pt; top: 80pt;">Мы знаем, что мы делаем с {{ founded_year }} года</div>
+
+  <div class="abs facts-h" style="left: 111pt; top: 158pt;">Собственная сеть салонов</div>
+  <div class="abs facts-line" style="left: 123pt; top: 174pt;">Москва</div>
+  <div class="abs facts-line muted" style="left: 114pt; top: 187pt;">Отдельная региональная сеть салонов в городах</div>
+  <div class="abs facts-line" style="left: 123pt; top: 200pt;">Санкт-Петербург&nbsp;&nbsp;Казань&nbsp;&nbsp;Н.Новгород&nbsp;&nbsp;Воронеж</div>
+  <div class="abs facts-line" style="left: 123pt; top: 213pt;">Ростов на Дону&nbsp;&nbsp;Краснодар&nbsp;&nbsp;Самара</div>
+  <div class="abs facts-line muted" style="left: 114pt; top: 227pt;">Дилерская сеть</div>
+
+  <div class="abs facts-h" style="left: 110pt; top: 275pt;">Лучшее ценовое предложение в своем сегменте</div>
+  <div class="abs facts-line" style="left: 122pt; top: 302pt;">22 900 рублей за комплект | скрытые двери под покраску</div>
+  <div class="abs facts-line" style="left: 122pt; top: 323pt;">Эмаль | Шпон | Стекло | Перегородки | Входные двери</div>
+  <div class="abs facts-line" style="left: 122pt; top: 336pt;">*предоставим лучшее предложение</div>
+
+  <div class="abs facts-h" style="left: 111pt; top: 380pt;">Сервис под ключ</div>
+  <div class="abs facts-line" style="left: 123pt; top: 407pt;">Персональный менеджер | Постоянное сопровождение проекта</div>
+  <div class="abs facts-line" style="left: 122pt; top: 431pt;">Замер | Монтаж | Доставка | Гарантия 5 лет</div>
+
+  <div class="abs facts-arch"></div>
+  <div class="abs facts-year">{{ founded_year }}</div>
 </div>
 
 {# ===================== Слайд на каждый проём ===================== #}
@@ -242,9 +312,6 @@
 <div class="slide{% if slide.extra_paths %} has-extras{% endif %}">
   <div class="top">
     <div class="logo-block"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
-    <div class="top-title">
-      {% for line in slide.header_lines %}<div>{{ line }}</div>{% endfor %}
-    </div>
   </div>
 
   <div class="bars">

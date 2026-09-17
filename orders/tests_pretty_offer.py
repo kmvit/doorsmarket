@@ -6,6 +6,7 @@ E2E-тест красивого КП: кнопка «сформировать» 
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
         python manage.py test orders.tests_pretty_offer
 """
+import datetime
 import io
 import shutil
 import tempfile
@@ -440,7 +441,7 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            text = ' '.join((document.pages[1].extract_text() or '').split())
+            text = ' '.join((document.pages[2].extract_text() or '').split())
 
         self.assertIn('Комплектация и описание:', text)
         self.assertIn('Скрытые петли', text)
@@ -454,7 +455,7 @@ class PrettyOfferFlowTest(TestCase):
 
         # На соседнем проёме ничего не выбрано — там остаётся состав из пресета.
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            other = ' '.join((document.pages[2].extract_text() or '').split())
+            other = ' '.join((document.pages[3].extract_text() or '').split())
         self.assertNotIn('Короб Epsilon Капучино', other)
         self.assertIn('Короб компланарный', other)
 
@@ -511,8 +512,8 @@ class PrettyOfferFlowTest(TestCase):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            self.assertEqual(len(document.pages), 9)
-            text = ' '.join((document.pages[4].extract_text() or '').split())
+            self.assertEqual(len(document.pages), 10)
+            text = ' '.join((document.pages[5].extract_text() or '').split())
         # Последние позиции списка не обрезались.
         self.assertIn('Сопутствующая позиция номер 10', text)
         self.assertIn('СМЕШАННОЕ НАПРАВЛЕНИЕ ШПОНА Д3', text)
@@ -530,8 +531,9 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf)) as document:
-            # Обложка + три проёма + итоги + «о компании» (2) + контакты.
-            self.assertEqual(len(document.pages), 8)
+            # Обложка + компания цифрами + три проёма + итоги + «о компании» (2)
+            # + контакты.
+            self.assertEqual(len(document.pages), 9)
             text = '\n'.join((page.extract_text() or '') for page in document.pages)
         # Извлечённый из PDF текст переносится по строкам колонок — сравниваем
         # по строке без переносов, иначе тест ловит вёрстку, а не содержимое.
@@ -539,6 +541,9 @@ class PrettyOfferFlowTest(TestCase):
 
         self.assertIn('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', text)
         self.assertIn('Земфира', text)
+        # Слайд о компании цифрами — второй, сразу за обложкой.
+        self.assertIn('лет на рынке', text)
+        self.assertIn('Сервис под ключ', text)
         self.assertIn('Проём № 1 — Спальня', text)
         # Полное название модели из КП, как требует п.8 ТЗ.
         self.assertIn('Полотно Epsilon 12 Капуччино', flat)
@@ -552,6 +557,79 @@ class PrettyOfferFlowTest(TestCase):
         self.assertIn('О КОМПАНИИ', text)
         self.assertIn('Компания основана в 1991 году', flat)
         self.assertIn('Торгово-производственная компания ACADEMY', flat)
+
+    def test_cover_shows_only_client_and_kp_number(self):
+        """
+        На обложке — клиент и номер КП. Английской строки нет, адреса тоже:
+        в него парсер КП складывает служебные пометки вроде «доставки КП
+        Европа», клиенту они ни к чему.
+        """
+        self.order.address = 'доставки КП Европа'
+        self.order.save(update_fields=['address'])
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            cover = ' '.join((document.pages[0].extract_text() or '').split())
+
+        self.assertIn('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', cover)
+        self.assertIn('Земфира', cover)
+        self.assertIn('КП № 40-284021-5', cover)
+        self.assertNotIn('COMMERCIAL OFFER FOR', cover)
+        self.assertNotIn('доставки КП Европа', cover)
+
+    def test_cover_year_is_the_current_one(self):
+        """КП печатают сегодня, даже если заказ завели в позапрошлом году."""
+        from django.utils import timezone
+
+        self.order.kp_date = datetime.date(2024, 11, 28)
+        self.order.save(update_fields=['kp_date'])
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            cover = ' '.join((document.pages[0].extract_text() or '').split())
+
+        this_year = timezone.localdate().year
+        self.assertIn(str(this_year), cover)
+        # Дата самого КП при этом остаётся прежней.
+        self.assertIn('от 28.11.2024', cover)
+
+    def test_company_facts_slide_goes_second(self):
+        from django.utils import timezone
+
+        from orders.pdf_pretty_offer import FOUNDED_YEAR
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            facts = ' '.join((document.pages[1].extract_text() or '').split())
+
+        self.assertIn('лет на рынке', facts)
+        self.assertIn('Собственная сеть салонов', facts)
+        self.assertIn('Сервис под ключ', facts)
+        self.assertIn(str(FOUNDED_YEAR), facts)
+        # Стаж считается от года основания, чтобы число не устаревало.
+        self.assertIn(str(timezone.localdate().year - FOUNDED_YEAR), facts)
+
+    def test_opening_slide_has_no_preset_header(self):
+        """
+        Шапку-подпись пресета со слайда убрали, и логотип вчетверо меньше —
+        место отдано колонкам.
+        """
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            opening = ' '.join((document.pages[2].extract_text() or '').split())
+
+        self.assertIn('Проём № 1', opening)
+        self.assertNotIn('современное решение для мебели и интерьеров', opening)
 
     def test_pdf_marks_openings_without_a_picture(self):
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
@@ -597,7 +675,7 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            slide = document.pages[1]
+            slide = document.pages[2]
             text = ' '.join((slide.extract_text() or '').split())
             # Логотип + обе двери: средняя и правая колонки на месте.
             self.assertEqual(len(slide.images), 3)

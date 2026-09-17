@@ -31,7 +31,13 @@ ASSET_FILES = {
     'about_moto': 'about-moto.jpg',
     'about_worker': 'about-worker.jpg',
     'about_folder': 'about-folder.jpg',
+    'facts_interior': 'facts-interior.jpg',
+    'facts_ruble': 'facts-ruble.png',
 }
+
+# Год основания компании — из шаблона Академии: от него считается «N лет на
+# рынке» на слайде о компании, чтобы число не устаревало.
+FOUNDED_YEAR = 1989
 
 
 def _abs_path(filefield):
@@ -168,7 +174,6 @@ def build_context(offer):
                 _side_image_path(item.back_custom_image, item.back_image)
                 if item.two_sided else None
             ),
-            'header_lines': preset.header_lines() if preset else [],
             'included_lines': preset.included_lines() if preset else [],
             'feature_lines': preset.feature_lines() if preset else [],
             'extra_paths': [
@@ -203,8 +208,11 @@ def build_context(offer):
         'manager_name': manager_name,
         'salon_address': getattr(salon, 'address', '') or '',
         'salon_phone': getattr(salon, 'phone', '') or '',
-        # Год на обложке — из даты КП, иначе текущий.
-        'offer_year': (order.kp_date or timezone.localdate()).year,
+        # Год на обложке — всегда текущий: КП печатают сегодня, даже если
+        # заказ завели в позапрошлом году.
+        'offer_year': timezone.localdate().year,
+        'founded_year': FOUNDED_YEAR,
+        'years_on_market': timezone.localdate().year - FOUNDED_YEAR,
         'assets': {
             key: os.path.join(ASSETS_DIR, filename)
             for key, filename in ASSET_FILES.items()
