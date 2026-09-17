@@ -333,6 +333,7 @@ const PrettyOfferPage = () => {
               <PrettyOfferOpeningCard
                 key={item.id}
                 item={item}
+                orderAddons={order?.addons ?? []}
                 onApplyColorToAll={handleApplyColorToAll}
                 onPatch={(patch) => patchItem(item.id, patch)}
                 onUploadDoorImage={(side, file) => uploadDoorImage(item.id, side, file)}

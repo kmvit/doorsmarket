@@ -101,6 +101,8 @@
   .blob-title { color: #ff0000; font-size: 9.5pt; margin-bottom: 1.5mm; }
   .model-name { font-size: 10pt; font-weight: 700; line-height: 1.3; }
   .item-description { margin-top: 2mm; font-size: 8.5pt; color: #444; }
+  .item-addons { margin-top: 2mm; font-size: 8.5pt; color: #444; }
+  .item-addons-title { color: #777; margin-bottom: 0.8mm; }
   ul.compact { margin: 0; padding-left: 4mm; }
   ul.compact li { margin-bottom: 0.6mm; }
   .plain-list div { margin-bottom: 0.6mm; }
@@ -274,6 +276,14 @@
       <div class="blob model">
         <div class="model-name">{{ slide.model_name|default:"—" }}</div>
         {% if slide.description %}<div class="item-description">{{ slide.description }}</div>{% endif %}
+        {% if slide.addon_lines %}
+        <div class="item-addons">
+          <div class="item-addons-title">Комплектация:</div>
+          <ul class="compact">
+            {% for line in slide.addon_lines %}<li>{{ line }}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
       </div>
       {% if slide.included_lines or slide.feature_lines %}
       <div class="blob spec">

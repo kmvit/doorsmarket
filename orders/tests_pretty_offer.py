@@ -18,8 +18,10 @@ from rest_framework.test import APIClient
 
 from catalog.models import DoorColor, DoorImage, DoorModel, DoorSeries
 from orders.models import (
+    AddonKind,
     OfferTextPreset,
     Order,
+    OrderAddon,
     OrderAttachment,
     OrderItem,
     OrderStatus,
@@ -101,6 +103,17 @@ class PrettyOfferFlowTest(TestCase):
             order=self.order, opening_number=3, room_name='Санузел',
             model_name='Некая дверь Розовый перламутр',
             door_height=2000, door_width=600, position=2,
+        )
+
+        # Сопутствующие позиции заказа — из них менеджер собирает комплектацию
+        # проёма (короб на один проём, наличник — с дробным количеством).
+        self.box = OrderAddon.objects.create(
+            order=self.order, kind=AddonKind.BOX, name='Короб Epsilon Капучино',
+            quantity=Decimal('1.00'), size='2100*70', position=0,
+        )
+        self.platband = OrderAddon.objects.create(
+            order=self.order, kind=AddonKind.PLATBAND, name='Наличник Epsilon Капучино',
+            quantity=Decimal('2.50'), position=1,
         )
 
     # ---------- сборка ----------
@@ -356,6 +369,91 @@ class PrettyOfferFlowTest(TestCase):
         self.assertEqual(item.attachments.count(), 1)
         # К КП в целом такая картинка не относится.
         self.assertEqual(offer.attachments.filter(offer_item__isnull=True).count(), 0)
+
+    # ---------- комплектация проёма ----------
+
+    def test_addons_can_be_attached_to_an_opening(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [self.box.pk, self.platband.pk], 'description': 'Скрытые петли'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            sorted(response.data['addons']), sorted([self.box.pk, self.platband.pk]),
+        )
+        # Развёрнутые данные — их показывает редактор, не дёргая заказ.
+        names = [addon['name'] for addon in response.data['addons_detail']]
+        self.assertEqual(names, ['Короб Epsilon Капучино', 'Наличник Epsilon Капучино'])
+        self.assertEqual(item.addons.count(), 2)
+
+        # Снять позицию так же просто, как добавить.
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [self.box.pk]}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(list(item.addons.values_list('pk', flat=True)), [self.box.pk])
+
+    def test_addon_of_another_order_is_rejected(self):
+        """Чужая позиция в комплектации — это утечка соседнего заказа в КП."""
+        other_order = Order.objects.create(
+            manager=self.manager, salon=self.salon, client_name='Сосед',
+            status=OrderStatus.ACTIVE,
+        )
+        alien = OrderAddon.objects.create(
+            order=other_order, kind=AddonKind.HANDLE, name='Ручка чужая',
+        )
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [alien.pk]}, format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(item.addons.count(), 0)
+
+    def test_rebuild_keeps_chosen_addons(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [self.box.pk]}, format='json',
+        )
+
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        self.assertEqual(list(item.addons.values_list('pk', flat=True)), [self.box.pk])
+
+    def test_pdf_lists_chosen_addons_under_the_description(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [self.box.pk, self.platband.pk], 'description': 'Скрытые петли'},
+            format='json',
+        )
+
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        self.assertEqual(response.status_code, 200)
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            text = ' '.join((document.pages[1].extract_text() or '').split())
+
+        self.assertIn('Скрытые петли', text)
+        self.assertIn('Комплектация:', text)
+        # Размер идёт следом за наименованием; количество «1 шт.» не шумит.
+        self.assertIn('Короб Epsilon Капучино, 2100*70', text)
+        self.assertNotIn('Короб Epsilon Капучино, 2100*70, 1 шт.', text)
+        # Дробное количество — по-русски, без хвостовых нулей.
+        self.assertIn('Наличник Epsilon Капучино, 2,5 шт.', text)
+
+        # Соседний проём комплектацию не наследует.
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            other = ' '.join((document.pages[2].extract_text() or '').split())
+        self.assertNotIn('Комплектация:', other)
 
     # ---------- PDF ----------
 

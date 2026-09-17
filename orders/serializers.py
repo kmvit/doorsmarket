@@ -883,13 +883,14 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
     back_image_url = serializers.SerializerMethodField()
     needs_clarification = serializers.BooleanField(read_only=True)
     attachments = PrettyOfferAttachmentSerializer(many=True, read_only=True)
+    addons_detail = OrderAddonSerializer(source='addons', many=True, read_only=True)
 
     class Meta:
         model = PrettyOfferItem
         fields = [
             'id', 'offer', 'order_item', 'opening_number', 'room_name', 'model_name',
             'door_height', 'door_width', 'opening_type_display', 'amount',
-            'description', 'preset', 'two_sided',
+            'description', 'addons', 'addons_detail', 'preset', 'two_sided',
             'front_image', 'back_image', 'front_image_detail', 'back_image_detail',
             'front_custom_image', 'back_custom_image',
             'front_image_url', 'back_image_url',
@@ -900,6 +901,22 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
             'front_custom_image': {'write_only': True},
             'back_custom_image': {'write_only': True},
         }
+
+    def validate_addons(self, addons):
+        """
+        Комплектовать проём можно только сопутствующими позициями его же
+        заказа: список приходит с фронта, и чужой id в нём означал бы утечку
+        позиций соседнего заказа в клиентское КП.
+        """
+        if self.instance is None:
+            return addons
+        order_id = self.instance.offer.order_id
+        alien = [addon.pk for addon in addons if addon.order_id != order_id]
+        if alien:
+            raise serializers.ValidationError(
+                'Позиции не из этого заказа: ' + ', '.join(str(pk) for pk in alien)
+            )
+        return addons
 
     def _absolute(self, url):
         return url or None

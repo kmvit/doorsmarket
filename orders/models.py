@@ -939,8 +939,13 @@ class PrettyOfferItem(models.Model):
         verbose_name='Позиция заказа',
     )
     description = models.TextField(
-        blank=True, verbose_name='Описание проёма',
+        blank=True, verbose_name='Комплектация и описание проёма',
         help_text='Выводится отдельным полем рядом с моделью.',
+    )
+    addons = models.ManyToManyField(
+        OrderAddon, blank=True, related_name='pretty_offer_items',
+        verbose_name='Позиции комплектации',
+        help_text='Сопутствующие позиции заказа, которые показать на слайде проёма.',
     )
     preset = models.ForeignKey(
         OfferTextPreset, on_delete=models.SET_NULL, null=True, blank=True,

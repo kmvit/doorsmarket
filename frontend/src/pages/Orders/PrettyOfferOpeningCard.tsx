@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
+import { OrderAddon } from '../../types/orders'
 import { PrettyOfferItem } from '../../types/prettyOffer'
 
 interface Props {
   item: PrettyOfferItem
+  orderAddons: OrderAddon[]
   onApplyColorToAll: (colorId: number, colorName: string) => void
   onPatch: (patch: Partial<PrettyOfferItem>) => Promise<void>
   onUploadDoorImage: (side: 'front' | 'back', file: File) => Promise<void>
@@ -13,6 +15,21 @@ interface Props {
 }
 
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
+
+/**
+ * Сопутствующая позиция строкой — ровно так же, как она уйдёт на слайд
+ * (см. `_addon_line` в `orders/pdf_pretty_offer.py`), чтобы менеджер видел
+ * в редакторе то же, что увидит клиент.
+ */
+const addonLabel = (addon: OrderAddon) => {
+  const parts = [addon.name.trim() || addon.kind_display]
+  if (addon.size) parts.push(addon.size)
+  const quantity = Number(addon.quantity)
+  if (Number.isFinite(quantity) && quantity !== 1) {
+    parts.push(`${quantity.toLocaleString('ru-RU')} шт.`)
+  }
+  return parts.join(', ')
+}
 
 /** Одна сторона полотна: картинка + кнопки выбора и загрузки. */
 const DoorSide = ({
@@ -76,6 +93,7 @@ const DoorSide = ({
  */
 const PrettyOfferOpeningCard = ({
   item,
+  orderAddons,
   onApplyColorToAll,
   onPatch,
   onUploadDoorImage,
@@ -84,9 +102,36 @@ const PrettyOfferOpeningCard = ({
   onDeleteExtraImage,
 }: Props) => {
   const [description, setDescription] = useState(item.description)
+  const [addonsOpen, setAddonsOpen] = useState(false)
+  // Клик по позиции комплектации уводит фокус из описания, и его blur успевает
+  // уйти отдельным запросом раньше. Два PATCH-а на один проём возвращаются не
+  // обязательно по порядку, и ответ первого затирал бы в списке только что
+  // выбранные позиции — поэтому такой blur пропускаем, а текст уходит вместе
+  // с позициями одним запросом: поле-то теперь одно.
+  const savingWithAddons = useRef(false)
 
   // Описание могли поменять снаружи (пересборка КП) — подхватываем.
   useEffect(() => setDescription(item.description), [item.description])
+
+  const saveDescription = () => {
+    // Флаг одноразовый: если до клика дело так и не дошло (курсор увели с
+    // позиции), следующий blur должен сохранить описание как обычно.
+    const skip = savingWithAddons.current
+    savingWithAddons.current = false
+    if (skip || description === item.description) return
+    onPatch({ description })
+  }
+
+  const selectedAddons = new Set(item.addons)
+  const toggleAddon = (addonId: number) => {
+    savingWithAddons.current = false
+    const next = selectedAddons.has(addonId)
+      ? item.addons.filter((id) => id !== addonId)
+      : [...item.addons, addonId]
+    const patch: Partial<PrettyOfferItem> = { addons: next }
+    if (description !== item.description) patch.description = description
+    onPatch(patch)
+  }
 
   const size = [item.door_height, item.door_width].filter(Boolean).join(' × ')
   // Цвета в КП нет, но внутри заказа он обычно один: подобрали дверь на одном
@@ -166,17 +211,89 @@ const PrettyOfferOpeningCard = ({
         </div>
 
         <div>
-          <label className={labelCls}>Описание по проёму</label>
+          <label className={labelCls}>Комплектация и описание по проёму</label>
           <AutoResizeTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => {
-              if (description !== item.description) onPatch({ description })
-            }}
+            onBlur={saveDescription}
             placeholder="Выводится в КП рядом с моделью"
             minRows={3}
             className="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
           />
+
+          {/* Сопутствующие позиции заказа: к тексту описания менеджер добавляет
+              сами позиции — короба, наличники, петли, — и они уходят на слайд
+              проёма списком под описанием. */}
+          <div className="mt-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`${labelCls} mb-0`}>
+                Позиции из заказа
+                {item.addons_detail.length > 0 ? ` (${item.addons_detail.length})` : ''}
+              </span>
+              {orderAddons.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAddonsOpen((open) => !open)}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  {addonsOpen ? 'Свернуть' : 'Выбрать'}
+                </button>
+              )}
+            </div>
+
+            {orderAddons.length === 0 ? (
+              <p className="text-xs text-gray-500">В заказе нет сопутствующих позиций</p>
+            ) : (
+              <>
+                {item.addons_detail.length === 0 ? (
+                  <p className="text-xs text-gray-500">Не выбрано</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.addons_detail.map((addon) => (
+                      <span
+                        key={addon.id}
+                        className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs rounded bg-gray-100 text-gray-700"
+                      >
+                        {addonLabel(addon)}
+                        <button
+                          type="button"
+                          onMouseDown={() => (savingWithAddons.current = true)}
+                          onClick={() => toggleAddon(addon.id)}
+                          className="text-gray-400 hover:text-red-600 leading-none"
+                          title="Убрать из комплектации"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {addonsOpen && (
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                    {orderAddons.map((addon) => (
+                      <label
+                        key={addon.id}
+                        onMouseDown={() => (savingWithAddons.current = true)}
+                        className="flex items-start gap-2 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAddons.has(addon.id)}
+                          onChange={() => toggleAddon(addon.id)}
+                          className="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="min-w-0">
+                          <span className="text-gray-400">{addon.kind_display}: </span>
+                          {addonLabel(addon)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">

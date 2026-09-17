@@ -10,6 +10,7 @@
 как `file://…`, не ходя по сети.
 """
 import os
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -58,6 +59,36 @@ def _door_size(order_item):
     return ' × '.join(part for part in (str(height) if height else '', width_text) if part)
 
 
+def _quantity_text(value) -> str:
+    """
+    Количество без хвостовых нулей: «3», «1,5». В КП количества почти всегда
+    целые, и «3.00 шт.» на клиентском слайде выглядит как опечатка.
+    """
+    if value in (None, ''):
+        return ''
+    try:
+        amount = Decimal(str(value)).normalize()
+    except (InvalidOperation, TypeError, ValueError):
+        return ''
+    return f'{amount:f}'.replace('.', ',')
+
+
+def _addon_line(addon) -> str:
+    """
+    Сопутствующая позиция строкой для слайда: «Короб Epsilon, 2100*70, 3 шт.».
+
+    Цену не выводим: в комплектации проёма она сбивает с толку — суммы в КП
+    идут общим итогом внизу, а не по каждой мелочи.
+    """
+    parts = [addon.name.strip() or addon.get_kind_display()]
+    if addon.size:
+        parts.append(addon.size)
+    quantity = _quantity_text(addon.quantity)
+    if quantity and quantity != '1':
+        parts.append(f'{quantity} шт.')
+    return ', '.join(parts)
+
+
 def build_context(offer):
     """Данные для шаблона: обложка, слайды по проёмам, итоги."""
     order = offer.order
@@ -67,7 +98,7 @@ def build_context(offer):
     items = offer.items.select_related(
         'order_item', 'preset', 'front_image', 'front_image__door_model',
         'front_image__color', 'back_image', 'back_image__door_model', 'back_image__color',
-    ).prefetch_related('attachments')
+    ).prefetch_related('attachments', 'addons')
 
     for item in items:
         order_item = item.order_item
@@ -82,6 +113,7 @@ def build_context(offer):
             ),
             'model_name': order_item.model_name,
             'description': item.description,
+            'addon_lines': [_addon_line(addon) for addon in item.addons.all()],
             'size': _door_size(order_item),
             'opening_type': order_item.get_opening_type_display() or '',
             'front_path': _side_image_path(item.front_custom_image, item.front_image),
