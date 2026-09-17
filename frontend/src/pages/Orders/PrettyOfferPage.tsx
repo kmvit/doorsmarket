@@ -23,6 +23,48 @@ const fieldCls =
 const formatMoney = (value: string | null) =>
   value == null || value === '' ? '—' : `${Number(value).toLocaleString('ru-RU')} ₽`
 
+// Поля, по которым сервер может вернуть претензию, — по-русски: менеджеру
+// «addons: …» ни о чём не говорит.
+const FIELD_NAMES: Record<string, string> = {
+  addons: 'позиции комплектации',
+  description: 'описание',
+  front_image: 'картинка полотна',
+  back_image: 'картинка оборота',
+  front_custom_image: 'своя картинка полотна',
+  back_custom_image: 'своя картинка оборота',
+  two_sided: 'двусторонняя дверь',
+}
+
+/**
+ * Причина отказа человеческим языком.
+ *
+ * Раньше показывали одну общую фразу: сервер возвращает претензии по полям
+ * (`{"addons": ["..."]}`), а не `detail`, и на экране оставалось «не удалось
+ * сохранить проём» — без намёка, что именно не так. Сеть от отказа сервера
+ * тоже не отличали, хотя действия разные: перезагрузить или поправить данные.
+ */
+const errorText = (err: any, fallback: string): string => {
+  const data = err?.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data?.detail) return String(data.detail)
+  if (data && typeof data === 'object') {
+    const entry = Object.entries(data)[0]
+    if (entry) {
+      const [field, value] = entry
+      const text = Array.isArray(value) ? value.join(' ') : String(value)
+      const name = FIELD_NAMES[field]
+      return name ? `${name} — ${text}` : text
+    }
+  }
+  if (!err?.response) {
+    return err?.code === 'ECONNABORTED'
+      ? 'сервер не ответил за 20 секунд. Красивое КП правится только онлайн — проверьте связь и повторите'
+      : 'нет связи с сервером. Красивое КП правится только онлайн — проверьте связь и повторите'
+  }
+  if (err.response.status >= 500) return 'ошибка на сервере, правка не сохранилась'
+  return fallback
+}
+
 /**
  * Редактор красивого КП (п.3, 5, 7, 9, 10, 11 ТЗ).
  *
@@ -125,8 +167,9 @@ const PrettyOfferPage = () => {
     try {
       const updated = await prettyOfferAPI.update(offer.id, patch)
       applyOffer(updated)
+      setError(null)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Не удалось сохранить изменения')
+      setError(`Не удалось сохранить КП: ${errorText(err, 'непонятная ошибка')}`)
     }
   }
 
@@ -146,21 +189,42 @@ const PrettyOfferPage = () => {
     )
   }
 
+  // Номер проёма в сообщении обязателен: проёмов в КП десяток, и «не удалось
+  // сохранить проём» без номера не говорит, к какому возвращаться.
+  const openingLabel = (itemId: number) => {
+    const number = offer?.items.find((item) => item.id === itemId)?.opening_number
+    return number ? `Проём № ${number}` : 'Проём'
+  }
+
   const patchItem = async (itemId: number, patch: Partial<PrettyOfferItem>) => {
     try {
       replaceItem(await prettyOfferAPI.updateItem(itemId, patch))
+      setError(null)
       await loadClarifications()
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Не удалось сохранить проём')
+      setError(
+        `${openingLabel(itemId)} не сохранился: ${errorText(err, 'непонятная ошибка')}`,
+      )
+      // Позиции заказа могли пересоздаться (замена КП) — тогда на открытой
+      // странице лежат уже несуществующие id, и любая правка будет падать,
+      // пока не подтянем свежее КП.
+      if (err?.response?.data?.addons) {
+        const fresh = await prettyOfferAPI.get(orderId)
+        if (fresh) applyOffer(fresh)
+      }
     }
   }
 
   const uploadDoorImage = async (itemId: number, side: 'front' | 'back', file: File) => {
     try {
       replaceItem(await prettyOfferAPI.uploadItemImage(itemId, side, file))
+      setError(null)
       await loadClarifications()
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Не удалось загрузить картинку')
+      setError(
+        `${openingLabel(itemId)}: не удалось загрузить картинку — ` +
+          errorText(err, 'непонятная ошибка'),
+      )
     }
   }
 
@@ -177,12 +241,17 @@ const PrettyOfferPage = () => {
     caption?: string
   }) => {
     if (!offer) return
-    await prettyOfferAPI.addImage(offer.id, {
-      ...payload,
-      offerItemId: imagePicker?.offerItemId,
-    })
-    applyOffer(await prettyOfferAPI.get(orderId) as PrettyOffer)
-    setImagePicker(null)
+    try {
+      await prettyOfferAPI.addImage(offer.id, {
+        ...payload,
+        offerItemId: imagePicker?.offerItemId,
+      })
+      applyOffer((await prettyOfferAPI.get(orderId)) as PrettyOffer)
+      setError(null)
+      setImagePicker(null)
+    } catch (err: any) {
+      setError(`Не удалось добавить картинку: ${errorText(err, 'непонятная ошибка')}`)
+    }
   }
 
   // Цвета в КП фабрики нет, а внутри заказа он обычно один на все двери:
@@ -208,7 +277,7 @@ const PrettyOfferPage = () => {
         `Заполнено проёмов: ${stats.filled}.` + (rest.length ? ` Осталось вручную: ${rest.join(', ')}.` : ''),
       )
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Не удалось проставить цвет')
+      setError(`Не удалось проставить цвет: ${errorText(err, 'непонятная ошибка')}`)
     }
   }
 
@@ -239,7 +308,7 @@ const PrettyOfferPage = () => {
           : 'Во всех проёмах уже стояла эта картинка.',
       )
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Не удалось разнести картинку')
+      setError(`Не удалось разнести картинку: ${errorText(err, 'непонятная ошибка')}`)
     }
   }
 
@@ -248,8 +317,9 @@ const PrettyOfferPage = () => {
     try {
       await prettyOfferAPI.deleteImage(attachmentId)
       applyOffer((await prettyOfferAPI.get(orderId)) as PrettyOffer)
-    } catch {
-      setError('Не удалось убрать картинку')
+      setError(null)
+    } catch (err: any) {
+      setError(`Не удалось убрать картинку: ${errorText(err, 'непонятная ошибка')}`)
     }
   }
 
@@ -317,8 +387,17 @@ const PrettyOfferPage = () => {
       </div>
 
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 p-3">
-          {error}
+        <div className="rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 p-3 flex items-start justify-between gap-3">
+          <span>{error}</span>
+          {/* Крестик обязателен: сообщение об одной осечке висело до перезагрузки
+              страницы — даже когда следующая правка уже сохранилась. */}
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600 shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
