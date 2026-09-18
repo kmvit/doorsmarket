@@ -196,7 +196,9 @@ const PrettyOfferPage = () => {
     return number ? `Проём № ${number}` : 'Проём'
   }
 
-  const patchItem = async (itemId: number, patch: Partial<PrettyOfferItem>) => {
+  // Не Partial<PrettyOfferItem>: комплектация уходит на сервер в своём виде
+  // — списком {позиция, количество}, а не тем, в каком приходит обратно.
+  const patchItem = async (itemId: number, patch: Record<string, unknown>) => {
     try {
       replaceItem(await prettyOfferAPI.updateItem(itemId, patch))
       setError(null)

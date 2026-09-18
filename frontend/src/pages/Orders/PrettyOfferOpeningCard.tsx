@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import { OrderAddon } from '../../types/orders'
-import { PrettyOfferItem } from '../../types/prettyOffer'
+import { PrettyOfferItem, PrettyOfferItemAddonInput } from '../../types/prettyOffer'
 
 interface Props {
   item: PrettyOfferItem
   orderAddons: OrderAddon[]
   onApplyColorToAll: (colorId: number, colorName: string) => void
   onApplyImageToAll: () => void
-  onPatch: (patch: Partial<PrettyOfferItem>) => Promise<void>
+  onPatch: (patch: Record<string, unknown>) => Promise<void>
   onUploadDoorImage: (side: 'front' | 'back', file: File) => Promise<void>
   onPickFromCatalog: (side: 'front' | 'back') => void
   onAddExtraImage: () => void
@@ -17,19 +17,17 @@ interface Props {
 
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 
-/**
- * Сопутствующая позиция строкой — ровно так же, как она уйдёт на слайд
- * (см. `_addon_line` в `orders/pdf_pretty_offer.py`), чтобы менеджер видел
- * в редакторе то же, что увидит клиент.
- */
-const addonLabel = (addon: OrderAddon) => {
+/** Наименование позиции с размером — без количества: оно правится рядом. */
+const addonLabel = (addon: { name: string; kind_display: string; size: string }) => {
   const parts = [addon.name.trim() || addon.kind_display]
   if (addon.size) parts.push(addon.size)
-  const quantity = Number(addon.quantity)
-  if (Number.isFinite(quantity) && quantity !== 1) {
-    parts.push(`${quantity.toLocaleString('ru-RU')} шт.`)
-  }
   return parts.join(', ')
+}
+
+/** «2», «1,5» — без хвостовых нулей, как приходит из базы («2.00»). */
+const quantityText = (value: string | number) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toLocaleString('ru-RU') : String(value)
 }
 
 /** Одна сторона полотна: картинка + кнопки выбора и загрузки. */
@@ -105,6 +103,9 @@ const PrettyOfferOpeningCard = ({
 }: Props) => {
   const [description, setDescription] = useState(item.description)
   const [addonsOpen, setAddonsOpen] = useState(false)
+  // Количества правятся в полях, поэтому держим их строками: пока менеджер
+  // стирает «2», чтобы набрать «12», поле законно пустое.
+  const [quantities, setQuantities] = useState<Record<number, string>>({})
   // Клик по позиции комплектации уводит фокус из описания, и его blur успевает
   // уйти отдельным запросом раньше. Два PATCH-а на один проём возвращаются не
   // обязательно по порядку, и ответ первого затирал бы в списке только что
@@ -115,6 +116,12 @@ const PrettyOfferOpeningCard = ({
   // Описание могли поменять снаружи (пересборка КП) — подхватываем.
   useEffect(() => setDescription(item.description), [item.description])
 
+  useEffect(() => {
+    setQuantities(
+      Object.fromEntries(item.addons.map((row) => [row.addon, quantityText(row.quantity)])),
+    )
+  }, [item.addons])
+
   const saveDescription = () => {
     // Флаг одноразовый: если до клика дело так и не дошло (курсор увели с
     // позиции), следующий blur должен сохранить описание как обычно.
@@ -124,15 +131,47 @@ const PrettyOfferOpeningCard = ({
     onPatch({ description })
   }
 
-  const selectedAddons = new Set(item.addons)
-  const toggleAddon = (addonId: number) => {
+  const selectedAddons = new Map(item.addons.map((row) => [row.addon, row]))
+
+  // Комплектацию шлём списком целиком: сервер её так и переписывает.
+  const saveAddons = (rows: PrettyOfferItemAddonInput[]) => {
     savingWithAddons.current = false
-    const next = selectedAddons.has(addonId)
-      ? item.addons.filter((id) => id !== addonId)
-      : [...item.addons, addonId]
-    const patch: Partial<PrettyOfferItem> = { addons: next }
+    const patch: Record<string, unknown> = { addons: rows }
     if (description !== item.description) patch.description = description
     onPatch(patch)
+  }
+
+  const currentRows = (): PrettyOfferItemAddonInput[] =>
+    item.addons.map((row) => ({
+      addon: row.addon,
+      quantity: quantities[row.addon] ?? quantityText(row.quantity),
+    }))
+
+  const toggleAddon = (addonId: number) => {
+    if (selectedAddons.has(addonId)) {
+      saveAddons(currentRows().filter((row) => row.addon !== addonId))
+      return
+    }
+    // Новая позиция входит в проём в количестве 1: сколько на самом деле —
+    // знает менеджер, а общее количество по заказу сюда ставить нельзя, оно
+    // разложено по всем проёмам.
+    saveAddons([...currentRows(), { addon: addonId, quantity: '1' }])
+  }
+
+  // Количество сохраняем по уходу из поля: иначе запрос уходил бы на каждую
+  // набранную цифру.
+  const saveQuantity = (addonId: number) => {
+    const row = selectedAddons.get(addonId)
+    if (!row) return
+    const raw = (quantities[addonId] ?? '').trim().replace(',', '.')
+    const value = Number(raw)
+    if (!raw || !Number.isFinite(value) || value <= 0) {
+      // Пустое или бессмысленное значение откатываем к сохранённому.
+      setQuantities((prev) => ({ ...prev, [addonId]: quantityText(row.quantity) }))
+      return
+    }
+    if (Number(row.quantity) === value) return
+    saveAddons(currentRows().map((r) => (r.addon === addonId ? { ...r, quantity: raw } : r)))
   }
 
   const size = [item.door_height, item.door_width].filter(Boolean).join(' × ')
@@ -240,7 +279,7 @@ const PrettyOfferOpeningCard = ({
             <div className="flex items-center justify-between mb-1.5">
               <span className={`${labelCls} mb-0`}>
                 Позиции из заказа
-                {item.addons_detail.length > 0 ? ` (${item.addons_detail.length})` : ''}
+                {item.addons.length > 0 ? ` (${item.addons.length})` : ''}
               </span>
               {orderAddons.length > 0 && (
                 <button
@@ -257,26 +296,43 @@ const PrettyOfferOpeningCard = ({
               <p className="text-xs text-gray-500">В заказе нет сопутствующих позиций</p>
             ) : (
               <>
-                {item.addons_detail.length === 0 ? (
+                {item.addons.length === 0 ? (
                   <p className="text-xs text-gray-500">Не выбрано</p>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {item.addons_detail.map((addon) => (
-                      <span
-                        key={addon.id}
-                        className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs rounded bg-gray-100 text-gray-700"
-                      >
-                        {addonLabel(addon)}
+                  <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
+                    {item.addons.map((row) => (
+                      <div key={row.addon} className="flex items-center gap-2 px-2 py-1.5">
+                        <span className="flex-1 min-w-0 text-xs text-gray-700">
+                          {addonLabel(row)}
+                          {/* Общее количество по заказу — подсказка, из чего
+                              менеджер раскладывает позицию по проёмам. */}
+                          <span className="text-gray-400">
+                            {' '}· в заказе {quantityText(row.order_quantity)}
+                          </span>
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={quantities[row.addon] ?? ''}
+                          onChange={(e) =>
+                            setQuantities((prev) => ({ ...prev, [row.addon]: e.target.value }))
+                          }
+                          onMouseDown={() => (savingWithAddons.current = true)}
+                          onBlur={() => saveQuantity(row.addon)}
+                          aria-label="Количество в проёме"
+                          className="w-16 shrink-0 rounded-lg border-gray-300 shadow-sm text-xs text-right focus:border-primary-500 focus:ring-primary-500"
+                        />
+                        <span className="text-xs text-gray-500 shrink-0">шт.</span>
                         <button
                           type="button"
                           onMouseDown={() => (savingWithAddons.current = true)}
-                          onClick={() => toggleAddon(addon.id)}
-                          className="text-gray-400 hover:text-red-600 leading-none"
+                          onClick={() => toggleAddon(row.addon)}
+                          className="text-gray-400 hover:text-red-600 leading-none shrink-0 px-1"
                           title="Убрать из комплектации"
                         >
                           ×
                         </button>
-                      </span>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -298,6 +354,9 @@ const PrettyOfferOpeningCard = ({
                         <span className="min-w-0">
                           <span className="text-gray-400">{addon.kind_display}: </span>
                           {addonLabel(addon)}
+                          <span className="text-gray-400">
+                            {' '}· в заказе {quantityText(addon.quantity)}
+                          </span>
                         </span>
                       </label>
                     ))}

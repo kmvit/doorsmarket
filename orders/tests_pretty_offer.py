@@ -451,24 +451,97 @@ class PrettyOfferFlowTest(TestCase):
 
         response = self.client.patch(
             f'/api/v1/pretty-offer-items/{item.pk}/',
-            {'addons': [self.box.pk, self.platband.pk], 'description': 'Скрытые петли'},
+            {
+                'addons': [
+                    {'addon': self.box.pk, 'quantity': '1'},
+                    {'addon': self.platband.pk, 'quantity': '0.5'},
+                ],
+                'description': 'Скрытые петли',
+            },
             format='json',
         )
         self.assertEqual(response.status_code, 200, response.data)
+
+        rows = response.data['addons']
+        self.assertEqual([row['addon'] for row in rows], [self.box.pk, self.platband.pk])
+        # Количество — то, что проставил менеджер, а не общее по заказу.
+        self.assertEqual([str(row['quantity']) for row in rows], ['1.00', '0.50'])
+        self.assertEqual(str(rows[1]['order_quantity']), '2.50')
+        # Данные позиции отдаём рядом: редактор не ходит за ними в заказ.
         self.assertEqual(
-            sorted(response.data['addons']), sorted([self.box.pk, self.platband.pk]),
+            [row['name'] for row in rows],
+            ['Короб Epsilon Капучино', 'Наличник Epsilon Капучино'],
         )
-        # Развёрнутые данные — их показывает редактор, не дёргая заказ.
-        names = [addon['name'] for addon in response.data['addons_detail']]
-        self.assertEqual(names, ['Короб Epsilon Капучино', 'Наличник Epsilon Капучино'])
-        self.assertEqual(item.addons.count(), 2)
 
         # Снять позицию так же просто, как добавить.
         response = self.client.patch(
-            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [self.box.pk]}, format='json',
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [{'addon': self.box.pk, 'quantity': '1'}]}, format='json',
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(list(item.addons.values_list('pk', flat=True)), [self.box.pk])
+
+    def test_addon_quantity_is_per_opening(self):
+        """
+        В КП количество общее на весь заказ: петель 12 на шесть проёмов. На
+        слайде проёма должно стоять столько, сколько отвёл менеджер.
+        """
+        hinges = OrderAddon.objects.create(
+            order=self.order, kind=AddonKind.HINGES, name='Петли скрытые ACADEMY 8000',
+            quantity=Decimal('12.00'), position=2,
+        )
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        offer = PrettyOffer.objects.get(order=self.order)
+        first = offer.items.get(order_item=self.item_ok)
+        second = offer.items.get(order_item=self.item_ambiguous)
+
+        for item, quantity in ((first, '2'), (second, '4')):
+            response = self.client.patch(
+                f'/api/v1/pretty-offer-items/{item.pk}/',
+                {'addons': [{'addon': hinges.pk, 'quantity': quantity}]}, format='json',
+            )
+            self.assertEqual(response.status_code, 200, response.data)
+
+        self.assertEqual(first.item_addons.get().quantity, Decimal('2'))
+        self.assertEqual(second.item_addons.get().quantity, Decimal('4'))
+        # Сама позиция заказа не тронута — она общая.
+        hinges.refresh_from_db()
+        self.assertEqual(hinges.quantity, Decimal('12'))
+
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            one = ' '.join((document.pages[2].extract_text() or '').split())
+            two = ' '.join((document.pages[3].extract_text() or '').split())
+        self.assertIn('Петли скрытые ACADEMY 8000, 2 шт.', one)
+        self.assertIn('Петли скрытые ACADEMY 8000, 4 шт.', two)
+        self.assertNotIn('12 шт.', one)
+
+    def test_addon_quantity_must_be_positive(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [{'addon': self.box.pk, 'quantity': '0'}]}, format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(item.addons.count(), 0)
+
+    def test_same_addon_cannot_be_taken_twice(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [
+                {'addon': self.box.pk, 'quantity': '1'},
+                {'addon': self.box.pk, 'quantity': '2'},
+            ]},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(item.addons.count(), 0)
 
     def test_addon_of_another_order_is_rejected(self):
         """Чужая позиция в комплектации — это утечка соседнего заказа в КП."""
@@ -484,7 +557,8 @@ class PrettyOfferFlowTest(TestCase):
         item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
 
         response = self.client.patch(
-            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [alien.pk]}, format='json',
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [{'addon': alien.pk, 'quantity': '1'}]}, format='json',
         )
         self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(item.addons.count(), 0)
@@ -493,10 +567,13 @@ class PrettyOfferFlowTest(TestCase):
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
         item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
         self.client.patch(
-            f'/api/v1/pretty-offer-items/{item.pk}/', {'addons': [self.box.pk]}, format='json',
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [{'addon': self.box.pk, 'quantity': '3'}]}, format='json',
         )
 
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        # Количество переживает пересборку вместе с выбором.
+        self.assertEqual(item.item_addons.get().quantity, Decimal('3'))
         self.assertEqual(list(item.addons.values_list('pk', flat=True)), [self.box.pk])
 
     def test_pdf_lists_chosen_addons_under_the_description(self):
@@ -504,7 +581,13 @@ class PrettyOfferFlowTest(TestCase):
         item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
         self.client.patch(
             f'/api/v1/pretty-offer-items/{item.pk}/',
-            {'addons': [self.box.pk, self.platband.pk], 'description': 'Скрытые петли'},
+            {
+                'addons': [
+                    {'addon': self.box.pk, 'quantity': '1'},
+                    {'addon': self.platband.pk, 'quantity': '2.5'},
+                ],
+                'description': 'Скрытые петли',
+            },
             format='json',
         )
 
@@ -517,9 +600,8 @@ class PrettyOfferFlowTest(TestCase):
 
         self.assertIn('Комплектация и описание:', text)
         self.assertIn('Скрытые петли', text)
-        # Размер идёт следом за наименованием; количество «1 шт.» не шумит.
-        self.assertIn('Короб Epsilon Капучино, 2100*70', text)
-        self.assertNotIn('Короб Epsilon Капучино, 2100*70, 1 шт.', text)
+        # Размер идёт следом за наименованием, количество — последним.
+        self.assertIn('Короб Epsilon Капучино, 2100*70, 1 шт.', text)
         # Дробное количество — по-русски, без хвостовых нулей.
         self.assertIn('Наличник Epsilon Капучино, 2,5 шт.', text)
 
@@ -542,7 +624,7 @@ class PrettyOfferFlowTest(TestCase):
             f'/api/v1/pretty-offer-items/{item.pk}/',
             {
                 'description': 'Скрытые петли 2 шт\n\nМагнитный замок 1 шт\nАлюминиевый короб',
-                'addons': [self.box.pk],
+                'addons': [{'addon': self.box.pk, 'quantity': '1'}],
             },
             format='json',
         )
@@ -601,7 +683,10 @@ class PrettyOfferFlowTest(TestCase):
         item = PrettyOffer.objects.get(order=self.order).items.get(order_item=long_item)
         self.client.patch(
             f'/api/v1/pretty-offer-items/{item.pk}/',
-            {'addons': many, 'description': 'Полотно в потолок, короб на две стойки'},
+            {
+                'addons': [{'addon': pk, 'quantity': '2'} for pk in many],
+                'description': 'Полотно в потолок, короб на две стойки',
+            },
             format='json',
         )
 

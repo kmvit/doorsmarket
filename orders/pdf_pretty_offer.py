@@ -84,18 +84,21 @@ def _text_lines(text: str) -> list:
     return [line.strip() for line in (text or '').splitlines() if line.strip()]
 
 
-def _addon_line(addon) -> str:
+def _addon_line(link) -> str:
     """
-    Сопутствующая позиция строкой для слайда: «Короб Epsilon, 2100*70, 3 шт.».
+    Позиция комплектации строкой: «Короб Epsilon, 2100*70, 3 шт.».
 
-    Цену не выводим: в комплектации проёма она сбивает с толку — суммы в КП
-    идут общим итогом внизу, а не по каждой мелочи.
+    Количество берём из связи с проёмом, а не из позиции заказа: в КП оно
+    общее на весь заказ, а на слайде нужно столько, сколько менеджер отвёл
+    этому проёму. Цену не выводим: в комплектации она сбивает с толку —
+    суммы в КП идут общим итогом внизу, а не по каждой мелочи.
     """
+    addon = link.addon
     parts = [addon.name.strip() or addon.get_kind_display()]
     if addon.size:
         parts.append(addon.size)
-    quantity = _quantity_text(addon.quantity)
-    if quantity and quantity != '1':
+    quantity = _quantity_text(link.quantity)
+    if quantity:
         parts.append(f'{quantity} шт.')
     return ', '.join(parts)
 
@@ -155,7 +158,7 @@ def build_context(offer):
     items = offer.items.select_related(
         'order_item', 'front_image', 'front_image__door_model',
         'front_image__color', 'back_image', 'back_image__door_model', 'back_image__color',
-    ).prefetch_related('attachments', 'addons')
+    ).prefetch_related('attachments', 'item_addons__addon')
 
     for item in items:
         order_item = item.order_item
@@ -171,7 +174,7 @@ def build_context(offer):
             # Описание менеджер набирает в столбик, по пункту в строке, — так
             # и выводим, одним списком с подтянутыми позициями.
             'description_lines': _text_lines(item.description),
-            'addon_lines': [_addon_line(addon) for addon in item.addons.all()],
+            'addon_lines': [_addon_line(link) for link in item.item_addons.all()],
             'size': _door_size(order_item),
             'opening_type': order_item.get_opening_type_display() or '',
             'front_path': _side_image_path(item.front_custom_image, item.front_image),

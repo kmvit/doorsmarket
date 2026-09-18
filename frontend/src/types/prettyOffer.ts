@@ -1,5 +1,4 @@
 // Красивое КП: презентационная версия заказа для клиента.
-import { OrderAddon } from './orders'
 
 // Справочник дверей — им наполняется окно уточнения модели и цвета.
 export interface DoorModelRef {
@@ -97,6 +96,26 @@ export interface PrettyOfferAttachment {
   position: number
 }
 
+// Позиция комплектации в проёме: что за позиция заказа и сколько её здесь.
+// Количество своё, а не из заказа: в КП оно общее на весь заказ, а в проём
+// уходит столько, сколько отвёл менеджер.
+export interface PrettyOfferItemAddon {
+  id: number
+  addon: number
+  quantity: string
+  position: number
+  kind_display: string
+  name: string
+  size: string
+  order_quantity: string
+}
+
+// Что уходит на сервер при правке комплектации.
+export interface PrettyOfferItemAddonInput {
+  addon: number
+  quantity: string
+}
+
 export interface PrettyOfferItem {
   id: number
   offer: number
@@ -110,8 +129,7 @@ export interface PrettyOfferItem {
   amount: string | null
   description: string
   // Сопутствующие позиции заказа, попавшие в комплектацию этого проёма.
-  addons: number[]
-  addons_detail: OrderAddon[]
+  addons: PrettyOfferItemAddon[]
   preset: number | null
   two_sided: boolean
   front_image: number | null

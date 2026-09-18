@@ -945,8 +945,8 @@ class PrettyOfferItem(models.Model):
         help_text='Выводится отдельным полем рядом с моделью.',
     )
     addons = models.ManyToManyField(
-        OrderAddon, blank=True, related_name='pretty_offer_items',
-        verbose_name='Позиции комплектации',
+        OrderAddon, through='PrettyOfferItemAddon', blank=True,
+        related_name='pretty_offer_items', verbose_name='Позиции комплектации',
         help_text='Сопутствующие позиции заказа, которые показать на слайде проёма.',
     )
     preset = models.ForeignKey(
@@ -1012,6 +1012,43 @@ class PrettyOfferItem(models.Model):
         if not self.front_image_url:
             return True
         return self.two_sided and not self.back_image_url
+
+
+class PrettyOfferItemAddon(models.Model):
+    """
+    Сопутствующая позиция в комплектации проёма — со своим количеством.
+
+    Количество живёт здесь, а не берётся из позиции заказа: в КП оно общее на
+    весь заказ («петли 12 шт.»), а на слайде проёма нужно столько, сколько
+    уходит в этот проём. Сколько именно — знает менеджер, он и проставляет.
+    """
+    offer_item = models.ForeignKey(
+        PrettyOfferItem, on_delete=models.CASCADE, related_name='item_addons',
+        verbose_name='Проём КП',
+    )
+    addon = models.ForeignKey(
+        OrderAddon, on_delete=models.CASCADE, related_name='pretty_offer_links',
+        verbose_name='Позиция заказа',
+    )
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1, verbose_name='Количество',
+        help_text='Сколько уходит в этот проём. Дробные значения поддерживаются.',
+    )
+    position = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
+
+    class Meta:
+        verbose_name = 'Позиция комплектации проёма'
+        verbose_name_plural = 'Позиции комплектации проёма'
+        ordering = ['position', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['offer_item', 'addon'],
+                name='orders_prettyofferitemaddon_unique_addon',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.addon} — {self.quantity}'
 
 
 class PrettyOfferAttachment(models.Model):

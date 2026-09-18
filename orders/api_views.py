@@ -2148,7 +2148,7 @@ class PrettyOfferViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mix
         accessible = get_orders_queryset_for_user(self.request.user).values_list('id', flat=True)
         return PrettyOffer.objects.filter(
             order_id__in=list(accessible)
-        ).select_related('order').prefetch_related('items__addons')
+        ).select_related('order').prefetch_related('items__item_addons__addon')
 
     @action(detail=True, methods=['post'], url_path='apply-color')
     def apply_color(self, request, pk=None):
@@ -2272,7 +2272,7 @@ class PrettyOfferItemViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin,
             offer__order_id__in=list(accessible)
         ).select_related(
             'offer', 'offer__order', 'order_item', 'front_image', 'back_image',
-        ).prefetch_related('addons')
+        ).prefetch_related('item_addons__addon')
 
 
 class PrettyOfferAttachmentViewSet(viewsets.GenericViewSet, mixins.DestroyModelMixin,

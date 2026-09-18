@@ -8,6 +8,7 @@ from .models import (
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog, OVERDUE_STATUSES,
     OfferTextPreset, PrettyOffer, PrettyOfferAttachment, PrettyOfferItem,
+    PrettyOfferItemAddon,
 )
 from catalog.serializers import DoorImageSerializer
 
@@ -864,6 +865,35 @@ class PrettyOfferAttachmentSerializer(serializers.ModelSerializer):
         return obj.image.url
 
 
+class PrettyOfferItemAddonSerializer(serializers.ModelSerializer):
+    """
+    Позиция комплектации проёма: что за позиция заказа и сколько её здесь.
+
+    Данные самой позиции отдаём рядом — редактору иначе пришлось бы сшивать
+    их с заказом самому, а он и так показывает проёмы по одному.
+    """
+    kind_display = serializers.CharField(source='addon.get_kind_display', read_only=True)
+    name = serializers.CharField(source='addon.name', read_only=True)
+    size = serializers.CharField(source='addon.size', read_only=True)
+    # Количество по заказу целиком — чтобы менеджер видел, из чего раскладывает.
+    order_quantity = serializers.DecimalField(
+        source='addon.quantity', max_digits=10, decimal_places=2, read_only=True,
+    )
+
+    class Meta:
+        model = PrettyOfferItemAddon
+        fields = [
+            'id', 'addon', 'quantity', 'position',
+            'kind_display', 'name', 'size', 'order_quantity',
+        ]
+        read_only_fields = ['id']
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Количество должно быть больше нуля.')
+        return value
+
+
 class PrettyOfferItemSerializer(serializers.ModelSerializer):
     """Проём красивого КП: что распознали и что менеджер поправил."""
     opening_number = serializers.IntegerField(source='order_item.opening_number', read_only=True)
@@ -883,14 +913,14 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
     back_image_url = serializers.SerializerMethodField()
     needs_clarification = serializers.BooleanField(read_only=True)
     attachments = PrettyOfferAttachmentSerializer(many=True, read_only=True)
-    addons_detail = OrderAddonSerializer(source='addons', many=True, read_only=True)
+    addons = PrettyOfferItemAddonSerializer(source='item_addons', many=True, required=False)
 
     class Meta:
         model = PrettyOfferItem
         fields = [
             'id', 'offer', 'order_item', 'opening_number', 'room_name', 'model_name',
             'door_height', 'door_width', 'opening_type_display', 'amount',
-            'description', 'addons', 'addons_detail', 'preset', 'two_sided',
+            'description', 'addons', 'preset', 'two_sided',
             'front_image', 'back_image', 'front_image_detail', 'back_image_detail',
             'front_custom_image', 'back_custom_image',
             'front_image_url', 'back_image_url',
@@ -902,21 +932,48 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
             'back_custom_image': {'write_only': True},
         }
 
-    def validate_addons(self, addons):
+    def validate_addons(self, rows):
         """
         Комплектовать проём можно только сопутствующими позициями его же
         заказа: список приходит с фронта, и чужой id в нём означал бы утечку
-        позиций соседнего заказа в клиентское КП.
+        позиций соседнего заказа в клиентское КП. Дважды одну позицию тоже не
+        берём — в базе на это стоит ограничение, но отвечать на него ошибкой
+        базы, а не внятным текстом, нечестно.
         """
         if self.instance is None:
-            return addons
+            return rows
+
         order_id = self.instance.offer.order_id
-        alien = [addon.pk for addon in addons if addon.order_id != order_id]
+        alien = [row['addon'].pk for row in rows if row['addon'].order_id != order_id]
         if alien:
             raise serializers.ValidationError(
                 'Позиции не из этого заказа: ' + ', '.join(str(pk) for pk in alien)
             )
-        return addons
+
+        ids = [row['addon'].pk for row in rows]
+        if len(ids) != len(set(ids)):
+            raise serializers.ValidationError('Одна и та же позиция выбрана дважды.')
+        return rows
+
+    def update(self, instance, validated_data):
+        """
+        Список позиций переписываем целиком: он короткий, а частичная правка
+        заставила бы фронт следить за id самих связей.
+        """
+        rows = validated_data.pop('item_addons', None)
+        instance = super().update(instance, validated_data)
+        if rows is not None:
+            instance.item_addons.all().delete()
+            PrettyOfferItemAddon.objects.bulk_create([
+                PrettyOfferItemAddon(
+                    offer_item=instance,
+                    addon=row['addon'],
+                    quantity=row.get('quantity') or 1,
+                    position=position,
+                )
+                for position, row in enumerate(rows)
+            ])
+        return instance
 
     def _absolute(self, url):
         return url or None
