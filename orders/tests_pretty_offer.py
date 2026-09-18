@@ -443,6 +443,73 @@ class PrettyOfferFlowTest(TestCase):
             self.assertEqual(item.front_custom_image.name, source.front_custom_image.name)
             self.assertTrue(item.front_image_url)
 
+    def test_catalog_picture_replaces_the_uploaded_one(self):
+        """
+        Своя картинка на стороне полотна идёт первой (см. `_side_image_url`),
+        поэтому выбор из каталога поверх неё раньше молча ничего не менял:
+        каталожная сохранялась, а на экране и в КП оставалась своя.
+        """
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_unknown)
+
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'front_custom_image': upload('своя.png', (7, 7, 7))}, format='multipart',
+        )
+        item.refresh_from_db()
+        own_url = item.front_image_url
+        self.assertTrue(own_url)
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'front_image': self.img_oak.pk}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        item.refresh_from_db()
+        self.assertEqual(item.front_image_id, self.img_oak.pk)
+        self.assertFalse(item.front_custom_image)
+        self.assertEqual(item.front_image_url, self.img_oak.image.url)
+        self.assertNotEqual(item.front_image_url, own_url)
+        self.assertEqual(response.data['front_image_url'], self.img_oak.image.url)
+
+    def test_uploaded_picture_replaces_the_catalog_one(self):
+        """Обратная замена — так же: на стороне полотна одна картинка."""
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.assertEqual(item.front_image_id, self.img_12.pk)
+
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'front_custom_image': upload('своя.png', (9, 9, 9))}, format='multipart',
+        )
+
+        item.refresh_from_db()
+        self.assertIsNone(item.front_image_id)
+        self.assertTrue(item.front_custom_image)
+        self.assertIn('своя', item.front_custom_image.name)
+
+    def test_back_side_pictures_swap_the_same_way(self):
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'two_sided': True, 'back_custom_image': upload('оборот.png', (3, 3, 3))},
+            format='multipart',
+        )
+        item.refresh_from_db()
+        self.assertTrue(item.back_custom_image)
+
+        self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'back_image': self.img_oak.pk}, format='json',
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.back_image_id, self.img_oak.pk)
+        self.assertFalse(item.back_custom_image)
+        # Лицо при этом не тронуто.
+        self.assertEqual(item.front_image_id, self.img_12.pk)
+
     # ---------- комплектация проёма ----------
 
     def test_addons_can_be_attached_to_an_opening(self):

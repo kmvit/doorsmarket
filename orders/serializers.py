@@ -955,13 +955,33 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Одна и та же позиция выбрана дважды.')
         return rows
 
+    @staticmethod
+    def _keep_one_image_per_side(validated_data):
+        """
+        У стороны полотна одна картинка: выбрали из каталога — своя снимается,
+        загрузили свою — снимается каталожная.
+
+        Без этого выбор из каталога молча ничего не менял: своя картинка в
+        `PrettyOfferItem._side_image_url` идёт первой, и на слайде оставалась
+        она, хотя каталожная уже сохранилась.
+        """
+        for side in ('front', 'back'):
+            catalog, custom = f'{side}_image', f'{side}_custom_image'
+            if validated_data.get(catalog) is not None:
+                # Пустая строка, а не None: колонка ImageField не nullable.
+                validated_data[custom] = ''
+            elif validated_data.get(custom):
+                validated_data[catalog] = None
+
     def update(self, instance, validated_data):
         """
         Список позиций переписываем целиком: он короткий, а частичная правка
         заставила бы фронт следить за id самих связей.
         """
+        self._keep_one_image_per_side(validated_data)
         rows = validated_data.pop('item_addons', None)
         instance = super().update(instance, validated_data)
+
         if rows is not None:
             instance.item_addons.all().delete()
             PrettyOfferItemAddon.objects.bulk_create([
