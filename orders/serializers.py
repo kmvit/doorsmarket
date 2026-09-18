@@ -964,14 +964,18 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
         Без этого выбор из каталога молча ничего не менял: своя картинка в
         `PrettyOfferItem._side_image_url` идёт первой, и на слайде оставалась
         она, хотя каталожная уже сохранилась.
+
+        Редактор шлёт что-то одно, но если придут обе сразу, выигрывает
+        загруженный файл: его только что выбрали в проводнике, это намерение
+        свежее ссылки на каталог.
         """
         for side in ('front', 'back'):
             catalog, custom = f'{side}_image', f'{side}_custom_image'
-            if validated_data.get(catalog) is not None:
+            if validated_data.get(custom):
+                validated_data[catalog] = None
+            elif validated_data.get(catalog) is not None:
                 # Пустая строка, а не None: колонка ImageField не nullable.
                 validated_data[custom] = ''
-            elif validated_data.get(custom):
-                validated_data[catalog] = None
 
     def update(self, instance, validated_data):
         """
