@@ -27,6 +27,7 @@ const formatMoney = (value: string | null) =>
 // «addons: …» ни о чём не говорит.
 const FIELD_NAMES: Record<string, string> = {
   addons: 'позиции комплектации',
+  quantity: 'количество',
   description: 'описание',
   front_image: 'картинка полотна',
   back_image: 'картинка оборота',
@@ -43,19 +44,37 @@ const FIELD_NAMES: Record<string, string> = {
  * сохранить проём» — без намёка, что именно не так. Сеть от отказа сервера
  * тоже не отличали, хотя действия разные: перезагрузить или поправить данные.
  */
+/**
+ * Первая внятная претензия из ответа, как бы глубоко она ни лежала.
+ *
+ * Претензии бывают вложенными: у списка позиций комплектации это список
+ * объектов по числу строк («addons: [{quantity: [...]}, {}, {}]»). Плоский
+ * разбор показывал на этом месте «[object Object]» — то есть ничего.
+ */
+const firstMessage = (value: unknown): string | null => {
+  if (typeof value === 'string') return value.trim() || null
+  if (Array.isArray(value)) {
+    for (const nested of value) {
+      const found = firstMessage(nested)
+      if (found) return found
+    }
+    return null
+  }
+  if (value && typeof value === 'object') {
+    for (const [field, nested] of Object.entries(value)) {
+      const found = firstMessage(nested)
+      if (found) return FIELD_NAMES[field] ? `${FIELD_NAMES[field]} — ${found}` : found
+    }
+  }
+  return null
+}
+
 const errorText = (err: any, fallback: string): string => {
   const data = err?.response?.data
   if (typeof data === 'string' && data.trim()) return data
   if (data?.detail) return String(data.detail)
-  if (data && typeof data === 'object') {
-    const entry = Object.entries(data)[0]
-    if (entry) {
-      const [field, value] = entry
-      const text = Array.isArray(value) ? value.join(' ') : String(value)
-      const name = FIELD_NAMES[field]
-      return name ? `${name} — ${text}` : text
-    }
-  }
+  const message = firstMessage(data)
+  if (message) return message
   if (!err?.response) {
     return err?.code === 'ECONNABORTED'
       ? 'сервер не ответил за 20 секунд. Красивое КП правится только онлайн — проверьте связь и повторите'

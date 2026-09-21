@@ -33,6 +33,23 @@ const quantityText = (value: string | number) => {
   return Number.isFinite(number) ? number.toLocaleString('ru-RU') : String(value)
 }
 
+/**
+ * Количество для сервера: с точкой и без мусора.
+ *
+ * В поле количество показано по-русски, через запятую, и эту же строку мы
+ * потом отправляли обратно — сервер такую дробь не принимает. Правилась
+ * только первая позиция: дальше в списке уже висела запятая, и падал весь
+ * запрос целиком, вместе с соседними позициями.
+ *
+ * Пустое или бессмысленное значение заменяем сохранённым: соседние поля не
+ * должны мешать сохранить то, которое менеджер правит сейчас.
+ */
+const toServerQuantity = (text: string | undefined, saved: string) => {
+  const raw = (text ?? '').trim().replace(',', '.')
+  const value = Number(raw)
+  return raw && Number.isFinite(value) && value > 0 ? raw : String(saved)
+}
+
 /** Одна сторона полотна: картинка + кнопки выбора и загрузки. */
 const DoorSide = ({
   label,
@@ -147,7 +164,7 @@ const PrettyOfferOpeningCard = ({
   const currentRows = (): PrettyOfferItemAddonInput[] =>
     item.addons.map((row) => ({
       addon: row.addon,
-      quantity: quantities[row.addon] ?? quantityText(row.quantity),
+      quantity: toServerQuantity(quantities[row.addon], row.quantity),
     }))
 
   const toggleAddon = (addonId: number) => {
