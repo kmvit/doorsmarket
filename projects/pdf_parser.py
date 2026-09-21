@@ -314,15 +314,60 @@ def _section_header_indices(row) -> Any:
     return (name_idx, qty_idx, size_idx, opening_idx)
 
 
+def _meaningful_size(size: str) -> bool:
+    """
+    «2250*», «*90», «2100*70» — настоящий размер. «*» и «0*» фабрика ставит
+    там, где размера нет: подставлять их вместо пустого поля незачем.
+    """
+    return any(int(number) > 0 for number in re.findall(r'\d+', size or ''))
+
+
 def _normalize_product_text(value: str) -> str:
     """Нормализует название изделия для сравнения и дедупликации."""
     return re.sub(r'[\s,.;:!]+', ' ', (value or '').lower()).strip()
 
 
+# Строка изделия в «сыром» тексте страницы:
+#   «1 850222 Цилиндр STD AI ЛВ-90 (50-40В) 1 * 4050 4050»
+#   «2 Короб компланарный-телескоп 72 мм. 1 2100*70 3800 3800»
+# То есть: номер, наименование, количество, ячейка «Размер» и цена с суммой.
+# Ячейка «Размер» приходит во всех видах, что и в таблице: «*», «0*», «2250*»,
+# «*90», «2100*70» — по ней строку и опознаём.
+TEXT_ROW_RE = re.compile(
+    r'^(?:(?P<num>\d{1,3})\s+)?'
+    r'(?P<name>.+?)\s+'
+    r'(?P<qty>\d{1,3}(?:[.,]\d{1,2})?)\s+'
+    r'(?P<size>\d{0,5}\*\d{0,5})\s+'
+    r'\d+\s+\d+\s*$'
+)
+
+
+def _looks_like_section_header(line: str) -> bool:
+    """
+    Строка — шапка секции КП: «№ Ручки + накладки (модель/артикул) Кол-во Цена
+    Сумма», «Добор Кол-во Размер …».
+
+    Раньше проверялось только начало строки, а шапка начинается с номера
+    колонки «№» — и шапка приклеивалась к наименованию предыдущей позиции
+    как продолжение.
+    """
+    stripped = re.sub(r'^№\s*', '', (line or '').strip())
+    if re.match(
+        r'^(модель|дверной короб|наличник|добор|петли|ручки|механизмы|стекло|доп\.|услуги)',
+        stripped, re.IGNORECASE,
+    ):
+        return True
+    return bool(re.search(r'\bкол-?\s?во\b', stripped, re.IGNORECASE))
+
+
 def _extract_products_from_page_text(page_text: str, next_page_first_line: str = '') -> List[Dict[str, str]]:
     """
     Дополняет изделия из обычного текста страницы.
-    Нужно для случаев, когда строка таблицы разрывается на стыке страниц.
+
+    Нужно там, где строка теряется в `extract_tables()`: на стыке страниц и —
+    как выяснилось — в самой нижней строке листа, у которой нижняя граница
+    совпадает с краем таблицы. Так пропадала целая секция «Ручки + накладки»
+    из одной строки: в тексте страницы она есть, в таблице её нет.
     """
     if not page_text:
         return []
@@ -331,24 +376,17 @@ def _extract_products_from_page_text(page_text: str, next_page_first_line: str =
     lines = [line for line in lines if line]
     products: List[Dict[str, str]] = []
 
-    # Ищем строки вида: "<наименование> <кол-во> <размер> <цена> <сумма>"
-    row_pattern = re.compile(
-        r'^(?P<name>.+?)\s+(?P<qty>\d+)\s+(?P<size>\d{2,4}\*\d{2,4})\s+\d+\s+\d+\s*$'
-    )
-    valid_name_starts = (
-        'короб', 'стеновые панели', 'фальшфрамуги', 'добор', 'наличник', 'wave', 'opera'
-    )
-
     i = 0
     while i < len(lines):
         line = lines[i]
-        match = row_pattern.match(line)
+        match = TEXT_ROW_RE.match(line)
         if not match:
             i += 1
             continue
 
         product_name = match.group('name').strip()
-        if not product_name.lower().startswith(valid_name_starts):
+        # Услуги в рекламацию не берём — как и в разборе таблиц.
+        if _SERVICE_ROW_RE.match(product_name.lower()) or len(product_name) <= 5:
             i += 1
             continue
 
@@ -357,9 +395,9 @@ def _extract_products_from_page_text(page_text: str, next_page_first_line: str =
         j = i + 1
         while j < len(lines):
             next_line = lines[j].strip()
-            is_next_header = bool(re.match(r'^(модель|дверной короб|наличник|добор|петли|ручки|механизмы|стекло|доп\.)', next_line, re.IGNORECASE))
+            is_next_header = _looks_like_section_header(next_line)
             has_table_numbers = bool(re.search(r'\d{2,4}\*\d{2,4}', next_line))
-            if not next_line or is_next_header or has_table_numbers or row_pattern.match(next_line):
+            if not next_line or is_next_header or has_table_numbers or TEXT_ROW_RE.match(next_line):
                 break
             one_word_continuations = {'верхние', 'боковые', 'оборотные', 'лицевые'}
             if len(next_line.split()) < 2 and next_line.lower() not in one_word_continuations:
@@ -383,10 +421,11 @@ def _extract_products_from_page_text(page_text: str, next_page_first_line: str =
             if should_add_next_page_line:
                 product_name = f'{product_name} {first_line}'.strip()
 
+        size = match.group('size')
         products.append({
             'product_name': product_name,
-            'quantity': match.group('qty'),
-            'size': match.group('size'),
+            'quantity': match.group('qty').replace(',', '.'),
+            'size': size if _meaningful_size(size) else '',
             'opening_type': '',
             'problem_description': '',
         })
@@ -402,9 +441,6 @@ def _merge_product_candidates(products: List[Dict[str, str]], candidates: List[D
         candidate_qty = candidate.get('quantity', '')
         candidate_size = candidate.get('size', '')
         if not candidate_name_norm:
-            continue
-        # Дополняем только фальшфрамуги: именно они в этом PDF чаще рвутся на стыке страниц.
-        if 'фальшфрамуги' not in candidate_name_norm:
             continue
 
         # 1) Точный дубль: пропускаем.
@@ -432,12 +468,16 @@ def _merge_product_candidates(products: List[Dict[str, str]], candidates: List[D
             continue
 
         # 2) Заменяем обрезанную строку (обычно без размера) на полноценную.
+        #    Именно на полноценную: кандидат из текста бывает и короче — он
+        #    обрывается на переносе строки, — и таким названием затирать
+        #    полное из таблицы нельзя.
         replaced = False
         for product in products:
             product_name_norm = _normalize_product_text(product.get('product_name', ''))
             if (
                 product.get('quantity', '') == candidate_qty
                 and not product.get('size', '')
+                and len(candidate_name_norm) > len(product_name_norm)
                 and (
                     product_name_norm in candidate_name_norm
                     or candidate_name_norm in product_name_norm
@@ -445,7 +485,8 @@ def _merge_product_candidates(products: List[Dict[str, str]], candidates: List[D
                 )
             ):
                 product['product_name'] = candidate.get('product_name', product.get('product_name', ''))
-                product['size'] = candidate_size or product.get('size', '')
+                if _meaningful_size(candidate_size):
+                    product['size'] = candidate_size
                 replaced = True
                 break
         if replaced:
@@ -523,14 +564,19 @@ def _extract_defective_products(pdf, full_text: str) -> List[Dict[str, str]]:
                             quantity = ''
                             if qty_idx is not None and qty_idx < len(row) and row[qty_idx]:
                                 qty_str = str(row[qty_idx]).strip()
-                                qty_match = re.search(r'(\d+)', qty_str)
+                                # Дробное количество — обычное дело: доборную
+                                # планку и наличник берут по половине, и «2.5»
+                                # нельзя усекать до «2».
+                                qty_match = re.search(r'\d+(?:[.,]\d+)?', qty_str)
                                 if qty_match:
-                                    quantity = qty_match.group(1)
+                                    quantity = qty_match.group(0).replace(',', '.')
 
                             size = ''
                             if size_idx is not None and size_idx < len(row) and row[size_idx]:
-                                size = str(row[size_idx]).strip()
-                                size = ' '.join(size.split())
+                                size = ' '.join(str(row[size_idx]).split())
+                                # «*» и «0*» — заглушка фабрики, а не размер.
+                                if not _meaningful_size(size):
+                                    size = ''
 
                             opening = ''
                             if opening_idx is not None and opening_idx < len(row) and row[opening_idx]:
