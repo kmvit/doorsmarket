@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from django.test import SimpleTestCase
 
-from orders.pdf_parser import _build_addon_dict, _parse_addon_row
+from orders.pdf_parser import _build_addon_dict, _normalize_opening_token, _parse_addon_row
 
 
 class ParseAddonRowTests(SimpleTestCase):
@@ -131,3 +131,34 @@ class BuildAddonDictTests(SimpleTestCase):
         )
         self.assertEqual(addon['size'], '')
         self.assertEqual(addon['quantity'], Decimal('5'))
+
+
+class NormalizeOpeningTests(SimpleTestCase):
+    """
+    Открывание пишут в своей колонке, но при переносе строки она рвётся:
+    «D не» остаётся в первой строке, «инверсо» уезжает во вторую. Склеенный
+    текст читался как «дверь инверсная» — то есть ровно наоборот, и таким
+    уходил и в замер, и в рекомендации по подготовке проёма.
+    """
+
+    def test_plain_letters(self):
+        self.assertEqual(_normalize_opening_token('А- правое'), 'A')
+        self.assertEqual(_normalize_opening_token('D левая с заводской врезкой'), 'D')
+        self.assertEqual(_normalize_opening_token(''), '')
+
+    def test_inverso_is_recognised(self):
+        self.assertEqual(_normalize_opening_token('B ИНВЕРСО'), 'B_INVERSO')
+        self.assertEqual(_normalize_opening_token('D Инверсо'), 'D_INVERSO')
+
+    def test_negated_inverso_stays_plain(self):
+        self.assertEqual(
+            _normalize_opening_token('D не инверсо', negated=True), 'D',
+        )
+        # Без отметки об отрицании слово «инверсо» из продолжения строки
+        # по-прежнему работает — ради него продолжение и смотрим.
+        self.assertEqual(
+            _normalize_opening_token('D 21000 21000 магнитный замок инверсо'), 'D_INVERSO',
+        )
+
+    def test_inverso_only_for_b_and_d(self):
+        self.assertEqual(_normalize_opening_token('A инверсо'), 'A')

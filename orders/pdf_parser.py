@@ -201,15 +201,32 @@ def _to_decimal(value: Optional[str]) -> Optional[Decimal]:
         return None
 
 
-def _normalize_opening_token(text: str) -> str:
+# «не» отдельным словом. В колонке «Открывание» фабрика так помечает, что
+# дверь именно НЕ инверсная: «D не инверсо».
+NEGATION_RE = re.compile(r'(?<![А-Яа-яA-Za-z])не(?![А-Яа-яA-Za-z])', re.IGNORECASE)
+
+
+def _opening_cell(text: str) -> str:
+    """
+    Колонка «Открывание» без хвоста из цены и суммы: «D не» вместо
+    «D не 21000 21000». По ней и судим об отрицании — в наименовании полотна
+    «не» встречается по другим поводам.
+    """
+    return re.sub(r'[\d\s.,]+$', '', text or '').strip()
+
+
+def _normalize_opening_token(text: str, negated: bool = False) -> str:
     """
     Возвращает один из A/B/B_INVERSO/C/D/D_INVERSO либо ''.
     Принимает строки вида: 'А- правое', 'B ИНВЕРСО', 'D Инверсо', 'С , с врезкой', 'A'.
     Поддерживаем кириллические А/В/С (U+0410, U+0412, U+0421) и латинские A/B/C/D.
+
+    `negated` — в колонке стояло «не»: дверь не инверсная, хотя слово
+    «инверсо» в строке есть.
     """
     if not text:
         return ''
-    has_inverso = bool(re.search(r'inverso|инверсо', text, re.IGNORECASE))
+    has_inverso = not negated and bool(re.search(r'inverso|инверсо', text, re.IGNORECASE))
     # Явный список: латинские A/B/C/D и кириллические А/В/С
     m = re.search(r'(?<![A-Za-zА-Яа-я])([ABCDАВС])(?![A-Za-zА-Яа-я])', text, re.IGNORECASE)
     if not m:
@@ -666,12 +683,14 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                 # Открывание — учитываем continuation (там может быть «ИНВЕРСО»)
                 opening_full_text = anchor_fixed + ' ' + cont
                 # Берём текст вокруг последнего размера для open type
+                # Перенос делит колонку пополам: «D не» остаётся в первой
+                # строке, «инверсо» уезжает во вторую. Отрицание ищем в самой
+                # колонке, а продолжение строки смотрим только на «инверсо».
                 m_size = list(SIZE_RE.finditer(anchor_fixed))
-                opening_text_part = ''
-                if m_size:
-                    opening_text_part = anchor_fixed[m_size[-1].end():]
-                opening_text_part += ' ' + cont
-                parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
+                anchor_cell = _opening_cell(anchor_fixed[m_size[-1].end():]) if m_size else ''
+                parsed['opening_type'] = _normalize_opening_token(
+                    f'{anchor_cell} {cont}', negated=bool(NEGATION_RE.search(anchor_cell)),
+                ) or parsed['opening_type']
                 # Полное описание = anchor description + continuation
                 full_desc = (parsed['description'] + ' ' + cont).strip()
                 # Срезаем номер позиции из КП («1 ...», «2 ...») если он в самом начале
@@ -720,9 +739,13 @@ def parse_kp_pdf(pdf_file) -> Dict[str, Any]:
                     # Учитываем INVERSO в continuation для коробов
                     if kind == 'box':
                         m_size = list(SIZE_RE.finditer(anchor_fixed))
-                        opening_text_part = anchor_fixed[m_size[-1].end():] if m_size else ''
-                        opening_text_part += ' ' + cont
-                        parsed['opening_type'] = _normalize_opening_token(opening_text_part) or parsed['opening_type']
+                        anchor_cell = (
+                            _opening_cell(anchor_fixed[m_size[-1].end():]) if m_size else ''
+                        )
+                        parsed['opening_type'] = _normalize_opening_token(
+                            f'{anchor_cell} {cont}',
+                            negated=bool(NEGATION_RE.search(anchor_cell)),
+                        ) or parsed['opening_type']
                     full_desc = (parsed['description'] + ' ' + cont).strip()
                     full_desc = re.sub(r'^\d{1,3}\s+', '', full_desc).strip()
                     parsed['description'] = full_desc
