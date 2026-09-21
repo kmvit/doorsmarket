@@ -152,6 +152,26 @@ def _extract_totals(text: str) -> Dict[str, Optional[Decimal]]:
 # ---------- регулярки на размеры / открывания ----------
 
 SIZE_RE = re.compile(r'(\d+)(?:полотно)?\s*\*\s*(\d+)')
+# Количество и колонка «Размер» в конце строки аддона. Колонка приходит в
+# четырёх видах, и раньше разбирались только два крайних:
+#   «5 *»        — размера нет (петли, механизмы, услуги);
+#   «2.5 *90»    — только ширина (доборы);
+#   «10 2250*»   — только высота (наличники);
+#   «2 2100*70»  — полный размер (короба).
+# Количество бывает дробным: доборную планку и наличник берут по половине.
+# Пробел перед количеством обязателен: без него «2100*70» в строке короба
+# читалось бы как «100 штук шириной 70».
+QTY_SIZE_RE = re.compile(
+    r'(?:^|\s)(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:(\d{2,5})\s*)?\*(?:\s*(\d{2,5}))?\s*$'
+)
+
+# Та же колонка, но когда за ней идёт ещё и открывание: «2 2100*70 D»,
+# «1 * 1-1», «3 * На себя». Плюс написание коробов без звёздочки вовсе —
+# «1 2450 полотно А правая»: высота там названа словом.
+ADDON_SIZE_CELL_RE = re.compile(
+    r'(?:(\d{2,5})\s*)?\*(?:\s*(\d{2,5}))?'
+    r'|(\d{3,5})\s*полотно'
+)
 TWO_SIZES_RE = re.compile(r'(\d+(?:полотно)?\s*\*\s*\d+)\s+(\d+\s*\*\s*\d+)')
 
 # Открывания: A/B/C/D + опциональный INVERSO. Кириллические тоже считаем.
@@ -526,8 +546,8 @@ def _parse_addon_row(joined_line: str) -> Optional[Dict[str, Any]]:
     """
     Парсит склеенную строку секций аддонов.
     Форматы (в порядке проверки):
-      1) <desc> <qty> *                <price> <sum>   — петли/наличники/добор/механизмы/услуги
-      2) <desc> <qty> <H*W> [<open>]   <price> <sum>   — короб/стекло/доп. к заказу
+      1) <desc> <qty> [<H>]*[<W>]      <price> <sum>   — колонка «Размер» в любом виде
+      2) <desc> <qty> <H*W> <open>     <price> <sum>   — короб с открыванием после размера
       3) <desc> <qty>                  <price> <sum>   — fallback
     """
     m_tail = re.search(r'^(.*?)\s+(\d{2,8})\s+(\d{2,8})\s*$', joined_line)
@@ -537,36 +557,40 @@ def _parse_addon_row(joined_line: str) -> Optional[Dict[str, Any]]:
     price = _to_decimal(m_tail.group(2))
     summ = _to_decimal(m_tail.group(3))
 
-    # Вариант 1: «qty *» в самом конце head
-    m_qty_star = re.search(r'(\d{1,3})\s*\*\s*$', head)
-    if m_qty_star:
+    # Вариант 1: количество и колонка «Размер» в самом конце head
+    m_qty_size = QTY_SIZE_RE.search(head)
+    if m_qty_size:
+        height, width = m_qty_size.group(2), m_qty_size.group(3)
         return {
-            'description': head[:m_qty_star.start()].strip(),
-            'qty': int(m_qty_star.group(1)),
-            'size_h': None,
-            'size_w': None,
+            'description': head[:m_qty_size.start()].strip(),
+            'qty': _to_decimal(m_qty_size.group(1)),
+            'size_h': int(height) if height else None,
+            'size_w': int(width) if width else None,
             'opening_type': '',
             'price': price,
             'sum': summ,
         }
 
-    # Вариант 2: размер в конце head (короба) — берём ПОСЛЕДНИЙ размер
-    sizes = list(SIZE_RE.finditer(head))
-    if sizes:
-        last_size = sizes[-1]
-        before_size = head[:last_size.start()].rstrip()
-        m_qty = re.search(r'(\d{1,3})\s*$', before_size)
-        if m_qty:
-            opening_text = head[last_size.end():].strip()
-            return {
-                'description': before_size[:m_qty.start()].strip(),
-                'qty': int(m_qty.group(1)),
-                'size_h': int(last_size.group(1)),
-                'size_w': int(last_size.group(2)),
-                'opening_type': _normalize_opening_token(opening_text),
-                'price': price,
-                'sum': summ,
-            }
+    # Вариант 2: за колонкой «Размер» стоит ещё и открывание. Идём от конца:
+    # в наименовании тоже попадаются размеры («брус 50*100»), и колонкой
+    # является последняя такая пара, перед которой стоит количество.
+    for cell in reversed(list(ADDON_SIZE_CELL_RE.finditer(head))):
+        before_cell = head[:cell.start()].rstrip()
+        m_qty = re.search(r'(?:^|\s)(\d{1,3}(?:[.,]\d{1,2})?)\s*$', before_cell)
+        if not m_qty:
+            continue
+        # Третья группа — написание «2450 полотно», там высота без звёздочки.
+        height = cell.group(1) or cell.group(3)
+        width = cell.group(2)
+        return {
+            'description': before_cell[:m_qty.start()].strip(),
+            'qty': _to_decimal(m_qty.group(1)),
+            'size_h': int(height) if height else None,
+            'size_w': int(width) if width else None,
+            'opening_type': _normalize_opening_token(head[cell.end():].strip()),
+            'price': price,
+            'sum': summ,
+        }
 
     # Вариант 3 не используем — слишком ненадёжен (жадно хватает цифры из размеров).
     # Не распознанные строки пользователь поправит в превью.
@@ -577,9 +601,11 @@ def _parse_addon_row(joined_line: str) -> Optional[Dict[str, Any]]:
 
 def _build_addon_dict(parsed_addon: Dict[str, Any], kind: str) -> Dict[str, Any]:
     """Аддон-уровня заказа (не привязывается к проёму)."""
-    size = ''
-    if parsed_addon.get('size_h') and parsed_addon.get('size_w'):
-        size = f"{parsed_addon['size_h']}*{parsed_addon['size_w']}"
+    # Размер пишем ровно так, как в КП: «2100*70», «*90» (ширина добора),
+    # «2250*» (высота наличника). Голое число было бы непонятно — по нему не
+    # сказать, ширина это или высота.
+    height, width = parsed_addon.get('size_h'), parsed_addon.get('size_w')
+    size = f"{height or ''}*{width or ''}" if (height or width) else ''
     return {
         'kind': kind,
         'name': (parsed_addon['description'] or '')[:500],

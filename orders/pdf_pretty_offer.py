@@ -95,8 +95,11 @@ def _addon_line(link) -> str:
     """
     addon = link.addon
     parts = [addon.name.strip() or addon.get_kind_display()]
-    if addon.size:
-        parts.append(addon.size)
+    # Звёздочку из размера убираем: в КП фабрики «*90» значит «ширина 90», но
+    # клиенту на слайде такая запись ничего не говорит.
+    size = addon.size.strip('* ')
+    if size:
+        parts.append(size)
     quantity = _quantity_text(link.quantity)
     if quantity:
         parts.append(f'{quantity} шт.')

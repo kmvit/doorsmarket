@@ -20,7 +20,10 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 /** Наименование позиции с размером — без количества: оно правится рядом. */
 const addonLabel = (addon: { name: string; kind_display: string; size: string }) => {
   const parts = [addon.name.trim() || addon.kind_display]
-  if (addon.size) parts.push(addon.size)
+  // Как и на слайде, звёздочку из размера убираем: «*90» — это запись КП
+  // фабрики для ширины, читателю она ни о чём не говорит.
+  const size = addon.size.replace(/\*/g, ' ').trim()
+  if (size) parts.push(size)
   return parts.join(', ')
 }
 
