@@ -42,6 +42,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   const [colorId, setColorId] = useState<number | null>(null)
   const [selectedImage, setSelectedImage] = useState<DoorImageRef | null>(null)
   const [search, setSearch] = useState('')
+  const [colorSearch, setColorSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,6 +53,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
 
   const variantsRef = useRef<HTMLDivElement>(null)
   const selectedModelRef = useRef<HTMLButtonElement>(null)
+  const selectedColorRef = useRef<HTMLButtonElement>(null)
 
   useBodyScrollLock(open)
 
@@ -62,6 +64,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
     setShowUpload(false)
     setUploadFile(null)
     setSelectedImage(null)
+    setColorSearch('')
     setUploadVariant(hint?.variant || '')
     setModelId(hint?.model_id ?? null)
     setColorId(hint?.color_id ?? null)
@@ -74,6 +77,7 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
   }, [open, hint])
 
   useEffect(() => {
+    setColorSearch('')
     if (!open || !modelId) {
       setColors([])
       return
@@ -115,6 +119,12 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
     selectedModelRef.current?.scrollIntoView({ block: 'nearest' })
   }, [open, modelId, models.length])
 
+  // То же и с цветом: матчер его иногда угадывает, а список длинный.
+  useEffect(() => {
+    if (!open || !colorId || colors.length === 0) return
+    selectedColorRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [open, colorId, colors.length])
+
   const handleUpload = async () => {
     if (!modelId || !colorId || !uploadFile || isUploading) return
     setIsUploading(true)
@@ -148,6 +158,15 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
         `${model.series_name} ${model.name} ${model.aliases || ''}`.toLowerCase().includes(query),
       )
     : models
+
+  // Цветов у модели бывает под сотню, и называются они как придётся —
+  // ищем и по синонимам, которыми матчер узнаёт цвет из КП.
+  const colorQuery = colorSearch.trim().toLowerCase()
+  const visibleColors = colorQuery
+    ? colors.filter((color) =>
+        `${color.name} ${color.aliases || ''}`.toLowerCase().includes(colorQuery),
+      )
+    : colors
 
   // Рендерим в body: если у любого предка окажется transform, filter или
   // backdrop-filter, он становится точкой отсчёта для position:fixed, и окно
@@ -246,31 +265,43 @@ const PrettyOfferDoorPicker = ({ open, title, hint, onPick, onClose }: Props) =>
             <div>
               <label className={labelCls}>Цвет</label>
               {modelId ? (
-                <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
-                  {colors.length === 0 ? (
-                    <p className="px-2 py-3 text-sm text-gray-500">
-                      У этой модели нет цветов в каталоге
-                    </p>
-                  ) : (
-                    colors.map((color) => (
-                      <button
-                        key={color.id}
-                        type="button"
-                        onClick={() => {
-                          setColorId(color.id)
-                          setSelectedImage(null)
-                        }}
-                        className={`block w-full text-left px-2 py-2 text-sm ${
-                          color.id === colorId
-                            ? 'bg-primary-50 text-primary-800 font-medium'
-                            : 'text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        {color.name}
-                      </button>
-                    ))
-                  )}
-                </div>
+                <>
+                  <input
+                    type="text"
+                    value={colorSearch}
+                    onChange={(e) => setColorSearch(e.target.value)}
+                    placeholder="Поиск по цвету"
+                    className={`${fieldCls} mb-2`}
+                  />
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
+                    {colors.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-gray-500">
+                        У этой модели нет цветов в каталоге
+                      </p>
+                    ) : visibleColors.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-gray-500">Ничего не нашлось</p>
+                    ) : (
+                      visibleColors.map((color) => (
+                        <button
+                          key={color.id}
+                          ref={color.id === colorId ? selectedColorRef : null}
+                          type="button"
+                          onClick={() => {
+                            setColorId(color.id)
+                            setSelectedImage(null)
+                          }}
+                          className={`block w-full text-left px-2 py-2 text-sm ${
+                            color.id === colorId
+                              ? 'bg-primary-50 text-primary-800 font-medium'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {color.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
               ) : (
                 <p className="text-sm text-gray-500 py-2">Сначала выберите модель</p>
               )}
