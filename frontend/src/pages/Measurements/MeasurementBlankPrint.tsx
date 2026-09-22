@@ -82,6 +82,10 @@ const MeasurementBlankPrint = () => {
         table.openings th, table.openings td { border: 1px solid #bbb; padding: 3px 4px; font-size: 10px; text-align: center; vertical-align: top; overflow-wrap: break-word; }
         table.openings th { background: #eef2f7; font-weight: 700; }
         table.openings td.left { text-align: left; }
+        /* Размер — одним куском: «2090×2520» рвалось посреди числа («…252 / 0»).
+           Ширину колонке браузер подберёт сам. Тот же запрет есть в PDF-бланке
+           (orders/templates/orders/measurement_blank.html) — править нужно оба. */
+        table.openings td.size { white-space: nowrap; }
       `}</style>
 
       {/* Панель управления (не печатается) */}
@@ -189,13 +193,13 @@ const MeasurementBlankPrint = () => {
                   <td>{op.opening_number}</td>
                   <td className="left">{dash(op.room_name)}</td>
                   <td>{dash(op.door_type_display)}</td>
-                  <td>{fmtSize(op.actual_height, op.actual_width, op.actual_depth)}</td>
-                  <td>
+                  <td className="size">{fmtSize(op.actual_height, op.actual_width, op.actual_depth)}</td>
+                  <td className="size">
                     {op.recommended_door_width_parts
                       ? `${op.recommended_door_height ?? '—'}×${op.recommended_door_width_parts}`
                       : fmtSize(op.recommended_door_height, op.recommended_door_width)}
                   </td>
-                  <td>{fmtSize(op.recommended_opening_height, op.recommended_opening_width)}</td>
+                  <td className="size">{fmtSize(op.recommended_opening_height, op.recommended_opening_width)}</td>
                   <td>
                     {reworkText(op)
                       ? <span className="text-red-700 font-semibold">{reworkText(op)}</span>
