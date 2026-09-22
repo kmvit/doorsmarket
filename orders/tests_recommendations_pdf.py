@@ -84,3 +84,52 @@ class RecommendationsBlankOpeningTypeTest(TestCase):
         )
         html = self._render()
         self.assertIn('B Inverso', html)
+
+
+class MeasurementBlankSignatureTest(TestCase):
+    """
+    Подпись сервис-менеджера на бланке замера должна быть одна. Их было две
+    рядом: в строке подписей вместе с клиентом и следом в подвале
+    («Замер произвёл (СМ) ____»), и подписывать предлагалось дважды.
+    """
+
+    def setUp(self):
+        self.city = City.objects.create(name='Тест-город')
+        self.salon = Salon.objects.create(name='Тест-салон', city=self.city)
+        self.manager = User.objects.create_user(
+            username='mgr_blank', password='x', role='manager',
+            city=self.city, salon=self.salon,
+        )
+        self.sm = User.objects.create_user(
+            username='sm_blank', password='x', role='service_manager',
+            city=self.city, first_name='Пётр', last_name='Петров',
+        )
+        self.order = Order.objects.create(
+            manager=self.manager, salon=self.salon, client_name='Иванов',
+            status=OrderStatus.MEASUREMENT_DONE,
+        )
+        self.mr = MeasurementRequest.objects.create(
+            order=self.order, contact_name='Иванов', contact_phone='+700',
+            created_by=self.manager,
+        )
+        self.m = Measurement.objects.create(request=self.mr, service_manager=self.sm)
+
+    def _render(self):
+        from orders.pdf_blank import render_measurement_blank
+
+        with mock.patch('weasyprint.HTML', FakeHTML):
+            render_measurement_blank(self.m)
+        return FakeHTML.captured['html']
+
+    def test_signature_row_keeps_both_parties(self):
+        html = self._render()
+        self.assertIn('Клиент (ФИО, подпись)', html)
+        self.assertIn('Сервис-менеджер: Пётр Петров', html)
+
+    def test_duplicate_signature_in_the_footer_is_gone(self):
+        self.assertNotIn('Замер произвёл', self._render())
+
+    def test_footer_warnings_are_still_there(self):
+        html = self._render()
+        self.assertIn('ЧИСТОГО» ПОЛА', html)
+        self.assertIn('ответственность за любые изменения размеров', html)
