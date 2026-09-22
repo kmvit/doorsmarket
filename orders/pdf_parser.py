@@ -338,9 +338,19 @@ def _split_into_sections(full_text: str) -> Dict[str, str]:
 
 
 def _is_anchor_line(line: str) -> bool:
-    """Якорная строка заканчивается на два числа (price + sum), оба >= 10."""
+    """
+    Якорная строка заканчивается на два числа (price + sum), оба >= 10,
+    и перед ними стоит что-то ещё.
+
+    Строка из одних чисел («800 900») — это перенос размера с предыдущей
+    строки: у позиции всегда есть наименование. Без этой проверки такой
+    перенос становился отдельной позицией, а размер предыдущей оставался
+    разорванным.
+    """
     m = re.search(r'(\d{2,8})\s+(\d{2,8})\s*$', line)
-    return bool(m)
+    if not m:
+        return False
+    return bool(line[:m.start()].strip())
 
 
 def _split_section_into_rows(section_text: str) -> List[Tuple[str, str]]:
@@ -372,13 +382,31 @@ def _split_section_into_rows(section_text: str) -> List[Tuple[str, str]]:
     return rows
 
 
+# «Висячая» высота: количество, за ним четырёхзначная высота, и ширины нет —
+# она уехала на следующую строку. Пример: «… 4 мм. 2 2000 2100*700 31500 63000»
+# с продолжением «800 900»: полотно 2000*800, а «2000» в якоре осталось одно.
+DANGLING_HEIGHT_RE = re.compile(r'(?:^|\s)(\d{1,3})\s+(\d{4})(?=\s)(?!\s*\*)')
+
+
 def _fix_split_size(anchor: str, continuation: str) -> str:
     """
     Если в якоре последний размер обрезан ('2290полотно*7'), а continuation
     начинается с цифр ('00 врезкой'), склеиваем хвост размера.
+
+    Второй случай — перенос разорвал размер по звёздочке: высота осталась в
+    якоре, ширина уехала в продолжение. Тогда цифры высоты попадали в
+    количество («2000» читалось как «000»), и КП вместо двух дверей по 31500
+    давало одну за 63000.
     """
     if not continuation:
         return anchor
+
+    m_dangling = DANGLING_HEIGHT_RE.search(anchor)
+    m_cont_first = re.match(r'(\d{2,4})(?:\s|$)', continuation.strip())
+    if m_dangling and m_cont_first:
+        height_end = m_dangling.end(2)
+        return f'{anchor[:height_end]}*{m_cont_first.group(1)}{anchor[height_end:]}'
+
     # Ищем в якоре «висячий» размер с короткой второй частью
     m = re.search(r'(\d+(?:полотно)?\s*\*\s*)(\d{1,2})(\s|$)', anchor)
     if not m:
@@ -533,13 +561,19 @@ def _parse_door_row(joined_line: str) -> Optional[Dict[str, Any]]:
     if door_h is not None and door_w is not None and door_h < door_w and door_w > 1500:
         door_h, door_w = door_w, door_h
 
-    # qty — последнее число перед первым размером
+    # qty — последнее число перед первым размером. Пробел перед ним обязателен:
+    # иначе из «2000» (высота, чья ширина уехала переносом) бралось «000», и
+    # количество становилось нулём — позиция выходила одна, зато с суммой за все.
     before_size = head[:first_size.start()].rstrip()
-    m_qty = re.search(r'(\d{1,3})\s*$', before_size)
-    if not m_qty:
-        return None
-    qty = int(m_qty.group(1))
-    description = before_size[:m_qty.start()].strip()
+    m_qty = re.search(r'(?:^|\s)(\d{1,3})\s*$', before_size)
+    if m_qty:
+        qty = int(m_qty.group(1))
+        description = before_size[:m_qty.start()].strip()
+    else:
+        # Количество не распозналось — позицию всё равно оставляем: потерять
+        # строку КП хуже, чем показать её одной штукой.
+        qty = 1
+        description = before_size.strip()
 
     # Открывание ищем после первого (или второго) размера
     after_sizes_start = sizes[-1].end()

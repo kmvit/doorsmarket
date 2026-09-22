@@ -162,3 +162,46 @@ class NormalizeOpeningTests(SimpleTestCase):
 
     def test_inverso_only_for_b_and_d(self):
         self.assertEqual(_normalize_opening_token('A инверсо'), 'A')
+
+
+class DoorRowQuantityTests(SimpleTestCase):
+    """
+    Количество дверей в строке КП. Размер бывает разорван переносом — высота
+    остаётся в строке, ширина уезжает на следующую, — и тогда из «2000»
+    вычитались последние три цифры: количество становилось нулём. Заказ
+    получал одну дверь с суммой за две.
+    """
+
+    def test_quantity_is_not_cut_out_of_the_height(self):
+        from orders.pdf_parser import _fix_split_size, _parse_door_row
+
+        anchor = 'Nord 1 ПО EVO Стекло MATELUX: белое 4 мм. 2 2000 2100*700 31500 63000'
+        row = _parse_door_row(_fix_split_size(anchor, '800 900'))
+        self.assertEqual(row['qty'], 2)
+        self.assertEqual(row['door_height'], 2000)
+        self.assertEqual(row['door_width'], 800)
+        self.assertEqual(row['price'], Decimal('31500'))
+        self.assertEqual(row['sum'], Decimal('63000'))
+
+    def test_plain_row_is_unchanged(self):
+        from orders.pdf_parser import _fix_split_size, _parse_door_row
+
+        anchor = 'Полотно Epsilon 12 Капуччино 1 2000*800 900*2070*120 D 21000 21000'
+        row = _parse_door_row(_fix_split_size(anchor, ''))
+        self.assertEqual(row['qty'], 1)
+        self.assertEqual(row['door_height'], 2000)
+        self.assertEqual(row['door_width'], 800)
+
+    def test_numbers_only_line_is_a_continuation_not_a_row(self):
+        from orders.pdf_parser import _is_anchor_line
+
+        self.assertFalse(_is_anchor_line('800 900'))
+        self.assertTrue(_is_anchor_line('Петля карточная 4 * 2000 8000'))
+
+    def test_row_survives_when_quantity_is_unreadable(self):
+        """Потерять строку КП хуже, чем показать её одной штукой."""
+        from orders.pdf_parser import _parse_door_row
+
+        row = _parse_door_row('Полотно без количества 2000*800 21000 21000')
+        self.assertIsNotNone(row)
+        self.assertEqual(row['qty'], 1)
