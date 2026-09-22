@@ -289,3 +289,100 @@ class IrrelevantBeforeMeasurementTest(TestCase):
             f'/api/v1/orders/{bare.pk}/mark_measurement_irrelevant/', {}, format='json',
         )
         self.assertEqual(response.status_code, 400)
+
+
+class IrrelevantOrderFoldersTest(TestCase):
+    """
+    Заказ с неактуальным замером не должен висеть в папках раздела «Заказы»
+    и гореть красным: работать по заявке уже не нужно. Раньше он оставался
+    в «Замер не выполнен», а кроны продолжали его туда возвращать.
+    """
+
+    def setUp(self):
+        import datetime
+
+        from django.utils import timezone
+
+        self.city = City.objects.create(name='Казань')
+        self.salon = Salon.objects.create(name='Салон', city=self.city)
+        self.manager = User.objects.create_user(
+            username='mgr2', password='x', role='manager', city=self.city, salon=self.salon,
+        )
+        self.sm = User.objects.create_user(
+            username='sm2', password='x', role='service_manager', city=self.city,
+        )
+        self.client_api = APIClient()
+        self.client_api.force_authenticate(self.manager)
+
+        self.order = Order.objects.create(
+            manager=self.manager, salon=self.salon, client_name='Иванов',
+            status=OrderStatus.MEASUREMENT_NOT_DONE,
+        )
+        self.request_obj = MeasurementRequest.objects.create(
+            order=self.order, contact_name='Иванов', contact_phone='+79000000000',
+        )
+        self.measurement = Measurement.objects.create(
+            request=self.request_obj, service_manager=self.sm,
+            measurement_date=timezone.now() - datetime.timedelta(days=2),
+        )
+
+    def folder_ids(self, folder):
+        response = self.client_api.get('/api/v1/orders/', {'folder': folder})
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data['results'] if isinstance(response.data, dict) else response.data
+        return [row['id'] for row in rows]
+
+    def mark_irrelevant(self):
+        self.request_obj.is_irrelevant = True
+        self.request_obj.save(update_fields=['is_irrelevant'])
+
+    def test_order_is_in_the_overdue_folder_while_measurement_is_in_work(self):
+        self.assertIn(self.order.pk, self.folder_ids('measurement_not_done'))
+
+    def test_irrelevant_measurement_leaves_the_overdue_folder(self):
+        self.mark_irrelevant()
+        self.assertNotIn(self.order.pk, self.folder_ids('measurement_not_done'))
+
+    def test_irrelevant_measurement_leaves_every_measurement_folder(self):
+        self.mark_irrelevant()
+        for folder in (
+            'measurement_requested', 'measurement_scheduled', 'today_measurement',
+            'tomorrow_measurement', 'measurement_not_planned', 'measurement_not_done',
+            'measurement_not_processed',
+        ):
+            with self.subTest(folder=folder):
+                self.assertNotIn(self.order.pk, self.folder_ids(folder))
+
+    def test_row_stops_being_red(self):
+        response = self.client_api.get(f'/api/v1/orders/{self.order.pk}/')
+        self.assertTrue(response.data['is_overdue'])
+
+        self.mark_irrelevant()
+        response = self.client_api.get(f'/api/v1/orders/{self.order.pk}/')
+        self.assertFalse(response.data['is_overdue'])
+
+    def test_cron_does_not_return_it_to_overdue(self):
+        """
+        Замер помечен неактуальным ещё до срока — крон не должен вернуть
+        заказ в «Замер не выполнен».
+        """
+        from django.core.management import call_command
+
+        self.order.status = OrderStatus.MEASUREMENT_SCHEDULED
+        self.order.save(update_fields=['status'])
+        self.mark_irrelevant()
+
+        call_command('check_measurement_not_done')
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.MEASUREMENT_SCHEDULED)
+
+    def test_cron_still_flags_a_real_overdue(self):
+        self.order.status = OrderStatus.MEASUREMENT_SCHEDULED
+        self.order.save(update_fields=['status'])
+
+        from django.core.management import call_command
+        call_command('check_measurement_not_done')
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.MEASUREMENT_NOT_DONE)

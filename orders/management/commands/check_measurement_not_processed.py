@@ -24,6 +24,7 @@ class Command(BaseCommand):
             is_done=True,
             is_processed=False,
             request__order__status=OrderStatus.MEASUREMENT_DONE,
+            request__is_irrelevant=False,
         ).select_related('request__order', 'request__order__manager')
 
         flagged = 0

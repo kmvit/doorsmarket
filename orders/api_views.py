@@ -201,10 +201,27 @@ ORDER_FOLDERS = [
 ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
 
 
+# Папки заказов, которые описывают работу по замеру. Заявку, признанную
+# неактуальной, в них не показываем — как и в папках раздела «Замеры»:
+# работать по ней не нужно, а красная строка «Замер не выполнен» вводит
+# менеджера в заблуждение.
+MEASUREMENT_WORK_FOLDERS = frozenset({
+    'measurement_requested',
+    'measurement_scheduled',
+    'today_measurement',
+    'tomorrow_measurement',
+    'measurement_not_planned',
+    'measurement_not_done',
+    'measurement_not_processed',
+})
+
+
 def apply_order_folder(qs, folder):
     """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
     if not folder:
         return qs
+    if folder in MEASUREMENT_WORK_FOLDERS:
+        qs = qs.exclude(measurement_request__is_irrelevant=True)
     if folder == 'created':
         # «Создан» = черновик/активный без заявки на замер
         return qs.filter(

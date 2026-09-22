@@ -210,7 +210,14 @@ class OrderListSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_overdue(self, obj):
-        return obj.status in OVERDUE_STATUSES
+        """
+        Просрочка по замеру. Если замер признан неактуальным, её нет: работать
+        по заявке уже не нужно, а статус остаётся как след истории.
+        """
+        if obj.status not in OVERDUE_STATUSES:
+            return False
+        request = getattr(obj, 'measurement_request', None)
+        return not (request is not None and request.is_irrelevant)
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -242,7 +249,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_overdue(self, obj):
-        return obj.status in OVERDUE_STATUSES
+        """
+        Просрочка по замеру. Если замер признан неактуальным, её нет: работать
+        по заявке уже не нужно, а статус остаётся как след истории.
+        """
+        if obj.status not in OVERDUE_STATUSES:
+            return False
+        request = getattr(obj, 'measurement_request', None)
+        return not (request is not None and request.is_irrelevant)
 
     def get_attachments(self, obj):
         qs = obj.attachments.filter(order_item__isnull=True)

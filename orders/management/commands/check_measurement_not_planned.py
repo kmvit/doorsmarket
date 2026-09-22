@@ -23,6 +23,8 @@ class Command(BaseCommand):
         today = timezone.localdate()
         requests = MeasurementRequest.objects.filter(
             order__status=OrderStatus.MEASUREMENT_REQUESTED,
+            # Неактуальная заявка снята с работы: назначать по ней нечего.
+            is_irrelevant=False,
         ).select_related('order', 'order__salon', 'order__salon__city', 'order__manager')
 
         flagged = 0

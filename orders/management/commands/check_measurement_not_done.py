@@ -21,6 +21,9 @@ class Command(BaseCommand):
             is_done=False,
             measurement_date__lt=now,
             request__order__status=OrderStatus.MEASUREMENT_SCHEDULED,
+            # Признанный неактуальным замер снят с работы — просрочки по нему
+            # быть не может, и в «Не выполнен» он попадать не должен.
+            request__is_irrelevant=False,
         ).select_related('request__order', 'service_manager')
 
         flagged = 0
