@@ -225,6 +225,21 @@ const filterMeasurementsByFolder = (
   }
 }
 
+// Офлайн-сортировка папки «Сегодня замер» — зеркало серверной: по назначенному
+// времени, с самого раннего. Онлайн порядок задаёт бэкенд, офлайн список приходит
+// из IndexedDB в произвольном порядке.
+const sortMeasurementsByFolder = (
+  list: MeasurementListItem[],
+  folder?: MeasurementFolder,
+): MeasurementListItem[] => {
+  if (folder !== 'today') return list
+  return [...list].sort((a, b) => {
+    const ta = a.measurement_date ? new Date(a.measurement_date).getTime() : Infinity
+    const tb = b.measurement_date ? new Date(b.measurement_date).getTime() : Infinity
+    return ta - tb || (a.id ?? 0) - (b.id ?? 0)
+  })
+}
+
 // Локальный поиск по тем же полям, что и серверный search_fields — чтобы офлайн
 // поиск внутри папки тоже работал, а не игнорировался
 const filterMeasurementsBySearch = (list: MeasurementListItem[], search?: string): MeasurementListItem[] => {
@@ -278,7 +293,9 @@ export const measurementsAPI = {
         const all = await measurementUtils.getList()
         let result = filterMeasurementsByFolder(all, params?.folder, currentUserIdFromStorage())
         if (params?.exclude_finished) result = filterMeasurementsFinished(result)
-        return filterMeasurementsBySearch(result, params?.search)
+        return sortMeasurementsByFolder(
+          filterMeasurementsBySearch(result, params?.search), params?.folder,
+        )
       },
     })
   },

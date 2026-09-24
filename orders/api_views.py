@@ -1348,6 +1348,18 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             qs = qs.exclude(is_done=True).exclude(request__order__status='cancelled')
         return qs
 
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        # «Сегодня замер» — по времени выезда, с самого раннего: СМ видит свой день
+        # по порядку и не открывает каждый замер, чтобы вспомнить, во сколько назначил.
+        # Явная сортировка из запроса (?ordering=) важнее.
+        if (
+            self.request.query_params.get('folder') == 'today'
+            and not self.request.query_params.get('ordering')
+        ):
+            qs = qs.order_by('measurement_date', 'id')
+        return qs
+
     @action(detail=False, methods=['get'], url_path='folder_counts')
     def folder_counts(self, request):
         """Счётчики по папкам замеров для дашборда СМ (Фаза 6)."""
