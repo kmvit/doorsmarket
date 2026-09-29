@@ -14,6 +14,10 @@ const FOLDER_LABELS: Record<string, string> = {
   tomorrow_measurement: 'Замеры на завтра',
 }
 
+// Папки дня замера: в них список идёт по времени выезда (сортирует бэкенд),
+// и колонка «Замер» показывает это время — иначе порядок выглядел бы случайным
+const MEASUREMENT_DAY_FOLDERS = ['today_measurement', 'tomorrow_measurement']
+
 const OrderList = () => {
   const { user } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -33,6 +37,8 @@ const OrderList = () => {
   const [excludeFinished, setExcludeFinished] = usePersistedState('orders:exclude_finished', true)
 
   const canCreate = user?.role === 'manager' || user?.role === 'admin'
+
+  const showMeasurementTime = MEASUREMENT_DAY_FOLDERS.includes(folder)
 
   const folderLabel = folder
     ? (FOLDER_LABELS[folder] || ORDER_STATUS_DISPLAY[folder as OrderStatus] || folder)
@@ -72,6 +78,11 @@ const OrderList = () => {
     const timer = setTimeout(loadOrders, 300)
     return () => clearTimeout(timer)
   }, [loadOrders])
+
+  const formatTime = (dateString: string | null | undefined) => {
+    if (!dateString) return '—'
+    return new Date(dateString).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  }
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '—'
@@ -228,6 +239,9 @@ const OrderList = () => {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
+                  {showMeasurementTime && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Замер</th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Салон</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">КП</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
@@ -264,6 +278,14 @@ const OrderList = () => {
                         </a>
                       )}
                     </td>
+                    {showMeasurementTime && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-gray-900">{formatTime(order.measurement_date)}</div>
+                        {order.service_manager_name && (
+                          <div className="text-xs text-gray-500">{order.service_manager_name}</div>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-sm text-gray-600">{order.salon_name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {order.kp_number && <div className="font-medium">{order.kp_number}</div>}

@@ -199,6 +199,8 @@ class OrderListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     is_overdue = serializers.SerializerMethodField()
+    measurement_date = serializers.SerializerMethodField()
+    service_manager_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -206,8 +208,26 @@ class OrderListSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'manager', 'salon', 'salon_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'status', 'status_display', 'is_overdue',
+            'measurement_date', 'service_manager_name',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
         ]
+
+    def _measurement(self, obj):
+        """Замер заказа или None: заявки может не быть, замера по заявке — тоже."""
+        request = getattr(obj, 'measurement_request', None)
+        return getattr(request, 'measurement', None) if request is not None else None
+
+    def get_measurement_date(self, obj):
+        """Назначенное время выезда — списку папок «Сегодня/Завтра замер»."""
+        measurement = self._measurement(obj)
+        return measurement.measurement_date if measurement else None
+
+    def get_service_manager_name(self, obj):
+        measurement = self._measurement(obj)
+        sm = measurement.service_manager if measurement else None
+        if not sm:
+            return None
+        return f'{sm.first_name} {sm.last_name}'.strip() or sm.username
 
     def get_is_overdue(self, obj):
         """

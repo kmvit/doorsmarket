@@ -299,6 +299,9 @@ export interface OrderListItem {
   status: OrderStatus
   status_display: string
   is_overdue?: boolean
+  /** Назначенное время выезда на замер (null — замер ещё не назначен) */
+  measurement_date?: string | null
+  service_manager_name?: string | null
   last_activity_at: string | null
   last_activity_kind: ActivityKind
   last_activity_kind_display: string

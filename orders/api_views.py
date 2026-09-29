@@ -60,7 +60,11 @@ class IsAuthenticated(permissions.IsAuthenticated):
 def get_orders_queryset_for_user(user):
     """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город, admin — всё."""
     qs = Order.objects.select_related(
-        'manager', 'salon', 'salon__city'
+        'manager', 'salon', 'salon__city',
+        # Заявка и замер — для просрочки и времени выезда в списке; без этого
+        # каждая строка списка тянула их отдельным запросом
+        'measurement_request', 'measurement_request__measurement',
+        'measurement_request__measurement__service_manager',
     ).prefetch_related(
         'items',
         'items__attachments',
@@ -216,6 +220,11 @@ MEASUREMENT_WORK_FOLDERS = frozenset({
 })
 
 
+# Папки, которые показывают заказы с назначенным на конкретный день замером.
+# В них список идёт по времени выезда, а не по дате создания заказа.
+MEASUREMENT_DAY_FOLDERS = frozenset({'today_measurement', 'tomorrow_measurement'})
+
+
 def apply_order_folder(qs, folder):
     """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
     if not folder:
@@ -286,6 +295,19 @@ class OrderViewSet(viewsets.ModelViewSet):
         if folder:
             qs = apply_order_folder(qs, folder)
 
+        return qs
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        # Папки дня замера («Сегодня замер», «Замеры на завтра») — по времени выезда,
+        # с самого раннего: СМ читает список как расписание и не открывает каждый
+        # заказ, чтобы вспомнить, кого и во сколько назначил.
+        # Явная сортировка из запроса (?ordering=) важнее.
+        if (
+            self.request.query_params.get('folder') in MEASUREMENT_DAY_FOLDERS
+            and not self.request.query_params.get('ordering')
+        ):
+            qs = qs.order_by('measurement_request__measurement__measurement_date', 'id')
         return qs
 
     @action(detail=False, methods=['get'], url_path='folder_counts')
