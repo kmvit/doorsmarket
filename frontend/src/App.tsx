@@ -26,6 +26,10 @@ import OrderReplaceKp from './pages/Orders/OrderReplaceKp'
 import OrderAppendKp from './pages/Orders/OrderAppendKp'
 import PrettyOfferPage from './pages/Orders/PrettyOfferPage'
 import Workshop from './pages/Orders/Workshop'
+import DesignerReport from './pages/Reports/DesignerReport'
+import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
+import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
+import ReportsIndex from './pages/Reports/ReportsIndex'
 import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
 import MeasurementBlankPrint from './pages/Measurements/MeasurementBlankPrint'
@@ -282,6 +286,46 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <PrettyOfferPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ReportsIndex />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/reports/service-managers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ServiceManagerReport />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/reports/designers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <DesignerReport />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/reports/designers/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <DesignerReportDetail />
                     </Layout>
                   </ProtectedRoute>
                 }

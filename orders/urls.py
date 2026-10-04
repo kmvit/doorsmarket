@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import api_views
+from .designer_report import DesignerReportView
+from .service_manager_report import ServiceManagerReportView
 
 router = DefaultRouter()
 router.register('salons', api_views.SalonViewSet, basename='salon')
@@ -20,6 +22,8 @@ router.register('pretty-offer-attachments', api_views.PrettyOfferAttachmentViewS
 router.register('offer-text-presets', api_views.OfferTextPresetViewSet, basename='offer-text-preset')
 
 urlpatterns = [
+    path('reports/designers/', DesignerReportView.as_view(), name='designer-report'),
+    path('reports/service-managers/', ServiceManagerReportView.as_view(), name='service-manager-report'),
     # Публичный PDF-бланк замера по токену (без авторизации, для клиента по ссылке).
     path('public/measurements/<uuid:token>/pdf/', api_views.PublicMeasurementPdfView.as_view(),
          name='public-measurement-pdf'),
