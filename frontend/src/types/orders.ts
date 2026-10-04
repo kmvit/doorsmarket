@@ -356,6 +356,8 @@ export interface OrderFilters {
   status?: OrderStatus[]
   salon?: number | ''
   manager_id?: number | ''
+  // Фильтр руководителя: несколько менеджеров (id строками)
+  managers?: string[]
   search?: string
   my_orders?: boolean
   exclude_cancelled?: boolean

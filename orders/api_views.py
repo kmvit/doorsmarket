@@ -14,6 +14,7 @@ from django.db.models import Q, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
+from django.contrib.auth import get_user_model
 
 from .models import (
     Salon, Order, OrderItem, OrderAddon, OrderAttachment,
@@ -33,6 +34,7 @@ from .serializers import (
     MeasurementRequestSerializer,
     OrderActionReminderSerializer,
     WorkshopOrderSerializer,
+    OrderManagerSerializer,
     MeasurementSerializer,
     MeasurementListSerializer,
     PendingMeasurementRequestListSerializer,
@@ -209,6 +211,14 @@ def requested_statuses(request, field='status'):
     return values
 
 
+def requested_manager_ids(request):
+    """Менеджеры из фильтра ?manager__in=1,2 (фильтр руководителя в списках)."""
+    ids = set()
+    for chunk in request.query_params.getlist('manager__in'):
+        ids.update(int(v) for v in chunk.split(',') if v.strip().isdigit())
+    return ids
+
+
 # Завершённые статусы заказа: по умолчанию скрыты в общем списке
 # («Кроме выполненных и неактуальных»)
 ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
@@ -280,6 +290,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         manager_id = self.request.query_params.get('manager_id')
         if manager_id:
             qs = qs.filter(manager_id=manager_id)
+        manager_ids = requested_manager_ids(self.request)
+        if manager_ids:
+            qs = qs.filter(manager_id__in=manager_ids)
 
         salon_id = self.request.query_params.get('salon_id')
         if salon_id:
@@ -320,6 +333,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         ):
             qs = qs.order_by('measurement_request__measurement__measurement_date', 'id')
         return qs
+
+    @action(detail=False, methods=['get'])
+    def managers(self, request):
+        """
+        Менеджеры для фильтра в списках: те, чьи заказы пользователь видит.
+        Руководителю — менеджеры его города, админу — все, у кого есть заказы.
+        """
+        manager_ids = get_orders_queryset_for_user(request.user).values('manager_id')
+        managers = get_user_model().objects.filter(id__in=manager_ids).order_by('first_name', 'last_name', 'username')
+        return Response(OrderManagerSerializer(managers, many=True).data)
 
     @action(detail=False, methods=['get'], url_path='folder_counts')
     def folder_counts(self, request):
@@ -1262,6 +1285,9 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтры из ТЗ Workshop
         if self.request.query_params.get('mine') == 'true':
             qs = qs.filter(manager=user)
+        manager_ids = requested_manager_ids(self.request)
+        if manager_ids:
+            qs = qs.filter(manager_id__in=manager_ids)
         if self.request.query_params.get('with_reminder_today') == 'true':
             today = timezone.localdate()
             qs = qs.filter(action_reminders__due_at__date=today, action_reminders__done=False).distinct()
@@ -1385,6 +1411,9 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         # замеры и замеры по неактуальным (отменённым) заказам.
         if self.request.query_params.get('exclude_finished') == 'true':
             qs = qs.exclude(is_done=True).exclude(request__order__status='cancelled')
+        manager_ids = requested_manager_ids(self.request)
+        if manager_ids:
+            qs = qs.filter(request__order__manager_id__in=manager_ids)
         return qs
 
     def filter_queryset(self, queryset):
@@ -1467,7 +1496,10 @@ class MeasurementViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _search_requests(qs, request):
-        """Поиск и порядок для строк-заявок: тот же, что у списка замеров."""
+        """Поиск, фильтр по менеджеру и порядок для строк-заявок — как у списка замеров."""
+        manager_ids = requested_manager_ids(request)
+        if manager_ids:
+            qs = qs.filter(order__manager_id__in=manager_ids)
         search = (request.query_params.get('search') or '').strip()
         if search:
             qs = qs.filter(

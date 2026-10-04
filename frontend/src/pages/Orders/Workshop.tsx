@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import MultiSelect from '../../components/common/MultiSelect'
+import ManagerFilter from '../../components/orders/ManagerFilter'
+import { useAuthStore } from '../../store/authStore'
 import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
 
 // «Не актуален» в наработки не попадает, поэтому и в фильтре его нет
@@ -19,6 +21,10 @@ const Workshop = () => {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus[]>([])
+  const { user } = useAuthStore()
+  // Фильтр по менеджерам — для руководителя (и админа)
+  const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
+  const [managerFilter, setManagerFilter] = useState<string[]>([])
   const [mine, setMine] = useState(false)
   const [withReminderToday, setWithReminderToday] = useState(reminderParam === 'today')
   const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
@@ -34,6 +40,7 @@ const Workshop = () => {
         with_reminder_tomorrow: withReminderTomorrow || undefined,
         with_overdue_reminder: withOverdue || undefined,
         status: statusFilter,
+        managers: canFilterByManager ? managerFilter : undefined,
         search: search || undefined,
       })
       setOrders(data)
@@ -42,7 +49,7 @@ const Workshop = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, mine, withReminderToday, withReminderTomorrow, withOverdue])
+  }, [search, statusFilter, managerFilter, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue])
 
   useEffect(() => {
     const t = setTimeout(load, 300)
@@ -87,6 +94,16 @@ const Workshop = () => {
             className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
           />
         </div>
+        {canFilterByManager && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Менеджер</label>
+            <ManagerFilter
+              value={managerFilter}
+              onChange={setManagerFilter}
+              className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+            />
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
           Мои

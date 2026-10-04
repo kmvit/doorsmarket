@@ -6,6 +6,8 @@ import { ORDER_STATUS_COLOR } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
 import { usePersistedState } from '../../utils/persistedState'
+import ManagerFilter from '../../components/orders/ManagerFilter'
+import { useAuthStore } from '../../store/authStore'
 
 const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
   { key: '', label: 'Все', color: 'bg-gray-200 text-gray-800' },
@@ -38,6 +40,10 @@ const MeasurementList = () => {
   // «Кроме выполненных и неактуальных» — по умолчанию включено, показывается только
   // на вкладке «Все» (остальные вкладки и так делят замеры по состоянию)
   const [excludeFinished, setExcludeFinished] = usePersistedState('measurements:exclude_finished', true)
+  // Фильтр по менеджерам заказа — для руководителя (и админа)
+  const { user } = useAuthStore()
+  const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
+  const [managerFilter, setManagerFilter] = usePersistedState<string[]>('measurements:managers', [])
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -48,6 +54,7 @@ const MeasurementList = () => {
         search: search || undefined,
         // применяем только на вкладке «Все» (folder === '')
         exclude_finished: folder === '' && excludeFinished ? true : undefined,
+        managers: canFilterByManager ? managerFilter : undefined,
       })
       setMeasurements(data)
     } catch (err: any) {
@@ -55,7 +62,7 @@ const MeasurementList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [folder, search, excludeFinished])
+  }, [folder, search, excludeFinished, managerFilter, canFilterByManager])
 
   // Папка из URL (переход с дашборда) важнее сохранённой вкладки
   useEffect(() => {
@@ -104,13 +111,22 @@ const MeasurementList = () => {
 
       {/* Поиск */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4">
-        <input
-          type="text"
-          placeholder="Поиск: № замера, № заказа, клиент, адрес, контакт, № КП, телефон…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border-gray-300 shadow-sm text-sm"
-        />
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="text"
+            placeholder="Поиск: № замера, № заказа, клиент, адрес, контакт, № КП, телефон…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[200px] rounded-lg border-gray-300 shadow-sm text-sm"
+          />
+          {canFilterByManager && (
+            <ManagerFilter
+              value={managerFilter}
+              onChange={setManagerFilter}
+              className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+            />
+          )}
+        </div>
         {folder === '' && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-3">
             <input

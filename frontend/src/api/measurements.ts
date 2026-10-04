@@ -274,12 +274,13 @@ const currentUserIdFromStorage = (): number | null => {
 }
 
 export const measurementsAPI = {
-  list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number; exclude_finished?: boolean }): Promise<MeasurementListItem[]> => {
+  list: async (params?: { folder?: MeasurementFolder; search?: string; service_manager?: number; exclude_finished?: boolean; managers?: string[] }): Promise<MeasurementListItem[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.folder) queryParams.folder = params.folder
     if (params?.search) queryParams.search = params.search
     if (params?.service_manager) queryParams.service_manager = params.service_manager
     if (params?.exclude_finished) queryParams.exclude_finished = 'true'
+    if (params?.managers?.length) queryParams.manager__in = params.managers.join(',')
     return withOfflineFallback({
       cacheKey: `measurements_list_${JSON.stringify(queryParams)}`,
       request: async () => {

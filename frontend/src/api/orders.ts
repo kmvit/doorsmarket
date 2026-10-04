@@ -4,7 +4,7 @@ import {
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
   WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
-  OrderFolderCount,
+  OrderFolderCount, OrderManager,
 } from '../types/orders'
 import { orderUtils, withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
@@ -20,6 +20,7 @@ export const ordersAPI = {
     if (filters?.status?.length) params.status__in = filters.status.join(',')
     if (filters?.salon) params.salon = filters.salon
     if (filters?.manager_id) params.manager_id = filters.manager_id
+    if (filters?.managers?.length) params.manager__in = filters.managers.join(',')
     if (filters?.search) params.search = filters.search
     if (filters?.my_orders) params.my_orders = 'true'
     if (filters?.exclude_cancelled) params.exclude_cancelled = 'true'
@@ -34,6 +35,18 @@ export const ordersAPI = {
       },
       saveOffline: (list) => orderUtils.saveList(list),
       loadOffline: () => orderUtils.getList(),
+    })
+  },
+
+  // Менеджеры для фильтра в списках — только те, чьи заказы пользователь видит
+  getManagers: async (): Promise<OrderManager[]> => {
+    return withOfflineFallback({
+      cacheKey: 'orders_managers',
+      request: async () => {
+        const response = await apiClient.get('/orders/managers/')
+        return Array.isArray(response.data) ? response.data : []
+      },
+      ttl: LONG_TTL,
     })
   },
 
@@ -278,13 +291,14 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
     if (params?.with_reminder_tomorrow) queryParams.with_reminder_tomorrow = 'true'
     if (params?.with_overdue_reminder) queryParams.with_overdue_reminder = 'true'
     if (params?.status?.length) queryParams.status__in = params.status.join(',')
+    if (params?.managers?.length) queryParams.manager__in = params.managers.join(',')
     if (params?.search) queryParams.search = params.search
     return withOfflineFallback({
       cacheKey: `workshop_list_${JSON.stringify(queryParams)}`,
