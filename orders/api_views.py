@@ -1234,6 +1234,12 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = get_orders_queryset_for_user(user)
+        # Неактуальные в наработки не попадают — ни отменённые заказы, ни заказы,
+        # где менеджер подтвердил неактуальность замера. По этому же списку
+        # дашборд считает «Задачи на сегодня/завтра» и просрочки.
+        qs = qs.exclude(status=OrderStatus.CANCELLED).exclude(
+            measurement_request__is_irrelevant=True,
+        )
         # Подгружаем ближайшее активное напоминание
         qs = qs.prefetch_related(
             Prefetch(

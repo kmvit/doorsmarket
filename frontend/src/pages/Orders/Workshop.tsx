@@ -90,7 +90,6 @@ const Workshop = () => {
             <option value="on_warehouse">На складе</option>
             <option value="shipped">Отгружен</option>
             <option value="completed">Выполнен</option>
-            <option value="cancelled">Не актуален</option>
           </select>
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
@@ -135,7 +134,7 @@ const Workshop = () => {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Создан</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент / адрес</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Комментарий</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Менеджер</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Активность</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Следующее действие</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
@@ -170,7 +169,7 @@ const Workshop = () => {
                           {ORDER_STATUS_DISPLAY[o.status]}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.comment}>{o.comment || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.manager?.full_name}>{o.manager?.full_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-600">
                         {o.last_activity_at ? (
                           <>
