@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export interface MultiSelectOption<T extends string> {
   value: T
@@ -23,7 +23,16 @@ function MultiSelect<T extends string>({
   options, value, onChange, placeholder = 'Все', className = '',
 }: MultiSelectProps<T>) {
   const [open, setOpen] = useState(false)
+  // Не влезает справа (кнопка у правого края, длинные названия) — раскрываем влево
+  const [alignRight, setAlignRight] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open) { setAlignRight(false); return }
+    const r = listRef.current?.getBoundingClientRect()
+    if (r && r.right > window.innerWidth - 8) setAlignRight(true)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -64,7 +73,10 @@ function MultiSelect<T extends string>({
         </svg>
       </button>
       {open && (
-        <div className="absolute z-30 mt-1 min-w-full w-max max-w-[90vw] max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <div
+          ref={listRef}
+          className={`absolute z-30 mt-1 min-w-full w-max max-w-[90vw] max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg ${alignRight ? 'right-0' : 'left-0'}`}
+        >
           {value.length > 0 && (
             <button
               type="button"

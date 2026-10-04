@@ -231,18 +231,20 @@ const KpUploadTab = ({
       {/* Шаг 1: загрузка файла */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">1. Файл КП</h2>
-        <div className="flex items-center gap-3">
+        {/* flex-wrap и min-w-0: на телефоне поле файла не помещалось рядом с кнопкой
+            и раздвигало страницу вбок — теперь кнопка уходит на следующую строку */}
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="file"
             accept="application/pdf"
             onChange={(e) => handleFile(e.target.files?.[0] || null)}
-            className="block flex-1 text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+            className="block flex-1 min-w-0 text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
           />
           <button
             type="button"
             onClick={handleParse}
             disabled={!file || isParsing}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl disabled:opacity-50"
+            className="shrink-0 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl disabled:opacity-50"
           >
             {isParsing ? 'Распознаю...' : 'Распознать КП'}
           </button>
