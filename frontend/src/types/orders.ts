@@ -504,6 +504,11 @@ export interface WorkshopOrder {
   next_action_at: string | null
   next_action_text: string
   last_comment: string
+  has_designer: boolean | null
+  designer: Designer | null
+  payment_month: string | null
+  order_probability: OrderProbability | ''
+  order_probability_display: string
 }
 
 // ===== Парсинг КП =====

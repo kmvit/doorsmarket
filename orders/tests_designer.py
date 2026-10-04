@@ -148,3 +148,14 @@ class OrderSalesFieldsTest(DesignerTestBase):
         data = self.client.get(f'/api/v1/orders/{order.id}/').data
         self.assertEqual(data['designer']['full_name'], 'Петрова Анна')
         self.assertEqual(data['order_probability_display'], 'Средняя')
+
+    def test_workshop_list_shows_designer_payment_month_and_probability(self):
+        self.create_manual(
+            has_designer=True, designer=self.designer.id,
+            payment_month='2026-12-01', order_probability='low',
+        )
+        row = self.client.get('/api/v1/workshop/').data[0]
+        self.assertEqual(row['designer']['full_name'], 'Петрова Анна')
+        self.assertEqual(row['designer']['studio'], 'Лофт')
+        self.assertEqual(row['payment_month'], '2026-12-01')
+        self.assertEqual(row['order_probability_display'], 'Низкая')

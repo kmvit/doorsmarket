@@ -3,13 +3,20 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import MultiSelect from '../../components/common/MultiSelect'
 import ManagerFilter from '../../components/orders/ManagerFilter'
+import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
 import { useAuthStore } from '../../store/authStore'
-import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
+import { WorkshopOrder, OrderStatus, OrderProbability, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
 
 // «Не актуален» в наработки не попадает, поэтому и в фильтре его нет
 const WORKSHOP_STATUS_OPTIONS = ORDER_STATUS_ORDER
   .filter((value) => value !== 'cancelled')
   .map((value) => ({ value, label: ORDER_STATUS_DISPLAY[value] }))
+
+const PROBABILITY_COLOR: Record<OrderProbability, string> = {
+  high: 'bg-green-100 text-green-700',
+  medium: 'bg-amber-100 text-amber-700',
+  low: 'bg-gray-100 text-gray-600',
+}
 
 const Workshop = () => {
   const navigate = useNavigate()
@@ -147,9 +154,11 @@ const Workshop = () => {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент / адрес</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Менеджер</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Дизайнер</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Оплата</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Вероятность</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Активность</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Следующее действие</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">№ КП</th>
                 </tr>
               </thead>
@@ -182,6 +191,26 @@ const Workshop = () => {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.manager?.full_name}>{o.manager?.full_name || '—'}</td>
+                      <td className="px-3 py-2 max-w-[180px]">
+                        {o.designer ? (
+                          <>
+                            <div className="text-gray-900 truncate" title={o.designer.full_name}>{o.designer.full_name}</div>
+                            {o.designer.studio && (
+                              <div className="text-xs text-gray-500 truncate" title={o.designer.studio}>{o.designer.studio}</div>
+                            )}
+                          </>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                        {o.payment_month ? formatPaymentMonth(o.payment_month) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        {o.order_probability ? (
+                          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${PROBABILITY_COLOR[o.order_probability]}`}>
+                            {o.order_probability_display}
+                          </span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-gray-600">
                         {o.last_activity_at ? (
                           <>
@@ -199,17 +228,6 @@ const Workshop = () => {
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {o.contact_phone ? (
-                          <a
-                            href={`tel:${o.contact_phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-primary-600 hover:underline text-xs"
-                          >
-                            {o.contact_phone}
-                          </a>
-                        ) : '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-600 text-xs">{o.kp_number || '—'}</td>
                     </tr>

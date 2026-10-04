@@ -602,6 +602,8 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
     next_action_at = serializers.SerializerMethodField()
     next_action_text = serializers.SerializerMethodField()
     last_comment = serializers.SerializerMethodField()
+    designer = DesignerSerializer(read_only=True)
+    order_probability_display = serializers.CharField(source='get_order_probability_display', read_only=True)
 
     class Meta:
         model = Order
@@ -610,6 +612,8 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'contact_phone', 'kp_number', 'manager', 'salon_name', 'comment',
             'next_action_at', 'next_action_text', 'last_comment',
+            'has_designer', 'designer', 'payment_month',
+            'order_probability', 'order_probability_display',
         ]
 
     def _next_reminder(self, obj):

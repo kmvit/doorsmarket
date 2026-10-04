@@ -1301,13 +1301,14 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
         'id', 'kp_number', 'client_name', 'address', 'contact_phone',
         'comment', 'salon__name', 'manager__first_name', 'manager__last_name',
         'manager__username', 'action_reminders__action_text',
+        'designer__full_name', 'designer__studio',
     ]
     ordering_fields = ['created_at', 'last_activity_at', 'status', 'client_name', 'kp_number']
     ordering = ['-last_activity_at']
 
     def get_queryset(self):
         user = self.request.user
-        qs = get_orders_queryset_for_user(user)
+        qs = get_orders_queryset_for_user(user).select_related('designer')
         # Неактуальные в наработки не попадают — ни отменённые заказы, ни заказы,
         # где менеджер подтвердил неактуальность замера. По этому же списку
         # дашборд считает «Задачи на сегодня/завтра» и просрочки.
