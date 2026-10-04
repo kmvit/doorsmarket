@@ -200,6 +200,15 @@ ORDER_FOLDERS = [
 ]
 
 
+def requested_statuses(request, field='status'):
+    """Статусы, явно запрошенные фильтром: ?status=x и/или ?status__in=x,y."""
+    params = request.query_params
+    values = set(params.getlist(field))
+    for chunk in params.getlist(f'{field}__in'):
+        values.update(v for v in chunk.split(',') if v)
+    return values
+
+
 # Завершённые статусы заказа: по умолчанию скрыты в общем списке
 # («Кроме выполненных и неактуальных»)
 ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
@@ -261,7 +270,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     search_fields = ['id', 'kp_number', 'client_name', 'address', 'contact_phone']
     ordering_fields = ['created_at', 'updated_at', 'status', 'kp_date', 'client_name']
     ordering = ['-created_at']
-    filterset_fields = ['status', 'salon']
+    # status__in=a,b — фильтр по нескольким статусам сразу
+    filterset_fields = {'status': ['exact', 'in'], 'salon': ['exact']}
 
     def get_queryset(self):
         user = self.request.user
@@ -283,12 +293,13 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         # «Кроме выполненных и неактуальных» — по умолчанию скрываем завершённые заказы
         # в общем списке. Если пользователь явно фильтрует по такому статусу
-        # (status=completed/cancelled) или открыл соответствующую папку — не исключаем,
-        # иначе выбор «Выполнен»/«Не актуален» всегда давал бы пустой список.
+        # (status=completed/cancelled, в т.ч. среди нескольких в status__in) или открыл
+        # соответствующую папку — не исключаем, иначе выбор «Выполнен»/«Не актуален»
+        # всегда давал бы пустой список.
         if self.request.query_params.get('exclude_finished') == 'true':
-            requested_status = self.request.query_params.get('status')
+            requested = requested_statuses(self.request)
             folder_param = self.request.query_params.get('folder')
-            if requested_status not in ORDER_FINISHED_STATUSES and folder_param not in ORDER_FINISHED_STATUSES:
+            if not requested & set(ORDER_FINISHED_STATUSES) and folder_param not in ORDER_FINISHED_STATUSES:
                 qs = qs.exclude(status__in=ORDER_FINISHED_STATUSES)
 
         folder = self.request.query_params.get('folder')
@@ -1221,7 +1232,7 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = WorkshopOrderSerializer
     filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
-    filterset_fields = ['status', 'salon', 'manager']
+    filterset_fields = {'status': ['exact', 'in'], 'salon': ['exact'], 'manager': ['exact']}
     # Поиск по любому из полей таблицы (как в рекламациях)
     search_fields = [
         'id', 'kp_number', 'client_name', 'address', 'contact_phone',

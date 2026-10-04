@@ -1,7 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
-import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
+import MultiSelect from '../../components/common/MultiSelect'
+import { WorkshopOrder, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
+
+// «Не актуален» в наработки не попадает, поэтому и в фильтре его нет
+const WORKSHOP_STATUS_OPTIONS = ORDER_STATUS_ORDER
+  .filter((value) => value !== 'cancelled')
+  .map((value) => ({ value, label: ORDER_STATUS_DISPLAY[value] }))
 
 const Workshop = () => {
   const navigate = useNavigate()
@@ -12,7 +18,7 @@ const Workshop = () => {
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('')
+  const [statusFilter, setStatusFilter] = useState<OrderStatus[]>([])
   const [mine, setMine] = useState(false)
   const [withReminderToday, setWithReminderToday] = useState(reminderParam === 'today')
   const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
@@ -27,7 +33,7 @@ const Workshop = () => {
         with_reminder_today: withReminderToday || undefined,
         with_reminder_tomorrow: withReminderTomorrow || undefined,
         with_overdue_reminder: withOverdue || undefined,
-        status: statusFilter || undefined,
+        status: statusFilter,
         search: search || undefined,
       })
       setOrders(data)
@@ -73,24 +79,13 @@ const Workshop = () => {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
-          <select
+          <MultiSelect
+            options={WORKSHOP_STATUS_OPTIONS}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
-            className="rounded-lg border-gray-300 shadow-sm text-sm"
-          >
-            <option value="">Все</option>
-            <option value="draft">Черновик</option>
-            <option value="active">Создан</option>
-            <option value="measurement_requested">Заявка на замер</option>
-            <option value="measurement_scheduled">Замер запланирован</option>
-            <option value="measurement_done">Замер выполнен</option>
-            <option value="measurement_processed">Замер обработан</option>
-            <option value="paid">Оплачен</option>
-            <option value="in_production">В производстве</option>
-            <option value="on_warehouse">На складе</option>
-            <option value="shipped">Отгружен</option>
-            <option value="completed">Выполнен</option>
-          </select>
+            onChange={setStatusFilter}
+            placeholder="Все"
+            className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+          />
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="rounded border-gray-300 text-primary-600" />

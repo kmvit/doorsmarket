@@ -196,7 +196,8 @@ export interface ComplaintCreateData {
 }
 
 export interface ComplaintFilters {
-  status?: ComplaintStatus
+  // Строка — старый формат сохранённых фильтров, массив — выбор нескольких статусов
+  status?: ComplaintStatus | ComplaintStatus[]
   complaint_type?: ComplaintType
   production_site?: number
   reason?: number
@@ -248,7 +249,7 @@ export interface ShippingRegistry {
 
 export interface ShippingRegistryFilters {
   order_type?: OrderType
-  delivery_status?: DeliveryStatus
+  delivery_status?: DeliveryStatus[]
   manager?: number
   delivery_destination?: DeliveryDestination
   search?: string
@@ -283,7 +284,7 @@ export interface ReturnRegistry {
 }
 
 export interface ReturnRegistryFilters {
-  return_status?: ReturnStatus
+  return_status?: ReturnStatus[]
   manager?: number
   search?: string
   ordering?: string

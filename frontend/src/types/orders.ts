@@ -33,6 +33,14 @@ export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   measurement_not_processed: 'Замер не обработан',
 }
 
+// Порядок статусов в фильтрах — по ходу жизни заказа
+export const ORDER_STATUS_ORDER: OrderStatus[] = [
+  'draft', 'active',
+  'measurement_requested', 'measurement_scheduled', 'measurement_done', 'measurement_processed',
+  'measurement_not_planned', 'measurement_not_done', 'measurement_not_processed',
+  'paid', 'in_production', 'on_warehouse', 'shipped', 'completed', 'cancelled',
+]
+
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   draft: 'bg-gray-100 text-gray-700',
   active: 'bg-green-100 text-green-700',
@@ -345,7 +353,7 @@ export interface CreateOrderData {
 }
 
 export interface OrderFilters {
-  status?: OrderStatus | ''
+  status?: OrderStatus[]
   salon?: number | ''
   manager_id?: number | ''
   search?: string

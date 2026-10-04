@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { returnsAPI } from '../api/returns'
-import { ReturnRegistry, ReturnRegistryFilters } from '../types/complaints'
+import { ReturnRegistry, ReturnRegistryFilters, ReturnStatus } from '../types/complaints'
 import Button from '../components/common/Button'
+import MultiSelect, { toArray } from '../components/common/MultiSelect'
+
+const RETURN_STATUS_OPTIONS: { value: ReturnStatus; label: string }[] = [
+  { value: 'pending', label: 'Ожидает отправки' },
+  { value: 'sent', label: 'Отправлено' },
+  { value: 'cancelled', label: 'Отменено' },
+]
 
 const ReturnRegistryPage = () => {
   const navigate = useNavigate()
@@ -17,7 +24,7 @@ const ReturnRegistryPage = () => {
     const excludeParam = params.get('exclude_sent')
     return {
       search: params.get('search') || undefined,
-      return_status: (params.get('return_status') as any) || undefined,
+      return_status: params.get('return_status') ? (params.get('return_status')!.split(',') as ReturnStatus[]) : undefined,
       exclude_sent: hasAnyParam ? excludeParam === 'true' : true,
     }
   }
@@ -161,16 +168,13 @@ const ReturnRegistryPage = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Статус возврата</label>
-              <select
-                value={localFilters.return_status || ''}
-                onChange={(e) => handleFilterChange('return_status', e.target.value || undefined)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-              >
-                <option value="">Все</option>
-                <option value="pending">Ожидает отправки</option>
-                <option value="sent">Отправлено</option>
-                <option value="cancelled">Отменено</option>
-              </select>
+              <MultiSelect
+                options={RETURN_STATUS_OPTIONS}
+                value={toArray<ReturnStatus>(localFilters.return_status)}
+                onChange={(next) => handleFilterChange('return_status', next.length ? next : undefined)}
+                placeholder="Все"
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
             </div>
             <div className="flex items-end">
               <label className="inline-flex items-center px-4 py-2 bg-green-50 text-green-700 rounded-xl cursor-pointer hover:bg-green-100 transition-colors">

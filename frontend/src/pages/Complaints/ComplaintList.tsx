@@ -2,13 +2,35 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore, stripFolderScope } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
-import { ComplaintFilters } from '../../types/complaints'
+import { ComplaintFilters, ComplaintStatus } from '../../types/complaints'
 import { referencesAPI } from '../../api/references'
 import { ComplaintReason } from '../../types/complaints'
 import { City } from '../../types/auth'
 import apiClient from '../../api/client'
 import Button from '../../components/common/Button'
 import PhoneLink from '../../components/common/PhoneLink'
+import MultiSelect, { toArray } from '../../components/common/MultiSelect'
+
+const COMPLAINT_STATUS_OPTIONS: { value: ComplaintStatus; label: string }[] = [
+  { value: 'new', label: 'Новая' },
+  { value: 'in_progress', label: 'В работе' },
+  { value: 'in_production', label: 'В производстве' },
+  { value: 'on_warehouse', label: 'На складе' },
+  { value: 'shipping_planned', label: 'Отгрузка запланирована' },
+  { value: 'shipping_overdue', label: 'Отгрузка просрочена' },
+  { value: 'installation_planned', label: 'Монтаж запланирован' },
+  { value: 'installer_not_planned', label: 'Монтажник не запланировал' },
+  { value: 'installer_overdue', label: 'Просрочена монтажником' },
+  { value: 'both_planned', label: 'Отгрузка и монтаж запланированы' },
+  { value: 'factory_response_overdue', label: 'Ответ фабрики просрочен' },
+  { value: 'sm_response_overdue', label: 'СМ просрочил ответ' },
+  { value: 'moscow_service', label: 'Сервисная заявка Москва' },
+  { value: 'moscow_service_overdue', label: 'Просрочка сервиса Москва' },
+  { value: 'under_sm_review', label: 'На проверке у СМ' },
+  { value: 'completed', label: 'Выполнена' },
+  { value: 'resolved', label: 'Решена' },
+  { value: 'closed', label: 'Закрыта' },
+]
 
 const ComplaintList = () => {
   const navigate = useNavigate()
@@ -376,31 +398,13 @@ const ComplaintList = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Статус</label>
-                <select
-                  value={localFilters.status || ''}
-                  onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                >
-                  <option value="">Все статусы</option>
-                  <option value="new">Новая</option>
-                  <option value="in_progress">В работе</option>
-                  <option value="in_production">В производстве</option>
-                  <option value="on_warehouse">На складе</option>
-                  <option value="shipping_planned">Отгрузка запланирована</option>
-                  <option value="shipping_overdue">Отгрузка просрочена</option>
-                  <option value="installation_planned">Монтаж запланирован</option>
-                  <option value="installer_not_planned">Монтажник не запланировал</option>
-                  <option value="installer_overdue">Просрочена монтажником</option>
-                  <option value="both_planned">Отгрузка и монтаж запланированы</option>
-                  <option value="factory_response_overdue">Ответ фабрики просрочен</option>
-                  <option value="sm_response_overdue">СМ просрочил ответ</option>
-                  <option value="moscow_service">Сервисная заявка Москва</option>
-                  <option value="moscow_service_overdue">Просрочка сервиса Москва</option>
-                  <option value="under_sm_review">На проверке у СМ</option>
-                  <option value="completed">Выполнена</option>
-                  <option value="resolved">Решена</option>
-                  <option value="closed">Закрыта</option>
-                </select>
+                <MultiSelect
+                  options={COMPLAINT_STATUS_OPTIONS}
+                  value={toArray<ComplaintStatus>(localFilters.status)}
+                  onChange={(next) => handleFilterChange('status', next.length ? next : undefined)}
+                  placeholder="Все статусы"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Причина</label>

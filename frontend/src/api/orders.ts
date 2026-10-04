@@ -16,7 +16,8 @@ const LONG_TTL = 7 * 24 * 60 * 60 * 1000
 export const ordersAPI = {
   getList: async (filters?: OrderFilters): Promise<OrderListItem[]> => {
     const params: Record<string, any> = {}
-    if (filters?.status) params.status = filters.status
+    // Несколько статусов — одним параметром status__in=a,b
+    if (filters?.status?.length) params.status__in = filters.status.join(',')
     if (filters?.salon) params.salon = filters.salon
     if (filters?.manager_id) params.manager_id = filters.manager_id
     if (filters?.search) params.search = filters.search
@@ -277,13 +278,13 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
     if (params?.with_reminder_tomorrow) queryParams.with_reminder_tomorrow = 'true'
     if (params?.with_overdue_reminder) queryParams.with_overdue_reminder = 'true'
-    if (params?.status) queryParams.status = params.status
+    if (params?.status?.length) queryParams.status__in = params.status.join(',')
     if (params?.search) queryParams.search = params.search
     return withOfflineFallback({
       cacheKey: `workshop_list_${JSON.stringify(queryParams)}`,

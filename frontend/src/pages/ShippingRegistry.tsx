@@ -1,9 +1,16 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { shippingAPI } from '../api/shipping'
-import { ShippingRegistry, ShippingRegistryFilters } from '../types/complaints'
+import { ShippingRegistry, ShippingRegistryFilters, DeliveryStatus } from '../types/complaints'
 import Button from '../components/common/Button'
 import PhoneLink from '../components/common/PhoneLink'
+import MultiSelect, { toArray } from '../components/common/MultiSelect'
+
+const DELIVERY_STATUS_OPTIONS: { value: DeliveryStatus; label: string }[] = [
+  { value: 'pending', label: 'Ожидает' },
+  { value: 'in_transit', label: 'В пути' },
+  { value: 'delivered', label: 'Доставлено' },
+]
 
 const ShippingRegistryPage = () => {
   const navigate = useNavigate()
@@ -19,7 +26,7 @@ const ShippingRegistryPage = () => {
     return {
       search: params.get('search') || undefined,
       order_type: (params.get('order_type') as any) || undefined,
-      delivery_status: (params.get('delivery_status') as any) || undefined,
+      delivery_status: params.get('delivery_status') ? (params.get('delivery_status')!.split(',') as DeliveryStatus[]) : undefined,
       manager: params.get('manager') ? Number(params.get('manager')) : undefined,
       exclude_delivered: hasAnyParam ? excludeParam === 'true' : true,
     }
@@ -233,16 +240,13 @@ const ShippingRegistryPage = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Статус доставки</label>
-                  <select
-                    value={localFilters.delivery_status || ''}
-                    onChange={(e) => handleFilterChange('delivery_status', e.target.value || undefined)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                  >
-                    <option value="">Все</option>
-                    <option value="pending">Ожидает</option>
-                    <option value="in_transit">В пути</option>
-                    <option value="delivered">Доставлено</option>
-                  </select>
+                  <MultiSelect
+                    options={DELIVERY_STATUS_OPTIONS}
+                    value={toArray<DeliveryStatus>(localFilters.delivery_status)}
+                    onChange={(next) => handleFilterChange('delivery_status', next.length ? next : undefined)}
+                    placeholder="Все"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">

@@ -19,7 +19,10 @@ export const complaintsAPI = {
     
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
+        if (Array.isArray(value)) {
+          // Несколько значений (например, статусов) — одним параметром field__in=a,b
+          if (value.length) params.append(`${key}__in`, value.join(','))
+        } else if (value !== undefined && value !== null && value !== '') {
           params.append(key, String(value))
         }
       })

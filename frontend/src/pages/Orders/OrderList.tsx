@@ -3,9 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { salonsAPI } from '../../api/salons'
-import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR } from '../../types/orders'
+import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 import { usePersistedState } from '../../utils/persistedState'
+import MultiSelect, { toArray } from '../../components/common/MultiSelect'
 
 // Метки папок для баннера (folder может быть статусом или составной выборкой)
 const FOLDER_LABELS: Record<string, string> = {
@@ -17,6 +18,9 @@ const FOLDER_LABELS: Record<string, string> = {
 // Папки дня замера: в них список идёт по времени выезда (сортирует бэкенд),
 // и колонка «Замер» показывает это время — иначе порядок выглядел бы случайным
 const MEASUREMENT_DAY_FOLDERS = ['today_measurement', 'tomorrow_measurement']
+
+const ORDER_STATUS_OPTIONS = ORDER_STATUS_ORDER
+  .map((value) => ({ value, label: ORDER_STATUS_DISPLAY[value] }))
 
 const OrderList = () => {
   const { user } = useAuthStore()
@@ -30,7 +34,9 @@ const OrderList = () => {
   // Фильтры сохраняются на время сеанса: открыл заказ, вернулся назад — выбранное
   // осталось (см. usePersistedState)
   const [search, setSearch] = usePersistedState('orders:search', '')
-  const [statusFilter, setStatusFilter] = usePersistedState<OrderStatus | ''>('orders:status', '')
+  const [rawStatusFilter, setStatusFilter] = usePersistedState<OrderStatus[]>('orders:status', [])
+  // В сеансе мог остаться фильтр старого формата — одна строка вместо массива
+  const statusFilter = toArray<OrderStatus>(rawStatusFilter)
   const [salonFilter, setSalonFilter] = usePersistedState<number | ''>('orders:salon', '')
   const [myOrders, setMyOrders] = usePersistedState('orders:my', false)
   // «Кроме выполненных и неактуальных» — по умолчанию включено
@@ -55,7 +61,7 @@ const OrderList = () => {
     setError(null)
     try {
       const data = await ordersAPI.getList({
-        status: statusFilter || undefined,
+        status: statusFilter,
         salon: salonFilter || undefined,
         search: search || undefined,
         my_orders: myOrders || undefined,
@@ -68,7 +74,7 @@ const OrderList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, salonFilter, myOrders, excludeFinished, folder])
+  }, [search, rawStatusFilter, salonFilter, myOrders, excludeFinished, folder])
 
   useEffect(() => {
     salonsAPI.getAll().then(setSalons).catch(() => {})
@@ -139,34 +145,19 @@ const OrderList = () => {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
-          <select
+          <MultiSelect
+            options={ORDER_STATUS_OPTIONS}
             value={statusFilter}
-            onChange={(e) => {
+            onChange={(next) => {
               // Папка из дашборда — это тоже выборка по статусу. Если её не сбросить,
-              // она пересекается с выбранным статусом и список почти всегда пустой,
+              // она пересекается с выбранными статусами и список почти всегда пустой,
               // из-за чего фильтр выглядит нерабочим.
-              if (e.target.value && folder) clearFolder()
-              setStatusFilter(e.target.value as OrderStatus | '')
+              if (next.length && folder) clearFolder()
+              setStatusFilter(next)
             }}
-            className="rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
-          >
-            <option value="">Все статусы</option>
-            <option value="draft">Черновик</option>
-            <option value="active">Создан</option>
-            <option value="measurement_requested">Заявка на замер</option>
-            <option value="measurement_scheduled">Замер запланирован</option>
-            <option value="measurement_done">Замер выполнен</option>
-            <option value="measurement_processed">Замер обработан</option>
-            <option value="measurement_not_planned">Замер не запланирован</option>
-            <option value="measurement_not_done">Замер не выполнен</option>
-            <option value="measurement_not_processed">Замер не обработан</option>
-            <option value="paid">Оплачен</option>
-            <option value="in_production">В производстве</option>
-            <option value="on_warehouse">На складе</option>
-            <option value="shipped">Отгружен</option>
-            <option value="completed">Выполнен</option>
-            <option value="cancelled">Не актуален</option>
-          </select>
+            placeholder="Все статусы"
+            className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2 focus:border-primary-500 focus:ring-primary-500"
+          />
         </div>
         {salons.length > 0 && (
           <div>
@@ -220,7 +211,7 @@ const OrderList = () => {
           <div className="text-5xl mb-4">📋</div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Нет заказов</h2>
           <p className="text-gray-500 mb-4">
-            {search || statusFilter || salonFilter ? 'Ничего не найдено по выбранным фильтрам' : 'Заказов пока нет'}
+            {search || statusFilter.length || salonFilter ? 'Ничего не найдено по выбранным фильтрам' : 'Заказов пока нет'}
           </p>
           {canCreate && (
             <Link

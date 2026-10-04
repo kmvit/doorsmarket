@@ -74,6 +74,15 @@ class IsAuthenticated(permissions.IsAuthenticated):
 CLOSED_STATUSES = ['closed', 'completed', 'resolved']
 
 
+def _requested(request, field):
+    """Значения, явно запрошенные фильтром: ?field=x и/или ?field__in=x,y."""
+    params = request.query_params
+    values = set(params.getlist(field))
+    for chunk in params.getlist(f'{field}__in'):
+        values.update(v for v in chunk.split(',') if v)
+    return values
+
+
 class ComplaintViewSet(viewsets.ModelViewSet):
     """
     ViewSet для работы с рекламациями
@@ -90,7 +99,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     search_fields = ['id', 'order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
     ordering_fields = ['created_at', 'updated_at', 'status', 'order_number']
     ordering = ['-created_at']
-    filterset_fields = ['status', 'complaint_type', 'production_site', 'reason']
+    # status__in=a,b — фильтр по нескольким статусам сразу
+    filterset_fields = {
+        'status': ['exact', 'in'], 'complaint_type': ['exact'],
+        'production_site': ['exact'], 'reason': ['exact'],
+    }
     
     def get_queryset(self):
         """Фильтрация рекламаций по ролям пользователя"""
@@ -241,8 +254,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         # Если пользователь явно фильтрует по завершённому статусу, исключение не применяем —
         # иначе выбор статуса «Закрыта»/«Решена»/«Выполнена» всегда давал пустой список.
         if self.action == 'list' and exclude_closed not in ['0', 'false', 'False']:
-            requested_statuses = self.request.query_params.getlist('status')
-            if not any(s in CLOSED_STATUSES for s in requested_statuses):
+            if not any(s in CLOSED_STATUSES for s in _requested(self.request, 'status')):
                 queryset = queryset.exclude(status__in=CLOSED_STATUSES)
         
         # Фильтр по городу только для админа, staff и ОР (через query param)
@@ -1697,7 +1709,10 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
     search_fields = ['order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
     ordering_fields = ['created_at', 'planned_shipping_date', 'delivery_status']
     ordering = ['-created_at']
-    filterset_fields = ['order_type', 'delivery_status', 'manager', 'delivery_destination']
+    filterset_fields = {
+        'order_type': ['exact'], 'delivery_status': ['exact', 'in'],
+        'manager': ['exact'], 'delivery_destination': ['exact'],
+    }
     
     def get_queryset(self):
         """
@@ -1739,7 +1754,8 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         # admin/leader/service_manager/complaint_department - без дополнительной фильтрации
         
         exclude_delivered = self.request.query_params.get('exclude_delivered')
-        if exclude_delivered in ('true', '1', 'True'):
+        # Если «Доставлено» выбрано в фильтре статусов явно — не прячем его
+        if exclude_delivered in ('true', '1', 'True') and 'delivered' not in _requested(self.request, 'delivery_status'):
             queryset = queryset.exclude(delivery_status='delivered')
         
         return queryset
@@ -1784,7 +1800,7 @@ class ReturnRegistryViewSet(viewsets.ModelViewSet):
     search_fields = ['order_number', 'client_name', 'product_name']
     ordering_fields = ['created_at', 'planned_return_date', 'return_status']
     ordering = ['-created_at']
-    filterset_fields = ['return_status', 'manager']
+    filterset_fields = {'return_status': ['exact', 'in'], 'manager': ['exact']}
 
     def get_queryset(self):
         """
@@ -1813,7 +1829,7 @@ class ReturnRegistryViewSet(viewsets.ModelViewSet):
                 queryset = queryset.none()
 
         exclude_sent = self.request.query_params.get('exclude_sent')
-        if exclude_sent in ('true', '1', 'True'):
+        if exclude_sent in ('true', '1', 'True') and 'sent' not in _requested(self.request, 'return_status'):
             queryset = queryset.exclude(return_status='sent')
 
         return queryset
