@@ -8,12 +8,14 @@ import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurements
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
 import ManagerFilter from '../../components/orders/ManagerFilter'
+import DesignerPayoutCell from '../../components/orders/DesignerPayoutCell'
 
 // Метки папок для баннера (folder может быть статусом или составной выборкой)
 const FOLDER_LABELS: Record<string, string> = {
   created: 'Создан',
   today_measurement: 'Сегодня замер',
   tomorrow_measurement: 'Замеры на завтра',
+  designer_payouts: 'Выплаты дизайнерам',
 }
 
 // Папки дня замера: в них список идёт по времени выезда (сортирует бэкенд),
@@ -49,6 +51,9 @@ const OrderList = () => {
   const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
 
   const showMeasurementTime = MEASUREMENT_DAY_FOLDERS.includes(folder)
+  // Папка «Выплаты дизайнерам»: дизайнер и кнопка «Выплачен» в строке
+  const showDesignerPayout = folder === 'designer_payouts'
+  const canMarkPayout = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'leader'
 
   const folderLabel = folder
     ? (FOLDER_LABELS[folder] || ORDER_STATUS_DISPLAY[folder as OrderStatus] || folder)
@@ -253,6 +258,12 @@ const OrderList = () => {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Создан</th>
+                  {showDesignerPayout && (
+                    <>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дизайнер</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Выплата</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
@@ -304,6 +315,29 @@ const OrderList = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDate(order.created_at)}</td>
+                    {showDesignerPayout && (
+                      <>
+                        <td className="px-4 py-3 text-sm">
+                          {order.designer ? (
+                            <>
+                              <div className="font-medium text-gray-900">{order.designer.full_name}</div>
+                              <div className="text-xs text-gray-500">
+                                {order.designer.studio && <>{order.designer.studio} · </>}
+                                {order.designer.bonus_percent != null ? `бонус ${order.designer.bonus_percent}%` : order.designer.phone}
+                              </div>
+                            </>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          {canMarkPayout && (
+                            <DesignerPayoutCell
+                              orderId={order.id}
+                              onPaid={(id) => setOrders((list) => list.filter((o) => o.id !== id))}
+                            />
+                          )}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

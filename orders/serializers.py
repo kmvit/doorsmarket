@@ -275,6 +275,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     is_overdue = serializers.SerializerMethodField()
     measurement_date = serializers.SerializerMethodField()
     service_manager_name = serializers.SerializerMethodField()
+    designer = DesignerSerializer(read_only=True)
 
     class Meta:
         model = Order
@@ -283,6 +284,8 @@ class OrderListSerializer(serializers.ModelSerializer):
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'status', 'status_display', 'is_overdue',
             'measurement_date', 'service_manager_name',
+            # Для папки «Выплаты дизайнерам»
+            'has_designer', 'designer', 'designer_paid_amount', 'designer_paid_at',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
         ]
 
@@ -327,12 +330,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     is_overdue = serializers.SerializerMethodField()
     designer = DesignerSerializer(read_only=True)
     order_probability_display = serializers.CharField(source='get_order_probability_display', read_only=True)
+    designer_paid_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon',
             *ORDER_SALES_FIELDS, 'order_probability_display',
+            'designer_paid_amount', 'designer_paid_at', 'designer_paid_by_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number',
             'floor_readiness', 'comment',
@@ -354,6 +359,12 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             return False
         request = getattr(obj, 'measurement_request', None)
         return not (request is not None and request.is_irrelevant)
+
+    def get_designer_paid_by_name(self, obj):
+        u = obj.designer_paid_by
+        if not u:
+            return None
+        return f'{u.first_name} {u.last_name}'.strip() or u.username
 
     def get_attachments(self, obj):
         qs = obj.attachments.filter(order_item__isnull=True)

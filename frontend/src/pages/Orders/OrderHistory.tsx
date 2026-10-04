@@ -18,6 +18,7 @@ const KIND_COLOR: Record<string, string> = {
   measurement_done: 'bg-teal-500',
   measurement_processed: 'bg-emerald-500',
   sms_sent: 'bg-amber-500',
+  designer_paid: 'bg-green-600',
 }
 
 const fmt = (d: string) =>

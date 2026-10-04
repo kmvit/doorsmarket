@@ -104,6 +104,13 @@ export const ordersAPI = {
     await apiClient.delete(`/orders/${id}/`)
   },
 
+  // Отметить выплату дизайнеру (папка «Выплаты дизайнерам»). Только онлайн:
+  // в очереди офлайн-запросов сумма могла бы уйти дважды
+  markDesignerPaid: async (id: number, amount: string): Promise<Order> => {
+    const response = await apiClient.post(`/orders/${id}/designer_paid/`, { amount })
+    return response.data
+  },
+
   uploadOffer: async (id: number, file: File): Promise<Order> => {
     const formData = new FormData()
     formData.append('commercial_offer', file)

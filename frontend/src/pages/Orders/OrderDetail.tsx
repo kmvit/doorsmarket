@@ -514,6 +514,20 @@ const OrderDetail = () => {
                 <dd className="text-gray-900">{order.order_probability_display}</dd>
               </div>
             )}
+            {order.designer_paid_at && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Выплачено дизайнеру</dt>
+                <dd className="text-right text-gray-900">
+                  <div className="font-medium">
+                    {Number(order.designer_paid_amount).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {formatDate(order.designer_paid_at)}
+                    {order.designer_paid_by_name && <> · {order.designer_paid_by_name}</>}
+                  </div>
+                </dd>
+              </div>
+            )}
           </dl>
         </div>
 

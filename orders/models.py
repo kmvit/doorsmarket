@@ -99,6 +99,15 @@ OVERDUE_STATUSES = frozenset({
 })
 
 
+# Статусы, с которых дизайнеру положена выплата: заказ ушёл в производство и дальше
+DESIGNER_PAYOUT_STATUSES = frozenset({
+    OrderStatus.IN_PRODUCTION,
+    OrderStatus.ON_WAREHOUSE,
+    OrderStatus.SHIPPED,
+    OrderStatus.COMPLETED,
+})
+
+
 class ActivityKind(models.TextChoices):
     """Виды активности по заказу — отображаются в Наработках"""
     CREATED = 'created', 'Заказ создан'
@@ -112,6 +121,7 @@ class ActivityKind(models.TextChoices):
     MEASUREMENT_DONE = 'measurement_done', 'Замер выполнен'
     MEASUREMENT_PROCESSED = 'measurement_processed', 'Замер обработан'
     SMS_SENT = 'sms_sent', 'Отправлено SMS клиенту'
+    DESIGNER_PAID = 'designer_paid', 'Выплата дизайнеру'
 
 
 class Order(models.Model):
@@ -207,6 +217,17 @@ class Order(models.Model):
     order_probability = models.CharField(
         max_length=10, choices=OrderProbability.choices, blank=True,
         verbose_name='Вероятность оформления',
+    )
+    # Выплата дизайнеру: менеджер отмечает её в папке «Выплаты дизайнерам»,
+    # когда заказ ушёл в производство и дальше
+    designer_paid_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Выплачено дизайнеру',
+    )
+    designer_paid_at = models.DateTimeField(null=True, blank=True, verbose_name='Когда выплачено дизайнеру')
+    designer_paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='designer_payouts', verbose_name='Кто отметил выплату',
     )
     # Фаза 5: даты производства
     production_start_date = models.DateField(

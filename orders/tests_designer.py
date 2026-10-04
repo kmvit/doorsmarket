@@ -6,9 +6,11 @@
         python manage.py test orders.tests_designer
 """
 from datetime import date
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from orders.models import Designer, Order, Salon
@@ -159,3 +161,59 @@ class OrderSalesFieldsTest(DesignerTestBase):
         self.assertEqual(row['designer']['studio'], 'Лофт')
         self.assertEqual(row['payment_month'], '2026-12-01')
         self.assertEqual(row['order_probability_display'], 'Низкая')
+
+
+class DesignerPayoutTest(DesignerTestBase):
+    """Папка «Выплаты дизайнерам» и отметка выплаты менеджером."""
+
+    def make_order(self, status, designer=True, **extra):
+        return Order.objects.create(
+            manager=self.manager, salon=self.salon, client_name=f'{status}-{designer}',
+            status=status, has_designer=designer, designer=self.designer if designer else None, **extra,
+        )
+
+    def folder_ids(self):
+        response = self.client.get('/api/v1/orders/', {'folder': 'designer_payouts', 'exclude_finished': 'true'})
+        self.assertEqual(response.status_code, 200)
+        return {row['id'] for row in response.data}
+
+    def test_folder_has_orders_with_designer_from_production_on(self):
+        expected = {self.make_order(s).id for s in ('in_production', 'on_warehouse', 'shipped', 'completed')}
+        self.make_order('paid')                      # ещё не в производстве
+        self.make_order('in_production', designer=False)  # без дизайнера
+        self.make_order('completed', designer_paid_at=timezone.now())  # уже выплачено
+        # «Кроме выполненных» не должно прятать выполненный заказ из этой папки
+        self.assertEqual(self.folder_ids(), expected)
+
+    def test_folder_count_on_dashboard(self):
+        self.make_order('shipped')
+        counts = self.client.get('/api/v1/orders/folder_counts/', {'mine': 'true'}).data
+        payouts = next(f for f in counts if f['folder'] == 'designer_payouts')
+        self.assertEqual(payouts['label'], 'Выплаты дизайнерам')
+        self.assertEqual(payouts['count'], 1)
+
+    def test_mark_paid_removes_order_from_folder(self):
+        order = self.make_order('shipped')
+        response = self.client.post(f'/api/v1/orders/{order.id}/designer_paid/', {'amount': '15 000,50'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.designer_paid_amount, Decimal('15000.50'))
+        self.assertEqual(order.designer_paid_by, self.manager)
+        self.assertIsNotNone(order.designer_paid_at)
+        self.assertEqual(self.folder_ids(), set())
+        self.assertTrue(order.activity_logs.filter(kind='designer_paid').exists())
+
+    def test_amount_is_required(self):
+        order = self.make_order('shipped')
+        for bad in ('', '0', '-5', 'abc'):
+            response = self.client.post(f'/api/v1/orders/{order.id}/designer_paid/', {'amount': bad}, format='json')
+            self.assertEqual(response.status_code, 400, bad)
+            self.assertIn('amount', response.data)
+
+    def test_cannot_pay_twice_or_too_early(self):
+        early = self.make_order('paid')
+        response = self.client.post(f'/api/v1/orders/{early.id}/designer_paid/', {'amount': '100'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        paid = self.make_order('completed', designer_paid_at=timezone.now(), designer_paid_amount=100)
+        response = self.client.post(f'/api/v1/orders/{paid.id}/designer_paid/', {'amount': '100'}, format='json')
+        self.assertEqual(response.status_code, 400)

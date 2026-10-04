@@ -301,6 +301,20 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Выплаты дизайнерам: заказы с дизайнером, ушедшие в производство, без отмеченной выплаты */}
+        {isManager && (() => {
+          const payouts = orderFolders.find((f) => f.folder === 'designer_payouts')
+          if (!payouts) return null
+          return (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Дизайнеры</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <FolderCard to="/orders?folder=designer_payouts" label={payouts.label} count={payouts.count} />
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Фаза 6: Замеры СМ — только его пайплайн (без «Замер выполнен» и «Не обработан») */}
         {isSM && orderFolders.length > 0 && (
           <div className="mb-8">

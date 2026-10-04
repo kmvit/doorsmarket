@@ -127,7 +127,7 @@ export type ActivityKind =
   | 'created' | 'updated' | 'items_changed' | 'status_changed'
   | 'file_attached' | 'comment_added'
   | 'measurement_requested' | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
-  | 'sms_sent'
+  | 'sms_sent' | 'designer_paid'
   | ''
 
 export const ACTIVITY_KIND_DISPLAY: Record<string, string> = {
@@ -142,6 +142,7 @@ export const ACTIVITY_KIND_DISPLAY: Record<string, string> = {
   measurement_done: 'Замер выполнен',
   measurement_processed: 'Замер обработан',
   sms_sent: 'Отправлено SMS клиенту',
+  designer_paid: 'Выплата дизайнеру',
 }
 
 export interface OrderActivityLog {
@@ -310,6 +311,9 @@ export interface Order {
   payment_month: string | null
   order_probability: OrderProbability | ''
   order_probability_display: string
+  designer_paid_amount?: string | null
+  designer_paid_at?: string | null
+  designer_paid_by_name?: string | null
   floor_readiness: string
   comment: string
   status: OrderStatus
@@ -348,6 +352,11 @@ export interface OrderListItem {
   last_activity_at: string | null
   last_activity_kind: ActivityKind
   last_activity_kind_display: string
+  // Для папки «Выплаты дизайнерам» (в старом офлайн-кеше полей может не быть)
+  has_designer?: boolean | null
+  designer?: Designer | null
+  designer_paid_amount?: string | null
+  designer_paid_at?: string | null
 }
 
 export interface CreateOrderItemData {

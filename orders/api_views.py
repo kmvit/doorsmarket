@@ -8,6 +8,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from marketingdoors.search import NumberAwareSearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q, Prefetch
@@ -17,7 +18,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import (
-    Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
+    DESIGNER_PAYOUT_STATUSES, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
     MeasurementRequestFile,
@@ -65,7 +66,7 @@ class IsAuthenticated(permissions.IsAuthenticated):
 def get_orders_queryset_for_user(user):
     """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город, admin — всё."""
     qs = Order.objects.select_related(
-        'manager', 'salon', 'salon__city',
+        'manager', 'salon', 'salon__city', 'designer',
         # Заявка и замер — для просрочки и времени выезда в списке; без этого
         # каждая строка списка тянула их отдельным запросом
         'measurement_request', 'measurement_request__measurement',
@@ -231,6 +232,7 @@ ORDER_FOLDERS = [
     ('shipped', 'Отгружен', False),
     ('completed', 'Выполнен', False),
     ('cancelled', 'Не актуален', False),
+    ('designer_payouts', 'Выплаты дизайнерам', False),
     ('measurement_not_planned', 'Не запланирован', True),
     ('measurement_not_done', 'Не выполнен', True),
     ('measurement_not_processed', 'Не обработан', True),
@@ -303,6 +305,12 @@ def apply_order_folder(qs, folder):
             status=OrderStatus.MEASUREMENT_SCHEDULED,
             measurement_request__measurement__measurement_date__date=timezone.localdate() + timedelta(days=1),
         )
+    if folder == 'designer_payouts':
+        # Заказ с дизайнером ушёл в производство (и дальше), а выплату ещё не отметили
+        return qs.filter(
+            has_designer=True, designer__isnull=False,
+            status__in=DESIGNER_PAYOUT_STATUSES, designer_paid_at__isnull=True,
+        )
     if folder in OrderStatus.values:
         return qs.filter(status=folder)
     return qs
@@ -347,7 +355,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get('exclude_finished') == 'true':
             requested = requested_statuses(self.request)
             folder_param = self.request.query_params.get('folder')
-            if not requested & set(ORDER_FINISHED_STATUSES) and folder_param not in ORDER_FINISHED_STATUSES:
+            # В «Выплатах дизайнерам» есть выполненные заказы — их не прячем
+            folder_shows_finished = folder_param in ORDER_FINISHED_STATUSES or folder_param == 'designer_payouts'
+            if not requested & set(ORDER_FINISHED_STATUSES) and not folder_shows_finished:
                 qs = qs.exclude(status__in=ORDER_FINISHED_STATUSES)
 
         folder = self.request.query_params.get('folder')
@@ -378,6 +388,42 @@ class OrderViewSet(viewsets.ModelViewSet):
         manager_ids = get_orders_queryset_for_user(request.user).values('manager_id')
         managers = get_user_model().objects.filter(id__in=manager_ids).order_by('first_name', 'last_name', 'username')
         return Response(OrderManagerSerializer(managers, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def designer_paid(self, request, pk=None):
+        """Менеджер отмечает выплату дизайнеру. Тело: {amount}. Заказ уходит из папки «Выплаты дизайнерам»."""
+        if request.user.role not in ('manager', 'admin', 'leader'):
+            return Response({'detail': 'Выплату дизайнеру отмечает менеджер.'}, status=status.HTTP_403_FORBIDDEN)
+        order = self.get_object()
+        if not (order.has_designer and order.designer_id):
+            return Response({'detail': 'В заказе нет дизайнера.'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.status not in DESIGNER_PAYOUT_STATUSES:
+            return Response(
+                {'detail': 'Выплату отмечают, когда заказ в производстве, на складе, отгружен или выполнен.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if order.designer_paid_at:
+            return Response({'detail': 'Выплата дизайнеру уже отмечена.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            amount = Decimal(str(request.data.get('amount', '')).replace(',', '.').replace(' ', ''))
+        except (InvalidOperation, ValueError):
+            amount = None
+        if amount is None or not amount.is_finite() or amount <= 0:
+            return Response({'amount': ['Введите сумму выплаты больше нуля']}, status=status.HTTP_400_BAD_REQUEST)
+        amount = amount.quantize(Decimal('0.01'))
+        if amount >= Decimal('10000000000'):
+            return Response({'amount': ['Слишком большая сумма']}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.designer_paid_amount = amount
+        order.designer_paid_at = timezone.now()
+        order.designer_paid_by = request.user
+        order.save(update_fields=['designer_paid_amount', 'designer_paid_at', 'designer_paid_by', 'updated_at'])
+        order.log_activity(
+            ActivityKind.DESIGNER_PAID, actor=request.user,
+            description=f'Дизайнеру {order.designer.full_name} выплачено {amount:.2f} ₽',
+            meta={'amount': str(amount), 'designer_id': order.designer_id},
+        )
+        return Response(OrderDetailSerializer(order, context=self.get_serializer_context()).data)
 
     @action(detail=False, methods=['get'], url_path='folder_counts')
     def folder_counts(self, request):
