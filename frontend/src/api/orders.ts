@@ -4,7 +4,7 @@ import {
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
   WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
-  OrderFolderCount, OrderManager,
+  OrderFolderCount, OrderManager, Designer, CreateDesignerData,
 } from '../types/orders'
 import { orderUtils, withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
@@ -12,6 +12,19 @@ import { requestWithQueue } from '../services/sync'
 // TTL кеша для вспомогательных данных (счётчики папок, журналы) — 7 дней,
 // чтобы данные пережили длительный офлайн
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
+
+export const designersAPI = {
+  // Поиск по фамилии/имени, студии и телефону; без запроса — первые 30
+  search: async (query: string): Promise<Designer[]> => {
+    const response = await apiClient.get('/designers/', { params: query ? { search: query } : {} })
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
+  create: async (data: CreateDesignerData): Promise<Designer> => {
+    const response = await apiClient.post('/designers/', data)
+    return response.data
+  },
+}
 
 export const ordersAPI = {
   getList: async (filters?: OrderFilters): Promise<OrderListItem[]> => {

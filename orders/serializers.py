@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    Salon, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
+    Salon, Designer, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog, OVERDUE_STATUSES,
@@ -193,6 +193,80 @@ class OrderManagerSerializer(serializers.ModelSerializer):
         return name or obj.username
 
 
+def normalize_phone(raw):
+    """Телефон к виду +7XXXXXXXXXX; None, если это не российский номер."""
+    digits = ''.join(ch for ch in (raw or '') if ch.isdigit())
+    if len(digits) == 10:
+        digits = '7' + digits
+    elif len(digits) == 11 and digits[0] == '8':
+        digits = '7' + digits[1:]
+    return f'+{digits}' if len(digits) == 11 and digits[0] == '7' else None
+
+
+class DesignerSerializer(serializers.ModelSerializer):
+    # Поле объявлено явно: стандартная проверка уникальности сравнивала бы номер
+    # в том виде, как его ввели, а не нормализованный
+    phone = serializers.CharField(max_length=30)
+
+    class Meta:
+        model = Designer
+        fields = ['id', 'full_name', 'phone', 'studio', 'bonus_percent']
+
+    def validate_full_name(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Укажите фамилию и имя дизайнера')
+        return value
+
+    def validate_phone(self, value):
+        phone = normalize_phone(value)
+        if not phone:
+            raise serializers.ValidationError('Укажите телефон в формате +7 (XXX) XXX-XX-XX')
+        duplicate = Designer.objects.filter(phone=phone)
+        if self.instance is not None:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        existing = duplicate.first()
+        if existing:
+            raise serializers.ValidationError(
+                f'Дизайнер с этим телефоном уже заведён: {existing.full_name}. Выберите его из списка.'
+            )
+        return phone
+
+
+# Поля заказа для продаж: дизайнер, месяц оплаты, вероятность оформления
+ORDER_SALES_FIELDS = ['has_designer', 'designer', 'payment_month', 'order_probability']
+
+
+def validate_order_sales_fields(attrs, instance=None):
+    """
+    При создании заказа (instance=None) ответ «есть ли дизайнер» обязателен,
+    а при «да» — сам дизайнер. У старых заказов поле пустое, поэтому при
+    редактировании требуем только согласованность: «да» — значит, выбран дизайнер.
+    """
+    has_designer = attrs.get('has_designer', instance.has_designer if instance else None)
+    designer = attrs['designer'] if 'designer' in attrs else (instance.designer if instance else None)
+    if instance is None and has_designer is None:
+        raise serializers.ValidationError({'has_designer': 'Укажите, есть ли у заказа дизайнер'})
+    if has_designer and designer is None:
+        raise serializers.ValidationError({'designer': 'Выберите дизайнера или заведите на него карточку'})
+    if has_designer is False:
+        attrs['designer'] = None
+    if attrs.get('payment_month'):
+        attrs['payment_month'] = attrs['payment_month'].replace(day=1)
+    return attrs
+
+
+class OrderSalesFieldsSerializer(serializers.ModelSerializer):
+    """Проверка полей продаж там, где заказ создаётся не через OrderCreateSerializer (из КП)."""
+
+    class Meta:
+        model = Order
+        fields = ORDER_SALES_FIELDS
+
+    def validate(self, attrs):
+        return validate_order_sales_fields(attrs, self.instance)
+
+
 class OrderListSerializer(serializers.ModelSerializer):
     manager = OrderManagerSerializer(read_only=True)
     salon_name = serializers.CharField(source='salon.name', read_only=True)
@@ -251,11 +325,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     lift_impossible_warning = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    designer = DesignerSerializer(read_only=True)
+    order_probability_display = serializers.CharField(source='get_order_probability_display', read_only=True)
 
     class Meta:
         model = Order
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon',
+            *ORDER_SALES_FIELDS, 'order_probability_display',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number',
             'floor_readiness', 'comment',
@@ -303,15 +380,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
+            # id — только для ответа: по нему форма создания открывает новый заказ
+            'id',
             'salon', 'kp_number', 'kp_date', 'client_name', 'contact_phone',
             'address', 'lift_available', 'stairs_available', 'carry_to_entrance',
             'floor_number', 'floor_readiness',
             'comment', 'status', 'items', 'addons',
             'production_start_date', 'production_deadline',
             'next_action_text', 'next_action_due_at',
+            *ORDER_SALES_FIELDS,
         ]
 
     def validate(self, attrs):
+        attrs = validate_order_sales_fields(attrs, self.instance)
         # При CREATE — «следующее действие» обязательно
         if self.instance is None:
             if not (attrs.get('next_action_text') or '').strip():

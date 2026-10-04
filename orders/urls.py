@@ -4,6 +4,7 @@ from . import api_views
 
 router = DefaultRouter()
 router.register('salons', api_views.SalonViewSet, basename='salon')
+router.register('designers', api_views.DesignerViewSet, basename='designer')
 router.register('orders', api_views.OrderViewSet, basename='order')
 router.register('order-items', api_views.OrderItemViewSet, basename='order-item')
 router.register('action-reminders', api_views.OrderActionReminderViewSet, basename='action-reminder')

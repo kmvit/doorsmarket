@@ -1,11 +1,17 @@
 from django.contrib import admin
 from .models import (
     OfferTextPreset, PrettyOffer, PrettyOfferItem,
-    Salon, Order, OrderItem, OrderAddon, OrderAttachment,
+    Salon, Designer, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog,
 )
+
+
+@admin.register(Designer)
+class DesignerAdmin(admin.ModelAdmin):
+    list_display = ('id', 'full_name', 'phone', 'studio', 'bonus_percent', 'created_at')
+    search_fields = ('full_name', 'phone', 'studio')
 
 
 @admin.register(Salon)

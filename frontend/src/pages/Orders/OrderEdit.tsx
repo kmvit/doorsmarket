@@ -8,6 +8,9 @@ import OrderItemsEditor from './OrderItemsEditor'
 import OrderAddonsEditor from './OrderAddonsEditor'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import NextActionBlock from './NextActionBlock'
+import OrderSalesFieldsBlock, {
+  EMPTY_SALES_FIELDS, SalesFieldsValue, salesFieldsError, salesFieldsPayload,
+} from '../../components/orders/OrderSalesFieldsBlock'
 
 const OrderEdit = () => {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +21,8 @@ const OrderEdit = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sales, setSales] = useState<SalesFieldsValue>(EMPTY_SALES_FIELDS)
+  const [salesError, setSalesError] = useState(false)
 
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
@@ -45,6 +50,13 @@ const OrderEdit = () => {
         ])
         setOrder(orderData)
         setSalons(salonsData)
+        setSales({
+          // ?? null — в офлайн-кеше старых заказов этих полей может не быть вовсе
+          has_designer: orderData.has_designer ?? null,
+          designer: orderData.designer ?? null,
+          payment_month: orderData.payment_month ?? null,
+          order_probability: orderData.order_probability || '',
+        })
         const salon = orderData.salon as any
         setForm({
           salon: typeof salon === 'object' ? salon.id : salon,
@@ -97,6 +109,7 @@ const OrderEdit = () => {
   }, [id])
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
+  const requireDesignerAnswer = order?.has_designer != null
 
   const setField = (field: keyof CreateOrderData, value: any) => {
     setForm((f) => ({ ...f, [field]: value }))
@@ -108,10 +121,17 @@ const OrderEdit = () => {
       setError('Укажите имя клиента')
       return
     }
+    // У заказов, созданных до появления поля, ответ про дизайнера не требуем
+    const salesProblem = salesFieldsError(sales, requireDesignerAnswer)
+    if (salesProblem) {
+      setSalesError(true)
+      setError(salesProblem)
+      return
+    }
     setIsSubmitting(true)
     setError(null)
     try {
-      await ordersAPI.fullUpdate(Number(id), form)
+      await ordersAPI.fullUpdate(Number(id), { ...form, ...salesFieldsPayload(sales) })
       navigate(`/orders/${id}`)
     } catch (err: any) {
       const detail = err.response?.data
@@ -233,6 +253,14 @@ const OrderEdit = () => {
             </div>
           </div>
         </div>
+
+        {/* Дизайнер, месяц оплаты, вероятность */}
+        <OrderSalesFieldsBlock
+          value={sales}
+          onChange={setSales}
+          showErrors={salesError}
+          requireAnswer={requireDesignerAnswer}
+        />
 
         {/* КП */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">

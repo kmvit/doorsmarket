@@ -7,6 +7,9 @@ import {
 } from '../../types/orders'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import HScrollSync from '../../components/common/HScrollSync'
+import OrderSalesFieldsBlock, {
+  EMPTY_SALES_FIELDS, SalesFieldsValue, salesFieldsError, salesFieldsPayload,
+} from '../../components/orders/OrderSalesFieldsBlock'
 
 interface Props {
   salons: Salon[]
@@ -38,6 +41,9 @@ const KpUploadTab = ({
   const [nextActionDueAt, setNextActionDueAt] = useState('')
   const [nextActionError, setNextActionError] = useState(false)
   const nextActionRef = useRef<HTMLDivElement>(null)
+  const [sales, setSales] = useState<SalesFieldsValue>(EMPTY_SALES_FIELDS)
+  const [salesError, setSalesError] = useState(false)
+  const salesRef = useRef<HTMLDivElement>(null)
 
   const handleFile = (f: File | null) => {
     setFile(f)
@@ -182,6 +188,11 @@ const KpUploadTab = ({
     if (replaceOrderId) return handleReplace()
     if (appendOrderId) return handleAppend()
     if (!salonId) { setError('Выберите салон'); return }
+    if (salesFieldsError(sales, true)) {
+      setSalesError(true)
+      salesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     if (!nextActionText.trim() || !nextActionDueAt) {
       setNextActionError(true)
       nextActionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -195,6 +206,7 @@ const KpUploadTab = ({
         ...parsed,
         salon: salonId,
         comment,
+        ...salesFieldsPayload(sales),
         next_action_text: nextActionText.trim(),
         next_action_due_at: new Date(nextActionDueAt).toISOString(),
       } as any)
@@ -470,6 +482,13 @@ const KpUploadTab = ({
             )}
           </div>
 
+          {/* Дизайнер, месяц оплаты, вероятность — только для нового заказа */}
+          {!replaceOrderId && !appendOrderId && (
+            <div ref={salesRef}>
+              <OrderSalesFieldsBlock value={sales} onChange={setSales} showErrors={salesError} title="5. Дизайнер и оплата" />
+            </div>
+          )}
+
           {/* Следующее действие (обязательно; при замене и добавлении КП заказ уже существует — не требуется) */}
           {!replaceOrderId && !appendOrderId && (
           <div
@@ -477,7 +496,7 @@ const KpUploadTab = ({
             className={`rounded-xl shadow-sm p-5 ${nextActionError ? 'bg-red-50 border-2 border-red-400' : 'bg-amber-50 border border-amber-200'}`}
           >
             <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${nextActionError ? 'text-red-700' : 'text-amber-800'}`}>
-              5. Следующее действие * <span className="font-normal text-xs normal-case">— что и когда нужно сделать по заказу</span>
+              6. Следующее действие * <span className="font-normal text-xs normal-case">— что и когда нужно сделать по заказу</span>
             </h2>
             {nextActionError && (
               <div className="mb-3 text-sm font-medium text-red-700">

@@ -17,7 +17,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import (
-    Salon, Order, OrderItem, OrderAddon, OrderAttachment,
+    Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
     MeasurementRequestFile,
@@ -35,6 +35,9 @@ from .serializers import (
     OrderActionReminderSerializer,
     WorkshopOrderSerializer,
     OrderManagerSerializer,
+    OrderSalesFieldsSerializer,
+    ORDER_SALES_FIELDS,
+    DesignerSerializer,
     MeasurementSerializer,
     MeasurementListSerializer,
     PendingMeasurementRequestListSerializer,
@@ -155,6 +158,38 @@ def _sm_name_phone(user):
         return '', ''
     name = (user.get_full_name() or '').strip() or user.username
     return name, (user.phone_number or '').strip()
+
+
+class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                      mixins.CreateModelMixin, mixins.UpdateModelMixin,
+                      viewsets.GenericViewSet):
+    """
+    Дизайнеры для поля заказа: поиск (?search=) по имени, студии и телефону,
+    заведение новой карточки. Удалять нельзя — на дизайнера ссылаются заказы.
+    """
+    serializer_class = DesignerSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    SEARCH_LIMIT = 30
+
+    def get_queryset(self):
+        qs = Designer.objects.all()
+        if self.action != 'list':
+            return qs
+        query = (self.request.query_params.get('search') or '').strip()
+        if not query:
+            return qs[:self.SEARCH_LIMIT]
+        condition = Q(full_name__icontains=query) | Q(studio__icontains=query)
+        # По телефону ищем цифрами: «8 917 12…» и «+7 (917) 12…» находят один номер
+        digits = ''.join(ch for ch in query if ch.isdigit())
+        if digits:
+            if len(digits) > 1 and digits[0] == '8':
+                digits = '7' + digits[1:]
+            condition |= Q(phone__contains=digits)
+        return qs.filter(condition)[:self.SEARCH_LIMIT]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class SalonViewSet(viewsets.ReadOnlyModelViewSet):
@@ -433,6 +468,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         addons = data.pop('addons', []) or []
         totals = data.pop('totals', None) or {}
 
+        # Дизайнер, месяц оплаты, вероятность — с теми же правилами, что при ручном создании
+        sales = OrderSalesFieldsSerializer(data={f: data.get(f) for f in ORDER_SALES_FIELDS if f in data})
+        sales.is_valid(raise_exception=True)
+
         order_kwargs = {
             'salon_id': salon_id,
             'client_name': (data.get('client_name') or '').strip()[:255] or 'Не указан',
@@ -446,6 +485,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'last_activity_at': timezone.now(),
             'last_activity_kind': ActivityKind.CREATED,
             **_totals_kwargs(totals),
+            **sales.validated_data,
         }
         order = Order.objects.create(**order_kwargs)
 

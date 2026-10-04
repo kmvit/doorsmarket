@@ -3,6 +3,7 @@ import secrets
 import string
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator
 from django.db import models
 from django.conf import settings
 
@@ -13,6 +14,41 @@ _SHORT_ALPHABET = string.ascii_letters + string.digits
 
 def generate_short_code(length: int = 7) -> str:
     return ''.join(secrets.choice(_SHORT_ALPHABET) for _ in range(length))
+
+
+class Designer(models.Model):
+    """
+    Дизайнер, который привёл клиента. Карточку заводит менеджер при создании
+    заказа; дальше её выбирают из списка — поиском по имени или телефону.
+    """
+    full_name = models.CharField(max_length=255, verbose_name='Фамилия и имя')
+    # Хранится в виде +7XXXXXXXXXX — так одного дизайнера не заведут дважды
+    # из-за разной записи номера
+    phone = models.CharField(max_length=20, unique=True, verbose_name='Телефон')
+    studio = models.CharField(max_length=255, blank=True, verbose_name='Студия')
+    bonus_percent = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MaxValueValidator(99)],
+        verbose_name='Бонус, %',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_designers', verbose_name='Кто завёл',
+    )
+
+    class Meta:
+        verbose_name = 'Дизайнер'
+        verbose_name_plural = 'Дизайнеры'
+        ordering = ['full_name']
+
+    def __str__(self):
+        return f'{self.full_name} ({self.phone})'
+
+
+class OrderProbability(models.TextChoices):
+    HIGH = 'high', 'Высокая'
+    MEDIUM = 'medium', 'Средняя'
+    LOW = 'low', 'Низкая'
 
 
 class Salon(models.Model):
@@ -158,6 +194,19 @@ class Order(models.Model):
         blank=True,
         default='',
         verbose_name='Вид активности',
+    )
+    # Дизайнер: при создании заказа обязателен ответ «да/нет». null — у заказов,
+    # созданных до появления поля.
+    has_designer = models.BooleanField(null=True, blank=True, verbose_name='Есть дизайнер')
+    designer = models.ForeignKey(
+        Designer, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='orders', verbose_name='Дизайнер',
+    )
+    # Месяц, в который клиент планирует оплатить; храним первым числом месяца
+    payment_month = models.DateField(null=True, blank=True, verbose_name='Планируемый месяц оплаты')
+    order_probability = models.CharField(
+        max_length=10, choices=OrderProbability.choices, blank=True,
+        verbose_name='Вероятность оформления',
     )
     # Фаза 5: даты производства
     production_start_date = models.DateField(

@@ -14,6 +14,7 @@ import MeasurementLinkSection from './MeasurementLinkSection'
 import HScrollSync from '../../components/common/HScrollSync'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 import FileViewer from '../../components/common/FileViewer'
+import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -484,6 +485,35 @@ const OrderDetail = () => {
               <dt className="text-gray-500">Менеджер</dt>
               <dd className="font-medium text-gray-900">{order.manager.full_name}</dd>
             </div>
+            {order.has_designer != null && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Дизайнер</dt>
+                <dd className="text-right text-gray-900">
+                  {order.has_designer && order.designer ? (
+                    <>
+                      <div className="font-medium">{order.designer.full_name}</div>
+                      <div className="text-xs text-gray-500">
+                        {order.designer.phone}
+                        {order.designer.studio && <> · {order.designer.studio}</>}
+                        {order.designer.bonus_percent != null && <> · бонус {order.designer.bonus_percent}%</>}
+                      </div>
+                    </>
+                  ) : 'Нет'}
+                </dd>
+              </div>
+            )}
+            {order.payment_month && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Оплата планируется</dt>
+                <dd className="text-gray-900">{formatPaymentMonth(order.payment_month)}</dd>
+              </div>
+            )}
+            {order.order_probability && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Вероятность оформления</dt>
+                <dd className="text-gray-900">{order.order_probability_display}</dd>
+              </div>
+            )}
           </dl>
         </div>
 

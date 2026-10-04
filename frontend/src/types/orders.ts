@@ -261,6 +261,36 @@ export interface OrderManager {
   phone_number: string | null
 }
 
+// ===== Дизайнер и поля продаж =====
+
+export interface Designer {
+  id: number
+  full_name: string
+  phone: string
+  studio: string
+  bonus_percent: number | null
+}
+
+export type CreateDesignerData = Omit<Designer, 'id'>
+
+export type OrderProbability = 'high' | 'medium' | 'low'
+
+export const ORDER_PROBABILITY_DISPLAY: Record<OrderProbability, string> = {
+  high: 'Высокая',
+  medium: 'Средняя',
+  low: 'Низкая',
+}
+
+// Поля заказа: дизайнер, когда клиент планирует оплатить, вероятность оформления
+export interface OrderSalesFields {
+  // null — не ответили (у старых заказов); при создании ответ обязателен
+  has_designer: boolean | null
+  designer: number | null
+  // Первое число месяца, YYYY-MM-01
+  payment_month: string | null
+  order_probability: OrderProbability | ''
+}
+
 export interface Order {
   id: number
   created_at: string
@@ -275,6 +305,11 @@ export interface Order {
   address: string
   lift_available: boolean | null
   stairs_available: boolean | null
+  has_designer: boolean | null
+  designer: Designer | null
+  payment_month: string | null
+  order_probability: OrderProbability | ''
+  order_probability_display: string
   floor_readiness: string
   comment: string
   status: OrderStatus
@@ -334,7 +369,7 @@ export interface CreateOrderItemData {
   position?: number
 }
 
-export interface CreateOrderData {
+export interface CreateOrderData extends Partial<OrderSalesFields> {
   salon: number
   kp_number?: string
   kp_date?: string | null

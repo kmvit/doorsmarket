@@ -8,6 +8,9 @@ import OrderItemsEditor from './OrderItemsEditor'
 import OrderAddonsEditor from './OrderAddonsEditor'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import KpUploadTab from './KpUploadTab'
+import OrderSalesFieldsBlock, {
+  EMPTY_SALES_FIELDS, SalesFieldsValue, salesFieldsError, salesFieldsPayload,
+} from '../../components/orders/OrderSalesFieldsBlock'
 
 type CreateTab = 'manual' | 'kp'
 
@@ -22,6 +25,9 @@ const OrderCreate = () => {
   const [nextActionDueAt, setNextActionDueAt] = useState('')
   const [nextActionError, setNextActionError] = useState(false)
   const nextActionRef = useRef<HTMLDivElement>(null)
+  const [sales, setSales] = useState<SalesFieldsValue>(EMPTY_SALES_FIELDS)
+  const [salesError, setSalesError] = useState(false)
+  const salesRef = useRef<HTMLDivElement>(null)
 
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
@@ -66,6 +72,11 @@ const OrderCreate = () => {
       setError('Укажите имя клиента')
       return
     }
+    if (salesFieldsError(sales, true)) {
+      setSalesError(true)
+      salesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     if (!nextActionText.trim() || !nextActionDueAt) {
       setNextActionError(true)
       nextActionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -77,6 +88,7 @@ const OrderCreate = () => {
     try {
       const order = await ordersAPI.create({
         ...form,
+        ...salesFieldsPayload(sales),
         next_action_text: nextActionText.trim(),
         next_action_due_at: new Date(nextActionDueAt).toISOString(),
       } as any)
@@ -191,6 +203,11 @@ const OrderCreate = () => {
               />
             </div>
           </div>
+        </div>
+
+        {/* Дизайнер, месяц оплаты, вероятность */}
+        <div ref={salesRef}>
+          <OrderSalesFieldsBlock value={sales} onChange={setSales} showErrors={salesError} />
         </div>
 
         {/* КП */}
