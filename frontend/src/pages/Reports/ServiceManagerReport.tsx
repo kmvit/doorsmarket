@@ -6,21 +6,34 @@ import { useAuthStore } from '../../store/authStore'
 import { formatDay, formatRub, periodPresets } from './DesignerReportFilters'
 import { ReportTile } from './DesignerReportOrders'
 
-const RATE_KEY = 'reports:sm-rate'
+const RATE_KEY = 'reports:sm-opening-rate'
+const KM_RATE_KEY = 'reports:sm-km-rate'
 
-const readRate = () => {
+const readStored = (key: string) => {
   try {
-    return localStorage.getItem(RATE_KEY) || ''
+    return localStorage.getItem(key) || ''
   } catch {
     return ''
   }
 }
 
+const storeValue = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Хранилище недоступно — ставка просто не запомнится
+  }
+}
+
+const formatKm = (km: string | number) => `${Number(km).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} км`
+
 const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 
 /**
- * Расчёт зарплаты сервис-менеджеров: выполненные за период замеры × ставка
- * за замер. Ставку вводит руководитель; она запоминается в этом браузере.
+ * Расчёт зарплаты сервис-менеджеров: проёмы в выполненных за период замерах
+ * (панель в проёме считается ещё одним проёмом) × ставка за проём + километры
+ * удалённости «включить в счёт» × ставка за км. Ставки вводит руководитель;
+ * они запоминаются в этом браузере.
  */
 const ServiceManagerReport = () => {
   const { user } = useAuthStore()
@@ -32,7 +45,8 @@ const ServiceManagerReport = () => {
   })
   const [city, setCity] = useState('')
   const [cities, setCities] = useState<{ id: number; name: string }[]>([])
-  const [rate, setRate] = useState(readRate)
+  const [rate, setRate] = useState(() => readStored(RATE_KEY))
+  const [kmRate, setKmRate] = useState(() => readStored(KM_RATE_KEY))
   const [report, setReport] = useState<Report | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,18 +67,15 @@ const ServiceManagerReport = () => {
     return () => { cancelled = true }
   }, [period, city])
 
-  const changeRate = (value: string) => {
-    const clean = value.replace(/[^\d.,]/g, '').replace(',', '.')
-    setRate(clean)
-    try {
-      localStorage.setItem(RATE_KEY, clean)
-    } catch {
-      // Хранилище недоступно — ставка просто не запомнится
-    }
-  }
+  const cleanMoney = (value: string) => value.replace(/[^\d.,]/g, '').replace(',', '.')
+  const changeRate = (value: string) => { const v = cleanMoney(value); setRate(v); storeValue(RATE_KEY, v) }
+  const changeKmRate = (value: string) => { const v = cleanMoney(value); setKmRate(v); storeValue(KM_RATE_KEY, v) }
 
   const rateNumber = Number(rate) > 0 ? Number(rate) : 0
-  const salary = (count: number) => (rateNumber ? count * rateNumber : null)
+  const kmRateNumber = Number(kmRate) > 0 ? Number(kmRate) : 0
+  // К выплате: (проёмы + панели) × ставка + км «в счёт» × ставка за км. Без ставок — не считаем
+  const salary = (openings: number, km: string) =>
+    rateNumber || kmRateNumber ? openings * rateNumber + Number(km) * kmRateNumber : null
 
   const toggle = (id: number) => setExpanded((prev) => {
     const next = new Set(prev)
@@ -88,7 +99,7 @@ const ServiceManagerReport = () => {
       </Link>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Зарплата сервис-менеджеров</h1>
-        <p className="text-sm text-gray-500 mt-1">Выполненные за период замеры × ставка за замер</p>
+        <p className="text-sm text-gray-500 mt-1">Проёмы в выполненных за период замерах (панели считаются как проёмы) × ставка за проём + километры удалённости «включить в счёт» × ставка за км</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 space-y-3">
@@ -109,7 +120,7 @@ const ServiceManagerReport = () => {
             )
           })}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Выполнены с</label>
             <input
@@ -138,13 +149,24 @@ const ServiceManagerReport = () => {
             </div>
           )}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Ставка за замер, ₽</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Ставка за проём, ₽</label>
             <input
               type="text"
               inputMode="decimal"
               value={rate}
               onChange={(e) => changeRate(e.target.value)}
-              placeholder="Например, 1500"
+              placeholder="Например, 500"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Ставка за км, ₽</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={kmRate}
+              onChange={(e) => changeKmRate(e.target.value)}
+              placeholder="Например, 20"
               className={inputCls}
             />
           </div>
@@ -154,14 +176,24 @@ const ServiceManagerReport = () => {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{error}</div>}
 
       {report && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
           <ReportTile label="Сервис-менеджеров" value={report.totals.service_managers_count} />
           <ReportTile label="Выполнено замеров" value={report.totals.measurements_count} />
           <ReportTile
-            label="К выплате всего"
-            value={rateNumber ? formatRub(report.totals.measurements_count * rateNumber) : 'укажите ставку'}
-            accent={rateNumber ? 'text-green-700' : 'text-gray-400 text-base'}
+            label="Проёмов к оплате"
+            value={report.totals.paid_openings_count}
           />
+          <ReportTile label="Удалённость в счёт" value={formatKm(report.totals.distance_km_invoice)} />
+          {(() => {
+            const total = salary(report.totals.paid_openings_count, report.totals.distance_km_invoice)
+            return (
+              <ReportTile
+                label="К выплате всего"
+                value={total !== null ? formatRub(total) : 'укажите ставку'}
+                accent={total !== null ? 'text-green-700' : 'text-gray-400 text-base'}
+              />
+            )
+          })()}
         </div>
       )}
 
@@ -180,8 +212,11 @@ const ServiceManagerReport = () => {
               <thead className="bg-gray-50">
                 <tr className="text-left text-xs font-medium text-gray-500 uppercase">
                   <th className="px-4 py-3">Сервис-менеджер</th>
-                  <th className="px-4 py-3 text-right">Выполнено замеров</th>
-                  <th className="px-4 py-3 text-right">Ставка</th>
+                  <th className="px-4 py-3 text-right">Замеров</th>
+                  <th className="px-4 py-3 text-right">Проёмов к оплате</th>
+                  <th className="px-4 py-3 text-right">За проёмы</th>
+                  <th className="px-4 py-3 text-right">Км в счёт</th>
+                  <th className="px-4 py-3 text-right">За км</th>
                   <th className="px-4 py-3 text-right">К выплате</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -194,10 +229,22 @@ const ServiceManagerReport = () => {
                     <Fragment key={sm.id}>
                       <tr className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium text-gray-900">{sm.full_name}</td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-900">{row.measurements_count}</td>
-                        <td className="px-4 py-3 text-right text-gray-600">{rateNumber ? formatRub(rateNumber) : '—'}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{row.measurements_count}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <div className="font-medium text-gray-900">{row.paid_openings_count}</div>
+                          {row.panels_count > 0 && (
+                            <div className="text-xs text-gray-500">{row.openings_count} проём. + {row.panels_count} пан.</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap text-gray-600">
+                          {rateNumber ? formatRub(row.paid_openings_count * rateNumber) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap text-gray-900">{formatKm(row.distance_km_invoice)}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap text-gray-600">
+                          {kmRateNumber ? formatRub(Number(row.distance_km_invoice) * kmRateNumber) : '—'}
+                        </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap font-semibold text-green-700">
-                          {formatRub(salary(row.measurements_count))}
+                          {formatRub(salary(row.paid_openings_count, row.distance_km_invoice))}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
@@ -211,7 +258,7 @@ const ServiceManagerReport = () => {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={5} className="bg-gray-50 px-4 py-3">
+                          <td colSpan={8} className="bg-gray-50 px-4 py-3">
                             <div className="overflow-x-auto">
                               <table className="min-w-full text-sm divide-y divide-gray-200 bg-white">
                                 <thead className="bg-gray-50">
@@ -221,7 +268,8 @@ const ServiceManagerReport = () => {
                                     <th className="px-3 py-2">Клиент / адрес</th>
                                     <th className="px-3 py-2">№ КП</th>
                                     <th className="px-3 py-2">Салон / менеджер</th>
-                                    <th className="px-3 py-2 text-right">Проёмов</th>
+                                    <th className="px-3 py-2 text-right">Проёмов к оплате</th>
+                                    <th className="px-3 py-2">Удалённость</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -242,7 +290,22 @@ const ServiceManagerReport = () => {
                                         <div>{m.salon_name}</div>
                                         <div className="text-xs text-gray-500">{m.manager_name}</div>
                                       </td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{m.openings_count}</td>
+                                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                                        <div className="text-gray-900">{m.paid_openings_count}</div>
+                                        {m.panels_count > 0 && (
+                                          <div className="text-xs text-gray-500">{m.openings_count} + {m.panels_count} пан.</div>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        {m.distance_payment ? (
+                                          <>
+                                            <div className={m.distance_payment === 'invoice' ? 'font-medium text-gray-900' : 'text-gray-500'}>
+                                              {m.distance_km ? formatKm(m.distance_km) : '—'}
+                                            </div>
+                                            <div className="text-xs text-gray-500">{m.distance_payment_display}</div>
+                                          </>
+                                        ) : <span className="text-gray-400">—</span>}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>

@@ -9,10 +9,11 @@ import {
   isInverso,
   validateLiftRequired,
 } from '../../api/measurements'
-import { Measurement, MeasurementOpening, MeasurementAttachment } from '../../types/measurements'
+import { Measurement, MeasurementOpening, MeasurementAttachment, DistancePayment, DISTANCE_PAYMENT_DISPLAY } from '../../types/measurements'
 import {
-  DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY, DoorType, DOUBLE_DOOR_TYPE,
+  DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY, OPENING_TYPE_SHORT, DoorType, DOUBLE_DOOR_TYPE,
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
+  OpeningType, SINGLE_OPENING_TYPES, DOUBLE_OPENING_TYPES, WORKING_LEAVES, WorkingLeaf,
 } from '../../types/orders'
 import { isQueuedError } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
@@ -29,6 +30,23 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 // (Django DecimalField) принимает только точку. Нормализуем сразу при вводе,
 // чтобы «1,5» и «1.5» сохранялись одинаково и не ломали замер (в т.ч. офлайн).
 const normalizeDecimal = (value: string): string => value.replace(',', '.')
+
+// Двустворчатой двери — свои открывания (A+C / B+D / B+D Inverso), остальным — одиночные.
+// Старое значение, не подходящее к типу двери, оставляем в списке, чтобы оно не пропало молча.
+const openingOptions = (op: MeasurementOpening): OpeningType[] => {
+  const options = op.door_type === DOUBLE_DOOR_TYPE ? DOUBLE_OPENING_TYPES : SINGLE_OPENING_TYPES
+  return op.opening_type && !options.includes(op.opening_type) ? [op.opening_type, ...options] : options
+}
+
+// Смена типа двери: открывание из «чужого» набора и рабочую створку сбрасываем
+const openingResetForDoorType = (op: MeasurementOpening, doorType: string) => {
+  const isDouble = doorType === DOUBLE_DOOR_TYPE
+  const allowed = isDouble ? DOUBLE_OPENING_TYPES : SINGLE_OPENING_TYPES
+  return {
+    opening_type: op.opening_type && !allowed.includes(op.opening_type) ? '' as OpeningType : op.opening_type,
+    working_leaf: isDouble ? op.working_leaf : '' as WorkingLeaf,
+  }
+}
 
 const MeasurementForm = () => {
   const { id } = useParams<{ id: string }>()
@@ -119,6 +137,7 @@ const MeasurementForm = () => {
       openings: m.openings.map((o) => {
         if (o.id !== openingId) return o
         const next = { ...o, [field]: value }
+        if (field === 'door_type') Object.assign(next, openingResetForDoorType(o, value))
         const isDouble = next.door_type === DOUBLE_DOOR_TYPE
         const noAuto = NO_AUTO_RECOMMENDATION_DOOR_TYPES.includes(next.door_type as DoorType)
         // СМ редактирует рек. дверь → ручной режим (пустые значения возвращают авторасчёт)
@@ -171,6 +190,9 @@ const MeasurementForm = () => {
         face_trim_comment: op.face_trim_comment,
         back_trim_qty: op.back_trim_qty,
         back_trim_comment: op.back_trim_comment,
+        working_leaf: op.working_leaf,
+        has_panels: op.has_panels,
+        panels_count: op.has_panels ? op.panels_count : null,
         extra_hardware: op.extra_hardware,
         threshold: op.threshold,
         notes: op.notes,
@@ -262,6 +284,9 @@ const MeasurementForm = () => {
         face_trim_comment: op.face_trim_comment,
         back_trim_qty: op.back_trim_qty,
         back_trim_comment: op.back_trim_comment,
+        working_leaf: op.working_leaf,
+        has_panels: op.has_panels,
+        panels_count: op.has_panels ? op.panels_count : null,
         extra_hardware: op.extra_hardware,
         threshold: op.threshold,
         notes: op.notes,
@@ -447,6 +472,8 @@ const MeasurementForm = () => {
     if (m.stairs_available === null || m.stairs_available === undefined) missing.push('возможен ли подъём по лестнице')
     if (m.carry_to_entrance === null || m.carry_to_entrance === undefined) missing.push('нужен ли пронос до подъезда')
     if (!(m.floor_number || '').trim()) missing.push('этаж')
+    // То же правило, что на сервере: выбрали оплату удалённости — укажите километры
+    if (m.distance_payment && !(Number(m.distance_km) > 0)) missing.push('расстояние в километрах')
     if (missing.length) {
       return `Перед закрытием замера заполните условия объекта: ${missing.join(', ')}.`
     }
@@ -516,6 +543,8 @@ const MeasurementForm = () => {
     carry_to_entrance?: boolean | null
     floor_number?: string
     floor_readiness?: string
+    distance_payment?: DistancePayment | ''
+    distance_km?: string | null
   }) => {
     if (!m) return
     // Оптимистично обновляем локально
@@ -941,6 +970,38 @@ const MeasurementForm = () => {
               placeholder="Например: готов / черновой / стяжка"
             />
           </div>
+          <div>
+            <label className={labelCls}>Оплата удалённости</label>
+            <select
+              value={m.distance_payment || ''}
+              onChange={(e) => saveConditions({ distance_payment: e.target.value as DistancePayment | '' })}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+            >
+              <option value="">— не указано —</option>
+              {(Object.keys(DISTANCE_PAYMENT_DISPLAY) as DistancePayment[]).map((p) => (
+                <option key={p} value={p}>{DISTANCE_PAYMENT_DISPLAY[p]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>
+              Расстояние, км{m.distance_payment && <span className="text-red-600"> *</span>}
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              defaultValue={m.distance_km ? String(Number(m.distance_km)) : ''}
+              onBlur={(e) => {
+                const value = e.target.value.trim().replace(',', '.')
+                const current = m.distance_km ? String(Number(m.distance_km)) : ''
+                if (value !== current) saveConditions({ distance_km: value || null })
+              }}
+              disabled={!canEditOpenings}
+              className={fieldCls}
+              placeholder="Например: 25"
+            />
+          </div>
         </div>
         {m.lift_impossible_warning && (
           <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm font-medium">
@@ -1030,8 +1091,9 @@ const MeasurementForm = () => {
                 <select
                   value={op.door_type}
                   onChange={(e) => {
-                    updateOpeningLocal(op.id, 'door_type', e.target.value as any)
-                    setTimeout(() => saveOpening({ ...op, door_type: e.target.value as any }), 0)
+                    const doorType = e.target.value as DoorType
+                    updateOpeningLocal(op.id, 'door_type', doorType)
+                    setTimeout(() => saveOpening({ ...op, door_type: doorType, ...openingResetForDoorType(op, doorType) }), 0)
                   }}
                   disabled={!canEditOpenings}
                   className={fieldCls}
@@ -1100,17 +1162,32 @@ const MeasurementForm = () => {
                   title={op.opening_type ? OPENING_TYPE_DISPLAY[op.opening_type] : ''}
                 >
                   <option value="">—</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="B_INVERSO">B Inverso</option>
-                  <option value="C">C</option>
-                  <option value="D">D</option>
-                  <option value="D_INVERSO">D Inverso</option>
+                  {openingOptions(op).map((value) => (
+                    <option key={value} value={value}>{OPENING_TYPE_SHORT[value]}</option>
+                  ))}
                 </select>
                 {isInverso(op.opening_type) && (
                   <p className="text-xs text-red-600 mt-1">⚠️ Inverso: увеличьте высоту полотна на 1 см.</p>
                 )}
               </div>
+              {op.door_type === DOUBLE_DOOR_TYPE && (
+                <div>
+                  <label className={labelCls}>Рабочая створка</label>
+                  <select
+                    value={op.working_leaf || ''}
+                    onChange={(e) => {
+                      const leaf = e.target.value as WorkingLeaf
+                      updateOpeningLocal(op.id, 'working_leaf', leaf)
+                      setTimeout(() => saveOpening({ ...op, working_leaf: leaf }), 0)
+                    }}
+                    disabled={!canEditOpenings}
+                    className={fieldCls}
+                  >
+                    <option value="">—</option>
+                    {WORKING_LEAVES.map((leaf) => <option key={leaf} value={leaf}>{leaf}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Рекомендации: рек. дверь редактируется СМ, рек. проём считается от неё */}
@@ -1292,6 +1369,45 @@ const MeasurementForm = () => {
                   placeholder="Комментарий (оборот)"
                 />
               </div>
+            </div>
+
+            {/* Панели: галочка открывает количество; в зарплате СМ каждая панель — как проём */}
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!op.has_panels}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    // Сразу 1 шт.: без количества сервер галочку не примет
+                    const next = { ...op, has_panels: checked, panels_count: checked ? (op.panels_count || 1) : null }
+                    // Одним обновлением: два вызова updateOpeningLocal подряд затёрли бы друг друга
+                    setM((prev) => prev ? { ...prev, openings: prev.openings.map((o) => o.id === op.id ? next : o) } : prev)
+                    saveOpening(next)
+                  }}
+                  disabled={!canEditOpenings}
+                  className="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                Панели
+              </label>
+              {op.has_panels && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={op.panels_count ?? ''}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 3)
+                      updateOpeningLocal(op.id, 'panels_count', digits ? Number(digits) : null)
+                    }}
+                    onBlur={() => saveOpening({ ...op, panels_count: op.panels_count || 1 })}
+                    disabled={!canEditOpenings}
+                    className={`${fieldCls} w-24`}
+                    aria-label="Количество панелей"
+                  />
+                  <span className="text-sm text-gray-500">шт.</span>
+                </div>
+              )}
             </div>
 
             {/* Доп. фурнитура / порог / примечания */}

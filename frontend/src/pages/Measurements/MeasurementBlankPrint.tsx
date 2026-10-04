@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { measurementsAPI, openingReworkText } from '../../api/measurements'
 import { Measurement, MeasurementOpening } from '../../types/measurements'
+import { DOUBLE_DOOR_TYPE } from '../../types/orders'
 
 /**
  * Печатная версия бланка замера. Рендерится на клиенте из кешированных данных,
@@ -205,7 +206,11 @@ const MeasurementBlankPrint = () => {
                       ? <span className="text-red-700 font-semibold">{reworkText(op)}</span>
                       : '—'}
                   </td>
-                  <td>{dash(op.opening_type_display)}</td>
+                  <td>
+                    {dash(op.opening_type_display)}
+                    {/* Двустворчатая: рядом с открыванием — рабочая створка */}
+                    {op.door_type === DOUBLE_DOOR_TYPE && op.working_leaf && <>, рабочая {op.working_leaf}</>}
+                  </td>
                   <td>{op.addon_qty != null && op.addon_qty !== '' ? op.addon_qty : (op.addon_width != null ? `${op.addon_width} мм` : '—')}</td>
                   <td className="left">{dash(op.face_trim_qty)}{op.face_trim_comment ? ` (${op.face_trim_comment})` : ''}</td>
                   <td className="left">{dash(op.back_trim_qty)}{op.back_trim_comment ? ` (${op.back_trim_comment})` : ''}</td>

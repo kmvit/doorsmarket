@@ -362,6 +362,22 @@ class OpeningType(models.TextChoices):
     C = 'C', 'C — левое наружнее, лицо снаружи'
     D = 'D', 'D — левое наружнее, лицо внутри'
     D_INVERSO = 'D_INVERSO', 'D Inverso — левое внутреннее, лицо снаружи'
+    # Только для двустворчатых дверей
+    A_C = 'A_C', 'A+C'
+    B_D = 'B_D', 'B+D'
+    B_D_INVERSO = 'B_D_INVERSO', 'B+D Inverso'
+
+
+# Двустворчатой двери доступны только эти открывания, остальным дверям — только одиночные
+DOUBLE_OPENING_TYPES = frozenset({OpeningType.A_C, OpeningType.B_D, OpeningType.B_D_INVERSO})
+
+
+class WorkingLeaf(models.TextChoices):
+    """Рабочая створка двустворчатой двери."""
+    A = 'A', 'A'
+    B = 'B', 'B'
+    C = 'C', 'C'
+    D = 'D', 'D'
 
 
 class OrderItem(models.Model):
@@ -635,6 +651,11 @@ class OrderActionReminder(models.Model):
 # ==================== Phase 3: Замер ====================
 
 
+class DistancePayment(models.TextChoices):
+    ON_SITE = 'on_site', 'Оплата на месте'
+    INVOICE = 'invoice', 'Включить в счёт'
+
+
 class Measurement(models.Model):
     """
     Замер (один на заявку). Создаётся СМ при назначении даты.
@@ -698,6 +719,16 @@ class Measurement(models.Model):
     # Повторный замер: менеджер возвращает выполненный замер СМ на доработку.
     # Замер тот же (СМ корректирует существующие проёмы), счётчик — сколько раз возвращали.
     repeat_count = models.PositiveSmallIntegerField(default=0, verbose_name='Повторных замеров')
+    # Удалённость объекта (условия объекта, заполняет СМ). «Включить в счёт» —
+    # километры идут в ежемесячный расчёт СМ; «на месте» — клиент платит сам.
+    distance_payment = models.CharField(
+        max_length=10, choices=DistancePayment.choices, blank=True,
+        verbose_name='Оплата удалённости',
+    )
+    distance_km = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        verbose_name='Расстояние, км',
+    )
     repeat_requested_at = models.DateTimeField(
         null=True, blank=True, verbose_name='Повторный замер назначен',
     )
@@ -804,6 +835,10 @@ class MeasurementOpening(models.Model):
         blank=True,
         verbose_name='Открывание',
     )
+    # Рабочая створка — только у двустворчатой двери
+    working_leaf = models.CharField(
+        max_length=1, choices=WorkingLeaf.choices, blank=True, verbose_name='Рабочая створка',
+    )
     # Историческое поле: раньше по добору записывали ширину в мм. Оставлено для
     # уже выполненных замеров (показывается в бланке с пометкой «мм»), новые
     # замеры заполняют addon_qty.
@@ -824,6 +859,10 @@ class MeasurementOpening(models.Model):
         verbose_name='Наличник оборотный, кол-во',
     )
     back_trim_comment = models.TextField(blank=True, verbose_name='Комментарий оборотный')
+    # Панели по проёму: в замер не входят, но в расчёте зарплаты СМ каждая
+    # панель считается как ещё один проём
+    has_panels = models.BooleanField(default=False, verbose_name='Панели')
+    panels_count = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Панели, кол-во')
 
     extra_hardware = models.TextField(blank=True, verbose_name='Доп. фурнитура')
     threshold = models.TextField(blank=True, verbose_name='Порог')
@@ -836,6 +875,14 @@ class MeasurementOpening(models.Model):
 
     def __str__(self):
         return f'Проём #{self.opening_number} замера #{self.measurement_id}'
+
+    @property
+    def opening_display_full(self):
+        """Открывание для бланка: у двустворчатой двери — с рабочей створкой («B+D, рабочая A»)."""
+        text = self.get_opening_type_display() if self.opening_type else ''
+        if self.door_type == DoorType.DOUBLE and self.working_leaf:
+            text = f'{text}, рабочая {self.working_leaf}' if text else f'Рабочая {self.working_leaf}'
+        return text
 
 
 class MeasurementAttachment(models.Model):

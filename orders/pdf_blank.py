@@ -10,6 +10,8 @@ import os
 from django.conf import settings
 from django.template.loader import render_to_string
 
+from .models import DoorType
+
 IMAGE_EXTS = (
     '.jpg', '.jpeg', '.jfif', '.jpe', '.png', '.gif', '.webp', '.bmp',
     '.heic', '.heif', '.avif',
@@ -139,6 +141,10 @@ def render_recommendations_blank(measurement) -> bytes:
             opening_type_display = item.get_opening_type_display()
         else:
             opening_type_display = op.get_opening_type_display() if op.opening_type else ''
+        # Двустворчатая: рабочую створку указывает СМ при замере — дописываем её
+        if op.door_type == DoorType.DOUBLE and op.working_leaf:
+            leaf = f'рабочая {op.working_leaf}'
+            opening_type_display = f'{opening_type_display}, {leaf}' if opening_type_display else leaf.capitalize()
         rows.append({
             'op': op,
             'opening_type_display': opening_type_display,

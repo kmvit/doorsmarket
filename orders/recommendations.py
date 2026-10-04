@@ -202,7 +202,7 @@ def validate_lift_required(openings: List[Dict[str, Any]]) -> bool:
     return False
 
 
-INVERSO_TYPES = {'B_INVERSO', 'D_INVERSO'}
+INVERSO_TYPES = {'B_INVERSO', 'D_INVERSO', 'B_D_INVERSO'}
 
 
 def validate_inverso_warning(opening_type: str) -> bool:

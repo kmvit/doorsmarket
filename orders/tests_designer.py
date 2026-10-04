@@ -56,10 +56,10 @@ class DesignerApiTest(DesignerTestBase):
         return [d['id'] for d in response.data]
 
     def test_search_by_name_and_studio(self):
-        # Регистр как в карточке: SQLite в тестах не приводит кириллицу к одному
-        # регистру (на проде Postgres — найдёт и «петрова»)
-        self.assertEqual(self.search('Петрова'), [self.designer.id])
-        self.assertEqual(self.search('Лоф'), [self.designer.id])
+        # Без учёта регистра и для кириллицы — независимо от локали базы
+        self.assertEqual(self.search('петрова'), [self.designer.id])
+        self.assertEqual(self.search('АННА'), [self.designer.id])
+        self.assertEqual(self.search('лоф'), [self.designer.id])
         self.assertEqual(self.search('Сидоров'), [])
 
     def test_search_by_phone_in_any_format(self):

@@ -6,6 +6,7 @@
         python manage.py test orders.tests_service_manager_report
 """
 from datetime import datetime
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -78,7 +79,11 @@ class ServiceManagerReportTest(TestCase):
     def test_counts_done_measurements_in_own_city(self):
         data = self.get()
         self.assertEqual(self.counts(data), {self.petr.id: 2, self.ivan.id: 1})
-        self.assertEqual(data['totals'], {'service_managers_count': 2, 'measurements_count': 3})
+        self.assertEqual(data['totals'], {
+            'service_managers_count': 2, 'measurements_count': 3,
+            'openings_count': 3, 'panels_count': 0, 'paid_openings_count': 3,
+            'distance_km_invoice': '0.0',
+        })
 
     def test_period_is_by_done_date(self):
         data = self.get(date_from='2026-10-01', date_to='2026-10-31')
@@ -99,3 +104,31 @@ class ServiceManagerReportTest(TestCase):
     def test_service_manager_has_no_access(self):
         self.client.force_authenticate(self.petr)
         self.assertEqual(self.client.get(URL).status_code, 403)
+
+    def test_invoice_distance_is_summed(self):
+        Measurement.objects.filter(pk=self.m1.pk).update(distance_payment='invoice', distance_km=Decimal('12.5'))
+        Measurement.objects.filter(pk=self.m2.pk).update(distance_payment='invoice', distance_km=Decimal('30'))
+        # «Оплата на месте» в расчёт не идёт
+        Measurement.objects.filter(pk=self.m3.pk).update(distance_payment='on_site', distance_km=Decimal('50'))
+        data = self.get()
+        petr = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.petr.id)
+        ivan = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.ivan.id)
+        self.assertEqual(petr['distance_km_invoice'], '42.5')
+        self.assertEqual(ivan['distance_km_invoice'], '0.0')
+        self.assertEqual(data['totals']['distance_km_invoice'], '42.5')
+        self.assertEqual(ivan['measurements'][0]['distance_payment_display'], 'Оплата на месте')
+
+    def test_panels_count_as_extra_openings(self):
+        # В m1 три проёма: у двух галочка «Панели» (2 и 1 шт.), у третьего количество без галочки не в счёт
+        o1, o2, o3 = self.m1.openings.order_by('opening_number')
+        MeasurementOpening.objects.filter(pk=o1.pk).update(has_panels=True, panels_count=2)
+        MeasurementOpening.objects.filter(pk=o2.pk).update(has_panels=True, panels_count=1)
+        MeasurementOpening.objects.filter(pk=o3.pk).update(has_panels=False, panels_count=5)
+        data = self.get()
+        petr = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.petr.id)
+        self.assertEqual(petr['openings_count'], 3)
+        self.assertEqual(petr['panels_count'], 3)
+        self.assertEqual(petr['paid_openings_count'], 6)
+        first = petr['measurements'][0]
+        self.assertEqual((first['openings_count'], first['panels_count'], first['paid_openings_count']), (3, 3, 6))
+        self.assertEqual(data['totals']['paid_openings_count'], 6)

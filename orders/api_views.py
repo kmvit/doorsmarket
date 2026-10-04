@@ -18,7 +18,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import (
-    DESIGNER_PAYOUT_STATUSES, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
+    DESIGNER_PAYOUT_STATUSES, DistancePayment, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
     MeasurementRequestFile,
@@ -180,7 +180,15 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         query = (self.request.query_params.get('search') or '').strip()
         if not query:
             return qs[:self.SEARCH_LIMIT]
-        condition = Q(full_name__icontains=query) | Q(studio__icontains=query)
+        # Имя и студию сравниваем в Python: при локали базы «C» Postgres не меняет
+        # регистр кириллицы, и ILIKE не нашёл бы «Петрову» по «петрова».
+        # Дизайнеров немного — пройти их целиком дёшево.
+        needle = query.casefold()
+        matched_ids = [
+            pk for pk, name, studio in qs.values_list('id', 'full_name', 'studio')
+            if needle in name.casefold() or needle in (studio or '').casefold()
+        ]
+        condition = Q(id__in=matched_ids)
         # По телефону ищем цифрами: «8 917 12…» и «+7 (917) 12…» находят один номер
         digits = ''.join(ch for ch in query if ch.isdigit())
         if digits:
@@ -1719,10 +1727,37 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             order.floor_number = (data.get('floor_number') or '')[:20]
         if 'floor_readiness' in data:
             order.floor_readiness = data.get('floor_readiness') or ''
+
+        # Удалённость объекта хранится в самом замере: это условия выезда СМ
+        measurement_fields = []
+        if 'distance_payment' in data:
+            payment = data.get('distance_payment') or ''
+            if payment and payment not in DistancePayment.values:
+                return Response({'distance_payment': ['Неизвестный способ оплаты удалённости']},
+                                status=status.HTTP_400_BAD_REQUEST)
+            m.distance_payment = payment
+            measurement_fields.append('distance_payment')
+        if 'distance_km' in data:
+            raw = data.get('distance_km')
+            if raw in (None, ''):
+                m.distance_km = None
+            else:
+                try:
+                    km = Decimal(str(raw).replace(',', '.').strip())
+                except (InvalidOperation, ValueError):
+                    km = None
+                if km is None or not km.is_finite() or km < 0 or km >= 100000:
+                    return Response({'distance_km': ['Укажите расстояние в километрах числом']},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                m.distance_km = km.quantize(Decimal('0.1'))
+            measurement_fields.append('distance_km')
+
         order.save(update_fields=[
             'lift_available', 'stairs_available', 'carry_to_entrance',
             'floor_number', 'floor_readiness', 'updated_at',
         ])
+        if measurement_fields:
+            m.save(update_fields=[*measurement_fields, 'updated_at'])
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
     # ---- Сохранить в черновиках (СМ) ----
@@ -1766,6 +1801,9 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             missing.append('нужен ли пронос до подъезда')
         if not (order.floor_number or '').strip():
             missing.append('этаж')
+        # Выбрали, кто платит за удалённость, — нужно и само расстояние
+        if m.distance_payment and not m.distance_km:
+            missing.append('расстояние в километрах')
         if missing:
             return Response(
                 {'detail': f'Перед закрытием замера заполните условия объекта: {", ".join(missing)}.'},

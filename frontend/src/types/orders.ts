@@ -73,7 +73,7 @@ export const ORDER_STATUS_HINT: Partial<Record<OrderStatus, string>> = {
 }
 
 export type DoorType = 'entrance' | 'interior' | 'sliding' | 'double' | 'other' | ''
-export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | ''
+export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | 'A_C' | 'B_D' | 'B_D_INVERSO' | ''
 export type AddonKind = 'box' | 'platband' | 'extension' | 'hinges' | 'handle' | 'mechanism' | 'glass' | 'extra' | 'service'
 
 export const DOOR_TYPE_DISPLAY: Record<string, string> = {
@@ -112,6 +112,9 @@ export const OPENING_TYPE_DISPLAY: Record<string, string> = {
   C: 'C — левое наружнее, лицо снаружи',
   D: 'D — левое наружнее, лицо внутри',
   D_INVERSO: 'D Inverso — левое внутреннее, лицо снаружи',
+  A_C: 'A+C',
+  B_D: 'B+D',
+  B_D_INVERSO: 'B+D Inverso',
 }
 
 export const OPENING_TYPE_SHORT: Record<string, string> = {
@@ -121,7 +124,18 @@ export const OPENING_TYPE_SHORT: Record<string, string> = {
   C: 'C',
   D: 'D',
   D_INVERSO: 'D Inverso',
+  A_C: 'A+C',
+  B_D: 'B+D',
+  B_D_INVERSO: 'B+D Inverso',
 }
+
+// Открывания одностворчатых дверей и двустворчатых — наборы не пересекаются
+export const SINGLE_OPENING_TYPES: OpeningType[] = ['A', 'B', 'B_INVERSO', 'C', 'D', 'D_INVERSO']
+export const DOUBLE_OPENING_TYPES: OpeningType[] = ['A_C', 'B_D', 'B_D_INVERSO']
+
+// Рабочая створка двустворчатой двери
+export const WORKING_LEAVES = ['A', 'B', 'C', 'D'] as const
+export type WorkingLeaf = typeof WORKING_LEAVES[number] | ''
 
 export type ActivityKind =
   | 'created' | 'updated' | 'items_changed' | 'status_changed'

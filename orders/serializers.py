@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    Salon, Designer, Order, OrderItem, OrderAddon, OrderAttachment, ActivityKind,
+    Salon, Designer, Order, OrderItem, DoorType, DOUBLE_OPENING_TYPES, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog, OVERDUE_STATUSES,
@@ -659,6 +659,40 @@ class MeasurementAttachmentSerializer(serializers.ModelSerializer):
         return None
 
 
+def validate_opening_double_door(serializer, attrs):
+    """
+    Двустворчатой двери — только открывания A+C / B+D / B+D Inverso и рабочая
+    створка; остальным дверям — только одиночные открывания, створки нет.
+    Проверяем открывание, только когда его меняют: у старых двустворчатых
+    проёмов могло остаться одиночное, и любая другая правка не должна падать.
+    """
+    instance = serializer.instance
+    door_type = attrs.get('door_type', instance.door_type if instance else '')
+    is_double = door_type == DoorType.DOUBLE
+    opening = attrs.get('opening_type')
+    opening_changed = 'opening_type' in attrs and (instance is None or opening != instance.opening_type)
+    if opening_changed and opening:
+        if is_double and opening not in DOUBLE_OPENING_TYPES:
+            raise serializers.ValidationError({'opening_type': 'Для двустворчатой двери открывание: A+C, B+D или B+D Inverso'})
+        if not is_double and opening in DOUBLE_OPENING_TYPES:
+            raise serializers.ValidationError({'opening_type': 'Открывания A+C / B+D — только для двустворчатой двери'})
+    if not is_double:
+        attrs['working_leaf'] = ''
+    return attrs
+
+
+def validate_opening_panels(serializer, attrs):
+    """Галочка «Панели» — нужно целое количество от 1; без галочки количество не храним."""
+    instance = serializer.instance
+    has_panels = attrs.get('has_panels', instance.has_panels if instance else False)
+    count = attrs['panels_count'] if 'panels_count' in attrs else (instance.panels_count if instance else None)
+    if has_panels and not count:
+        raise serializers.ValidationError({'panels_count': 'Укажите количество панелей'})
+    if not has_panels:
+        attrs['panels_count'] = None
+    return attrs
+
+
 class MeasurementOpeningSerializer(serializers.ModelSerializer):
     door_type_display = serializers.CharField(source='get_door_type_display', read_only=True)
     opening_type_display = serializers.CharField(source='get_opening_type_display', read_only=True)
@@ -681,10 +715,16 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'addon_width', 'addon_qty',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
+            'working_leaf',
+            'has_panels', 'panels_count',
             'extra_hardware', 'threshold', 'notes',
             'attachments', 'inverso_warning', 'recommendation_text',
         ]
         read_only_fields = ['id', 'recommended_door_is_manual']
+
+    def validate(self, attrs):
+        attrs = validate_opening_double_door(self, super().validate(attrs))
+        return validate_opening_panels(self, attrs)
 
     def get_inverso_warning(self, obj):
         from .recommendations import validate_inverso_warning, inverso_warning_text
@@ -714,8 +754,14 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
             'opening_type', 'addon_width', 'addon_qty',
             'face_trim_qty', 'face_trim_comment',
             'back_trim_qty', 'back_trim_comment',
+            'working_leaf',
+            'has_panels', 'panels_count',
             'extra_hardware', 'threshold', 'notes',
         ]
+
+    def validate(self, attrs):
+        attrs = validate_opening_double_door(self, super().validate(attrs))
+        return validate_opening_panels(self, attrs)
 
 
 class MeasurementSerializer(serializers.ModelSerializer):
@@ -769,9 +815,12 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'lift_required', 'lift_impossible_warning', 'order_status',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number', 'floor_readiness',
             'kp_number', 'kp_date',
+            'distance_payment', 'distance_km',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
+            # Удалённость меняется только через set_site_conditions — там проверка
+            'distance_payment', 'distance_km',
             'is_draft', 'draft_saved_at',
             'is_processed', 'processed_at', 'client_access_token', 'short_code',
             'updated_after_done_at',

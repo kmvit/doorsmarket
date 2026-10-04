@@ -1,4 +1,4 @@
-import { DoorType, OpeningType, OrderAttachment, OrderStatus } from './orders'
+import { DoorType, OpeningType, OrderAttachment, OrderStatus, WorkingLeaf } from './orders'
 
 export interface MeasurementAttachment {
   id: number
@@ -43,6 +43,11 @@ export interface MeasurementOpening {
   face_trim_comment: string
   back_trim_qty: string | number | null
   back_trim_comment: string
+  // Рабочая створка — только у двустворчатой двери
+  working_leaf: WorkingLeaf
+  // Панели по проёму: в расчёте зарплаты СМ каждая — как ещё один проём
+  has_panels: boolean
+  panels_count: number | null
 
   extra_hardware: string
   threshold: string
@@ -107,6 +112,9 @@ export interface Measurement {
   carry_to_entrance: boolean | null
   floor_number: string
   floor_readiness: string
+  // Удалённость объекта: кто платит и сколько км (в расчёт СМ идёт «включить в счёт»)
+  distance_payment?: DistancePayment | ''
+  distance_km?: string | null
   kp_number?: string | null
   kp_date?: string | null
 }
@@ -146,3 +154,10 @@ export interface MeasurementListItem {
 
 export type MeasurementFolder =
   | 'unscheduled' | 'scheduled' | 'today' | 'drafts' | 'done' | 'irrelevant' | 'mine' | ''
+
+export type DistancePayment = 'on_site' | 'invoice'
+
+export const DISTANCE_PAYMENT_DISPLAY: Record<DistancePayment, string> = {
+  on_site: 'Оплата на месте',
+  invoice: 'Включить в счёт',
+}

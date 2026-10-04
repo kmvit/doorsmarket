@@ -48,6 +48,9 @@ const emptyOpening = (measurementId: number, data: Partial<MeasurementOpening>):
   face_trim_comment: '',
   back_trim_qty: null,
   back_trim_comment: '',
+  working_leaf: '',
+  has_panels: false,
+  panels_count: null,
   extra_hardware: '',
   threshold: '',
   notes: '',
@@ -395,6 +398,8 @@ export const measurementsAPI = {
       carry_to_entrance?: boolean | null
       floor_number?: string
       floor_readiness?: string
+      distance_payment?: string
+      distance_km?: string | null
     },
   ): Promise<Measurement> => {
     try {
@@ -750,7 +755,7 @@ export const buildRecommendationText = (
 }
 
 export const isInverso = (openingType: string): boolean =>
-  openingType === 'B_INVERSO' || openingType === 'D_INVERSO'
+  openingType === 'B_INVERSO' || openingType === 'D_INVERSO' || openingType === 'B_D_INVERSO'
 
 export const validateLiftRequired = (
   openings: {
