@@ -1,5 +1,6 @@
 """
-Отчёт для расчёта зарплаты СМ: выполненные за период замеры по каждому СМ.
+Отчёт по замерам для расчёта зарплаты СМ (по образцу «Отчет по замерам.xlsx»):
+шкала по количеству проёмов, удалённость × 30 ₽, итоги, выгрузка в Excel.
 
 Запуск (роль Postgres не умеет создавать БД, поэтому через sqlite):
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
@@ -9,7 +10,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -76,27 +77,33 @@ class ServiceManagerReportTest(TestCase):
     def counts(self, data):
         return {r['service_manager']['id']: r['measurements_count'] for r in data['service_managers']}
 
+    def row(self, data, sm):
+        return next(r for r in data['service_managers'] if r['service_manager']['id'] == sm.id)
+
     def test_counts_done_measurements_in_own_city(self):
         data = self.get()
         self.assertEqual(self.counts(data), {self.petr.id: 2, self.ivan.id: 1})
-        self.assertEqual(data['totals'], {
-            'service_managers_count': 2, 'measurements_count': 3,
-            'openings_count': 3, 'panels_count': 0, 'paid_openings_count': 3,
-            'distance_km_invoice': '0.0',
-        })
+        # m1 — 3 проёма → 750 ₽; у m2 и m3 проёмов нет → 0
+        self.assertEqual(data['totals']['measurements_count'], 3)
+        self.assertEqual(data['totals']['total'], '750.00')
 
     def test_period_is_by_done_date(self):
         data = self.get(date_from='2026-10-01', date_to='2026-10-31')
         self.assertEqual(self.counts(data), {self.petr.id: 1, self.ivan.id: 1})
 
-    def test_measurement_details(self):
-        row = next(r for r in self.get()['service_managers'] if r['service_manager']['id'] == self.petr.id)
-        self.assertEqual(row['service_manager']['full_name'], 'Пётр Петров')
-        first = row['measurements'][0]
+    def test_measurement_row_like_template(self):
+        petr = self.row(self.get(), self.petr)
+        self.assertEqual(petr['service_manager']['full_name'], 'Пётр Петров')
+        first, second = petr['measurements']
+        # Номера в отчёте СМ — с 1, по дате выполнения
+        self.assertEqual((first['number'], second['number']), (1, 2))
         self.assertEqual(first['id'], self.m1.id)
-        self.assertEqual(first['openings_count'], 3)
         self.assertEqual(first['address'], 'ул. Ленина, 1')
         self.assertEqual(first['order_id'], self.m1.request.order_id)
+        self.assertEqual(first['manager_name'], 'mgr')
+        self.assertEqual(first['openings_total'], 3)
+        self.assertEqual(first['measurement_sum'], '750.00')
+        self.assertEqual(first['total'], '750.00')
 
     def test_filter_by_service_manager(self):
         self.assertEqual(self.counts(self.get(service_manager=self.ivan.id)), {self.ivan.id: 1})
@@ -105,18 +112,18 @@ class ServiceManagerReportTest(TestCase):
         self.client.force_authenticate(self.petr)
         self.assertEqual(self.client.get(URL).status_code, 403)
 
-    def test_invoice_distance_is_summed(self):
+    def test_distance_counted_only_if_not_paid_on_site(self):
         Measurement.objects.filter(pk=self.m1.pk).update(distance_payment='invoice', distance_km=Decimal('12.5'))
-        Measurement.objects.filter(pk=self.m2.pk).update(distance_payment='invoice', distance_km=Decimal('30'))
-        # «Оплата на месте» в расчёт не идёт
         Measurement.objects.filter(pk=self.m3.pk).update(distance_payment='on_site', distance_km=Decimal('50'))
         data = self.get()
-        petr = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.petr.id)
-        ivan = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.ivan.id)
-        self.assertEqual(petr['distance_km_invoice'], '42.5')
-        self.assertEqual(ivan['distance_km_invoice'], '0.0')
-        self.assertEqual(data['totals']['distance_km_invoice'], '42.5')
-        self.assertEqual(ivan['measurements'][0]['distance_payment_display'], 'Оплата на месте')
+        first = self.row(data, self.petr)['measurements'][0]
+        self.assertEqual(first['payment_status'], 'Не оплачен')
+        self.assertEqual(first['distance_sum'], '375.00')      # 12,5 км × 30
+        self.assertEqual(first['total'], '1125.00')            # 750 + 375
+        ivan = self.row(data, self.ivan)
+        self.assertEqual(ivan['measurements'][0]['payment_status'], 'Оплачен на месте')
+        self.assertEqual(ivan['measurements'][0]['distance_sum'], '0.00')
+        self.assertEqual(data['totals']['total'], '1125.00')
 
     def test_panels_count_as_extra_openings(self):
         # В m1 три проёма: у двух галочка «Панели» (2 и 1 шт.), у третьего количество без галочки не в счёт
@@ -124,11 +131,44 @@ class ServiceManagerReportTest(TestCase):
         MeasurementOpening.objects.filter(pk=o1.pk).update(has_panels=True, panels_count=2)
         MeasurementOpening.objects.filter(pk=o2.pk).update(has_panels=True, panels_count=1)
         MeasurementOpening.objects.filter(pk=o3.pk).update(has_panels=False, panels_count=5)
-        data = self.get()
-        petr = next(r for r in data['service_managers'] if r['service_manager']['id'] == self.petr.id)
-        self.assertEqual(petr['openings_count'], 3)
-        self.assertEqual(petr['panels_count'], 3)
-        self.assertEqual(petr['paid_openings_count'], 6)
-        first = petr['measurements'][0]
-        self.assertEqual((first['openings_count'], first['panels_count'], first['paid_openings_count']), (3, 3, 6))
-        self.assertEqual(data['totals']['paid_openings_count'], 6)
+        first = self.row(self.get(), self.petr)['measurements'][0]
+        self.assertEqual((first['openings_count'], first['panels_count'], first['openings_total']), (3, 3, 6))
+        self.assertEqual(first['measurement_sum'], '900.00')   # 6 проёмов → ступень 6–10
+
+    def test_month_total_is_sum_of_measurement_totals(self):
+        for n in range(4, 13):                                 # m1 → 12 проёмов: 1200 ₽
+            MeasurementOpening.objects.create(measurement=self.m1, opening_number=n)
+        Measurement.objects.filter(pk=self.m2.pk).update(distance_payment='invoice', distance_km=Decimal('10'))
+        petr = self.row(self.get(), self.petr)
+        self.assertEqual(petr['measurements_sum'], '1200.00')
+        self.assertEqual(petr['distance_sum'], '300.00')
+        self.assertEqual(petr['total'], '1500.00')
+
+    def test_excel_export(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        response = self.client.get(URL, {'export': 'xlsx'})
+        self.assertEqual(response.status_code, 200)
+        wb = load_workbook(BytesIO(response.content))
+        ws = wb['Пётр Петров']
+        self.assertEqual(ws['A2'].value, '№')
+        self.assertEqual(ws['J2'].value, 'Итого по замеру')
+        self.assertEqual(ws['A3'].value, 1)
+        self.assertEqual(ws['J3'].value, 750)
+        self.assertEqual(ws['A5'].value, 'Итого за месяц')
+        self.assertEqual(ws['J5'].value, 750)
+
+
+class TariffTest(SimpleTestCase):
+    """Шкала «сумма по замеру» из образца отчёта."""
+
+    def test_tariff_steps(self):
+        from orders.service_manager_report import measurement_sum
+        cases = {0: 0, 1: 750, 5: 750, 6: 900, 10: 900, 11: 1200, 15: 1200, 16: 1800, 20: 1800,
+                 21: 2400, 30: 2400, 31: 3600, 40: 3600, 41: 4800, 60: 4800}
+        for openings, amount in cases.items():
+            self.assertEqual(measurement_sum(openings), (Decimal(amount), False), openings)
+
+    def test_over_sixty_is_flagged(self):
+        from orders.service_manager_report import measurement_sum
+        self.assertEqual(measurement_sum(61), (Decimal(4800), True))

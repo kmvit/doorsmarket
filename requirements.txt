@@ -17,3 +17,5 @@ weasyprint>=66.0
 # Каталог дверей хранит картинки в ImageField — Pillow нужен явно,
 # а не транзитом через weasyprint.
 Pillow>=10.0.0
+# Выгрузка отчёта по замерам в Excel
+openpyxl>=3.1
