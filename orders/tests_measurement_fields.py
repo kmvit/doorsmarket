@@ -9,7 +9,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from orders.models import Measurement, MeasurementOpening, MeasurementRequest, Order, OrderStatus, Salon
@@ -154,3 +154,36 @@ class DoubleDoorOpeningTest(MeasurementTestBase):
             'm': self.m, 'order': self.order, 'openings': [MeasurementOpening.objects.get(pk=self.opening.pk)],
         })
         self.assertIn('A+C, рабочая C', html)
+
+
+class OpeningCreateRetryTest(MeasurementTestBase):
+    """Повтор создания проёма из офлайн-очереди (ответ потерялся) не делает дубль."""
+
+    def post(self, **data):
+        return self.client.post('/api/v1/measurement-openings/', {'measurement': self.m.id, **data}, format='json')
+
+    def test_same_client_uid_returns_existing_opening(self):
+        first = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
+        self.assertEqual(first.status_code, 201, first.data)
+        again = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
+        self.assertEqual(again.status_code, 200, again.data)
+        self.assertEqual(again.data['id'], first.data['id'])
+        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 1)
+
+    def test_different_uids_and_no_uid_create_separate_openings(self):
+        self.post(opening_number=1, client_uid='abc-1')
+        self.post(opening_number=2, client_uid='abc-2')
+        self.post(opening_number=3)
+        self.post(opening_number=4)
+        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 4)
+
+
+class BlankSizeBreaksTest(SimpleTestCase):
+    """Размеры в бланке переносятся только после «×» и «+», числа целиком."""
+
+    def test_double_door_width_gets_break_points_only_at_signs(self):
+        from orders.templatetags.blank_sizes import ZWSP, size_breaks
+        self.assertEqual(size_breaks('670 + 670'), f'670+{ZWSP}670')
+        self.assertEqual(size_breaks('800+800+400'), f'800+{ZWSP}800+{ZWSP}400')
+        self.assertEqual(size_breaks(1340), '1340')
+        self.assertEqual(size_breaks(None), '')

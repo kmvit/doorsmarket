@@ -2161,6 +2161,19 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
                 description='Замер дополнен после выполнения: изменены проёмы',
             )
 
+    def create(self, request, *args, **kwargs):
+        """
+        Повтор того же создания (телефон не получил ответ и отправил запрос из
+        очереди ещё раз) возвращает уже созданный проём, а не делает дубль.
+        """
+        uid = str(request.data.get('client_uid') or '').strip()
+        measurement_id = request.data.get('measurement')
+        if uid and measurement_id:
+            existing = self.get_queryset().filter(measurement_id=measurement_id, client_uid=uid).first()
+            if existing is not None:
+                return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import PermissionDenied, ValidationError
         validated = serializer.validated_data

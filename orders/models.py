@@ -871,6 +871,10 @@ class MeasurementOpening(models.Model):
     # Панели по проёму: в замер не входят, но в расчёте зарплаты СМ каждая
     # панель считается как ещё один проём
     has_panels = models.BooleanField(default=False, verbose_name='Панели')
+    # Метка, которую телефон даёт создаваемому проёму. При плохой связи запрос на
+    # создание может дойти до сервера, а ответ потеряться — телефон отправит его
+    # повторно из очереди. По метке сервер узнаёт уже созданный проём и не делает дубль.
+    client_uid = models.CharField(max_length=64, blank=True, db_index=True, verbose_name='Метка создания')
     panels_count = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Панели, кол-во')
 
     extra_hardware = models.TextField(blank=True, verbose_name='Доп. фурнитура')

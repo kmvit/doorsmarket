@@ -758,8 +758,10 @@ class MeasurementOpeningSerializer(serializers.ModelSerializer):
             'has_panels', 'panels_count',
             'extra_hardware', 'threshold', 'notes',
             'attachments', 'inverso_warning', 'recommendation_text',
+            'client_uid',
         ]
         read_only_fields = ['id', 'recommended_door_is_manual']
+        extra_kwargs = {'client_uid': {'write_only': True, 'required': False}}
 
     def validate(self, attrs):
         attrs = validate_opening_double_door(self, super().validate(attrs))

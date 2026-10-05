@@ -8,7 +8,7 @@ import {
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
 } from '../types/orders'
 import { measurementUtils, cacheUtils, withOfflineFallback, db } from '../services/offline'
-import { requestQueue, requestWithQueue, isNetworkError } from '../services/sync'
+import { requestQueue, requestWithQueue, isNetworkError, resolveTempId } from '../services/sync'
 
 // TTL кеша для вспомогательных данных — 7 дней, чтобы пережить длительный офлайн
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -179,6 +179,14 @@ const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial
     op.door_type, op.recommended_opening_height, op.recommended_opening_width,
   )
   return op
+}
+
+// Метка создания проёма (см. client_uid на сервере)
+const newClientUid = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  } catch { /* старый Safari — ниже запасной вариант */ }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
 // Найти id замера по id проёма (по локальным данным)
@@ -505,6 +513,17 @@ export const measurementOpeningsAPI = {
   },
 
   update: async (id: number, data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
+    // Временный проём (создан офлайн), который уже ушёл на сервер: правим его по
+    // настоящему id. Раньше правка писалась только в телефон — POST уже отправлен,
+    // и изменение (например, открывание) молча терялось.
+    if (id < 0) {
+      const realId = resolveTempId(id)
+      const pendingCreate = (await getLocalOpening(id))?._pendingRequestId
+      const stillQueued = pendingCreate != null && (await db.pendingRequests.get(pendingCreate)) != null
+      if (realId != null && !stillQueued) {
+        return measurementOpeningsAPI.update(realId, data)
+      }
+    }
     // Временный проём (создан офлайн): правим payload отложенного POST — PATCH
     // по несуществующему серверному id слать нельзя
     if (id < 0) {
@@ -553,6 +572,9 @@ export const measurementOpeningsAPI = {
 
   create: async (data: Partial<MeasurementOpening>): Promise<MeasurementOpening> => {
     const measurementId = Number(data.measurement) || 0
+    // Метка создания: если ответ потеряется и запрос уйдёт повторно из очереди,
+    // сервер по ней узнает уже созданный проём и не сделает дубль
+    data = { ...data, client_uid: (data as any).client_uid || newClientUid() } as Partial<MeasurementOpening>
     try {
       const response = await apiClient.post('/measurement-openings/', data)
       const created: MeasurementOpening = response.data
@@ -581,6 +603,20 @@ export const measurementOpeningsAPI = {
   delete: async (id: number): Promise<void> => {
     const measurementId = await findMeasurementIdByOpening(id)
 
+    // Временный проём, уже ушедший на сервер, — удаляем настоящий
+    if (id < 0) {
+      const realId = resolveTempId(id)
+      const pendingCreate = (await getLocalOpening(id))?._pendingRequestId
+      const stillQueued = pendingCreate != null && (await db.pendingRequests.get(pendingCreate)) != null
+      if (realId != null && !stillQueued) {
+        const measurementId = await findMeasurementIdByOpening(id)
+        await db.measurementOpenings.delete(id)
+        if (measurementId) {
+          await applyOpeningsToLocalDetail(measurementId, (ops) => ops.filter((o) => o.id !== id))
+        }
+        return measurementOpeningsAPI.delete(realId)
+      }
+    }
     // Временный проём: убираем отложенный POST и локальную копию, серверу ничего не шлём
     if (id < 0) {
       const local = await getLocalOpening(id)

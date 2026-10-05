@@ -242,8 +242,13 @@ const MeasurementForm = () => {
     }
   }
 
+  // Защита от двойного нажатия: на телефоне второй тап по «Добавить проём»
+  // или «Копировать», пока первый ещё сохраняется, создавал проём-дубль
+  const creatingOpeningRef = useRef(false)
+
   const addOpening = async () => {
-    if (!m) return
+    if (!m || creatingOpeningRef.current) return
+    creatingOpeningRef.current = true
     const maxNum = m.openings.reduce((acc, o) => Math.max(acc, o.opening_number || 0), 0)
     try {
       const created = await measurementOpeningsAPI.create({
@@ -253,11 +258,17 @@ const MeasurementForm = () => {
       setM((prev) => prev ? { ...prev, openings: [...prev.openings, created] } : prev)
     } catch {
       alert('Не удалось добавить проём')
+    } finally {
+      creatingOpeningRef.current = false
     }
   }
 
   const copyOpening = async (op: MeasurementOpening) => {
-    if (!m) return
+    if (!m || creatingOpeningRef.current) return
+    // Кнопка стоит рядом с «Удалить» в шапке проёма — её легко задеть, а копия
+    // появляется в самом низу списка, и её не замечают
+    if (!confirm(`Скопировать проём №${op.opening_number}${op.room_name ? ` (${op.room_name})` : ''} в новый проём?`)) return
+    creatingOpeningRef.current = true
     const maxNum = m.openings.reduce((acc, o) => Math.max(acc, o.opening_number || 0), 0)
     try {
       const created = await measurementOpeningsAPI.create({
@@ -292,8 +303,12 @@ const MeasurementForm = () => {
         notes: op.notes,
       })
       setM((prev) => prev ? { ...prev, openings: [...prev.openings, created] } : prev)
+      // Сразу показываем копию: она добавляется в конец списка
+      setTimeout(() => document.getElementById(`opening-${created.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch {
       alert('Не удалось скопировать проём')
+    } finally {
+      creatingOpeningRef.current = false
     }
   }
 
@@ -1029,7 +1044,7 @@ const MeasurementForm = () => {
           </div>
         )}
         {m.openings.map((op) => (
-          <div key={op.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div key={op.id} id={`opening-${op.id}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 scroll-mt-20">
             <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-200">
               <h3 className="text-base font-semibold text-gray-900">
                 Проём #{op.opening_number}{op.room_name && ` — ${op.room_name}`}

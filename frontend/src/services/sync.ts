@@ -111,6 +111,36 @@ const rememberTempId = (tempId: number, realId: number): void => {
   }
 }
 
+/** Настоящий id сущности, созданной офлайн, по её временному id (или null — ещё не синхронизирована). */
+export const resolveTempId = (tempId: number): number | null => {
+  const real = loadTempIdMap()[String(tempId)]
+  return real != null ? Number(real) : null
+}
+
+/**
+ * Проём, созданный офлайн, ушёл на сервер — меняем его временную копию в
+ * телефоне на настоящую (с серверным id). Иначе форма и локальная копия замера
+ * продолжали жить со временным id: правки после синхронизации никуда не
+ * уходили, а после загрузки рядом с настоящим проёмом висела временная копия.
+ */
+const replaceLocalOpening = async (tempId: number, created: any): Promise<void> => {
+  try {
+    await db.measurementOpenings.delete(tempId)
+    // Правки, сделанные офлайн после создания, уже лежат в теле этого POST — сервер их сохранил
+    await db.measurementOpenings.put(created)
+    const detail = created.measurement ? await db.measurements.get(created.measurement) : undefined
+    if (detail && Array.isArray(detail.openings)) {
+      const hasReal = detail.openings.some((o: any) => o.id === created.id)
+      detail.openings = hasReal
+        ? detail.openings.filter((o: any) => o.id !== tempId)
+        : detail.openings.map((o: any) => (o.id === tempId ? created : o))
+      await db.measurements.put(detail)
+    }
+  } catch (e) {
+    console.error('[Sync] Не удалось заменить временную копию проёма', e)
+  }
+}
+
 // Разрешить временные ссылки (opening / measurement) в теле запроса по карте.
 // Возвращает changed (что-то заменили — надо перезаписать в БД) и unresolved
 // (остались отрицательные ссылки без пары — зависимость ещё не синхронизирована).
@@ -392,6 +422,9 @@ class RequestQueue {
           if (request.tempId != null && result && typeof result === 'object' && result.id != null) {
             rememberTempId(request.tempId, result.id)
             await this.remapTempId(request.tempId, result.id, requests)
+            if (request.url.startsWith('/measurement-openings/')) {
+              await replaceLocalOpening(request.tempId, result)
+            }
           }
           this.notifyListeners()
         } catch (error: any) {
