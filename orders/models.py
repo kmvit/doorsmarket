@@ -20,11 +20,17 @@ class Designer(models.Model):
     """
     Дизайнер, который привёл клиента. Карточку заводит менеджер при создании
     заказа; дальше её выбирают из списка — поиском по имени или телефону.
+    Список дизайнеров у каждого города свой: дизайнер, работающий в двух
+    городах, заводится карточкой в каждом.
     """
     full_name = models.CharField(max_length=255, verbose_name='Фамилия и имя')
     # Хранится в виде +7XXXXXXXXXX — так одного дизайнера не заведут дважды
-    # из-за разной записи номера
-    phone = models.CharField(max_length=20, unique=True, verbose_name='Телефон')
+    # из-за разной записи номера. Уникален в пределах города (см. Meta).
+    phone = models.CharField(max_length=20, verbose_name='Телефон')
+    city = models.ForeignKey(
+        'users.City', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='designers', verbose_name='Город',
+    )
     studio = models.CharField(max_length=255, blank=True, verbose_name='Студия')
     bonus_percent = models.PositiveSmallIntegerField(
         null=True, blank=True, validators=[MaxValueValidator(99)],
@@ -40,6 +46,9 @@ class Designer(models.Model):
         verbose_name = 'Дизайнер'
         verbose_name_plural = 'Дизайнеры'
         ordering = ['full_name']
+        constraints = [
+            models.UniqueConstraint(fields=['city', 'phone'], name='designer_phone_unique_in_city'),
+        ]
 
     def __str__(self):
         return f'{self.full_name} ({self.phone})'

@@ -7,7 +7,7 @@ import { OrderListItem, Salon, OrderStatus, ORDER_STATUS_DISPLAY, ORDER_STATUS_C
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
-import ManagerFilter from '../../components/orders/ManagerFilter'
+import PeopleFilters, { canFilterByPeople, hasPeopleFilter, normalizePeopleFilter, EMPTY_PEOPLE_FILTER, PeopleFilterValue } from '../../components/orders/PeopleFilters'
 import DesignerPayoutCell from '../../components/orders/DesignerPayoutCell'
 
 // Метки папок для баннера (folder может быть статусом или составной выборкой)
@@ -41,14 +41,15 @@ const OrderList = () => {
   // В сеансе мог остаться фильтр старого формата — одна строка вместо массива
   const statusFilter = toArray<OrderStatus>(rawStatusFilter)
   const [salonFilter, setSalonFilter] = usePersistedState<number | ''>('orders:salon', '')
-  // Фильтр по менеджерам — для руководителя (и админа)
-  const [managerFilter, setManagerFilter] = usePersistedState<string[]>('orders:managers', [])
+  // Город / салон / менеджер — для руководителя и админа
+  const [rawPeople, setPeople] = usePersistedState<PeopleFilterValue>('orders:people', EMPTY_PEOPLE_FILTER)
+  const people = normalizePeopleFilter(rawPeople)
   const [myOrders, setMyOrders] = usePersistedState('orders:my', false)
   // «Кроме выполненных и неактуальных» — по умолчанию включено
   const [excludeFinished, setExcludeFinished] = usePersistedState('orders:exclude_finished', true)
 
   const canCreate = user?.role === 'manager' || user?.role === 'admin'
-  const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
+  const canFilterByManager = canFilterByPeople(user?.role)
 
   const showMeasurementTime = MEASUREMENT_DAY_FOLDERS.includes(folder)
   // Папка «Выплаты дизайнерам»: дизайнер и кнопка «Выплачен» в строке
@@ -71,8 +72,11 @@ const OrderList = () => {
     try {
       const data = await ordersAPI.getList({
         status: statusFilter,
-        salon: salonFilter || undefined,
-        managers: canFilterByManager ? managerFilter : undefined,
+        // Салон одним значением — у остальных ролей; у руководителя и админа — свой блок
+        salon: !canFilterByManager && salonFilter ? salonFilter : undefined,
+        managers: canFilterByManager ? people.managers : undefined,
+        salons: canFilterByManager ? people.salons : undefined,
+        cities: canFilterByManager ? people.cities : undefined,
         search: search || undefined,
         my_orders: myOrders || undefined,
         exclude_finished: excludeFinished || undefined,
@@ -84,7 +88,7 @@ const OrderList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, rawStatusFilter, salonFilter, managerFilter, canFilterByManager, myOrders, excludeFinished, folder])
+  }, [search, rawStatusFilter, salonFilter, rawPeople, canFilterByManager, myOrders, excludeFinished, folder])
 
   useEffect(() => {
     salonsAPI.getAll().then(setSalons).catch(() => {})
@@ -169,7 +173,7 @@ const OrderList = () => {
             className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2 focus:border-primary-500 focus:ring-primary-500"
           />
         </div>
-        {salons.length > 0 && (
+        {!canFilterByManager && salons.length > 0 && (
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Салон</label>
             <select
@@ -184,16 +188,7 @@ const OrderList = () => {
             </select>
           </div>
         )}
-        {canFilterByManager && (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Менеджер</label>
-            <ManagerFilter
-              value={managerFilter}
-              onChange={setManagerFilter}
-              className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
-            />
-          </div>
-        )}
+        <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
         {(user?.role === 'service_manager' || user?.role === 'leader' || user?.role === 'admin') && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
@@ -231,7 +226,7 @@ const OrderList = () => {
           <div className="text-5xl mb-4">📋</div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Нет заказов</h2>
           <p className="text-gray-500 mb-4">
-            {search || statusFilter.length || salonFilter || (canFilterByManager && managerFilter.length) ? 'Ничего не найдено по выбранным фильтрам' : 'Заказов пока нет'}
+            {search || statusFilter.length || salonFilter || (canFilterByManager && hasPeopleFilter(people)) ? 'Ничего не найдено по выбранным фильтрам' : 'Заказов пока нет'}
           </p>
           {canCreate && (
             <Link

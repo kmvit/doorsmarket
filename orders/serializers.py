@@ -203,14 +203,40 @@ def normalize_phone(raw):
     return f'+{digits}' if len(digits) == 11 and digits[0] == '7' else None
 
 
+def user_city_id(user):
+    """Город пользователя: его собственный или город его салона (у менеджера)."""
+    if not user or not user.is_authenticated:
+        return None
+    if getattr(user, 'city_id', None):
+        return user.city_id
+    salon = getattr(user, 'salon', None)
+    return salon.city_id if salon is not None else None
+
+
 class DesignerSerializer(serializers.ModelSerializer):
     # Поле объявлено явно: стандартная проверка уникальности сравнивала бы номер
     # в том виде, как его ввели, а не нормализованный
     phone = serializers.CharField(max_length=30)
+    city_name = serializers.CharField(source='city.name', read_only=True, default='')
 
     class Meta:
         model = Designer
-        fields = ['id', 'full_name', 'phone', 'studio', 'bonus_percent']
+        fields = ['id', 'full_name', 'phone', 'studio', 'bonus_percent', 'city', 'city_name']
+        # Город ставит сервер: менеджеру и руководителю — их город, админу — переданный
+        # (город салона в заказе). Валидаторы уникальности — свои, в validate.
+        extra_kwargs = {'city': {'required': False, 'allow_null': True}}
+        validators = []
+
+    def resolve_city_id(self, attrs):
+        """Город карточки: у не-админа — всегда свой; админ может указать город (салона заказа)."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if self.instance is not None and 'city' not in attrs:
+            return self.instance.city_id
+        if user is not None and getattr(user, 'role', '') == 'admin':
+            city = attrs.get('city')
+            return city.id if city else (self.instance.city_id if self.instance else user_city_id(user))
+        return user_city_id(user)
 
     def validate_full_name(self, value):
         value = (value or '').strip()
@@ -222,22 +248,31 @@ class DesignerSerializer(serializers.ModelSerializer):
         phone = normalize_phone(value)
         if not phone:
             raise serializers.ValidationError('Укажите телефон в формате +7 (XXX) XXX-XX-XX')
-        duplicate = Designer.objects.filter(phone=phone)
+        return phone
+
+    def validate(self, attrs):
+        city_id = self.resolve_city_id(attrs)
+        attrs['city_id'] = city_id
+        attrs.pop('city', None)
+        # Телефон уникален в пределах города: в другом городе этот же дизайнер
+        # заводится своей карточкой
+        phone = attrs.get('phone') or (self.instance.phone if self.instance else None)
+        duplicate = Designer.objects.filter(phone=phone, city_id=city_id)
         if self.instance is not None:
             duplicate = duplicate.exclude(pk=self.instance.pk)
         existing = duplicate.first()
         if existing:
-            raise serializers.ValidationError(
-                f'Дизайнер с этим телефоном уже заведён: {existing.full_name}. Выберите его из списка.'
-            )
-        return phone
+            raise serializers.ValidationError({
+                'phone': f'Дизайнер с этим телефоном уже заведён: {existing.full_name}. Выберите его из списка.',
+            })
+        return attrs
 
 
 # Поля заказа для продаж: дизайнер, месяц оплаты, вероятность оформления
 ORDER_SALES_FIELDS = ['has_designer', 'designer', 'payment_month', 'order_probability']
 
 
-def validate_order_sales_fields(attrs, instance=None):
+def validate_order_sales_fields(attrs, instance=None, salon=None):
     """
     При создании заказа (instance=None) ответ «есть ли дизайнер» обязателен,
     а при «да» — сам дизайнер. У старых заказов поле пустое, поэтому при
@@ -245,6 +280,10 @@ def validate_order_sales_fields(attrs, instance=None):
     """
     has_designer = attrs.get('has_designer', instance.has_designer if instance else None)
     designer = attrs['designer'] if 'designer' in attrs else (instance.designer if instance else None)
+    salon = attrs.get('salon') or (instance.salon if instance else None) or salon
+    if has_designer and designer is not None and designer.city_id and salon is not None \
+            and salon.city_id and designer.city_id != salon.city_id:
+        raise serializers.ValidationError({'designer': 'Дизайнер заведён в другом городе — выберите дизайнера этого города'})
     if instance is None and has_designer is None:
         raise serializers.ValidationError({'has_designer': 'Укажите, есть ли у заказа дизайнер'})
     if has_designer and designer is None:
@@ -264,7 +303,7 @@ class OrderSalesFieldsSerializer(serializers.ModelSerializer):
         fields = ORDER_SALES_FIELDS
 
     def validate(self, attrs):
-        return validate_order_sales_fields(attrs, self.instance)
+        return validate_order_sales_fields(attrs, self.instance, salon=self.context.get('salon'))
 
 
 class OrderListSerializer(serializers.ModelSerializer):

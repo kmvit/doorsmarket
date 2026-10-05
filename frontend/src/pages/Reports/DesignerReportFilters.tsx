@@ -141,6 +141,8 @@ const DesignerReportFilterBar = ({ filters, onChange }: Props) => {
           <ManagerFilter
             value={filters.managers}
             onChange={(managers) => onChange({ managers })}
+            cities={filters.city ? [filters.city] : []}
+            salons={filters.salon ? [filters.salon] : []}
             className="w-full rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
           />
         </div>

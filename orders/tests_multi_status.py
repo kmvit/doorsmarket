@@ -158,3 +158,76 @@ class ManagerFilterTest(TestCase):
         response = self.client.get('/api/v1/orders/managers/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual({m['id'] for m in response.data}, {self.m1.id, self.m2.id, self.m3.id})
+
+
+class CitySalonFilterTest(TestCase):
+    """Фильтры по городам и салонам: ?city__in, ?salon__in — у админа и руководителя."""
+
+    def setUp(self):
+        self.kazan = City.objects.create(name='Казань')
+        self.samara = City.objects.create(name='Самара')
+        self.s1 = Salon.objects.create(name='Академи', city=self.kazan)
+        self.s2 = Salon.objects.create(name='Тандем', city=self.kazan)
+        self.s3 = Salon.objects.create(name='Самарский', city=self.samara)
+        self.admin = User.objects.create_user(username='adm', password='x', role='admin')
+        self.leader = User.objects.create_user(username='boss', password='x', role='leader', city=self.kazan)
+        self.managers = {}
+        self.orders = {}
+        for salon in (self.s1, self.s2, self.s3):
+            m = User.objects.create_user(
+                username=f'm{salon.id}', password='x', role='manager', city=salon.city, salon=salon,
+            )
+            self.managers[salon] = m
+            self.orders[salon] = Order.objects.create(
+                manager=m, salon=salon, client_name=salon.name, status=OrderStatus.PAID,
+            )
+        self.client = APIClient()
+
+    def ids(self, url, params):
+        response = self.client.get(url, params)
+        self.assertEqual(response.status_code, 200, response.data)
+        return {row['id'] for row in rows(response) if row.get('id')}
+
+    def order_ids(self, *salons):
+        return {self.orders[s].id for s in salons}
+
+    def test_admin_filters_orders_by_city(self):
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.ids('/api/v1/orders/', {'city__in': str(self.samara.id)}), self.order_ids(self.s3))
+        self.assertEqual(self.ids('/api/v1/orders/', {'city__in': str(self.kazan.id)}), self.order_ids(self.s1, self.s2))
+
+    def test_admin_filters_by_several_salons(self):
+        self.client.force_authenticate(self.admin)
+        params = {'salon__in': f'{self.s1.id},{self.s3.id}'}
+        self.assertEqual(self.ids('/api/v1/orders/', params), self.order_ids(self.s1, self.s3))
+        self.assertEqual(self.ids('/api/v1/workshop/', params), self.order_ids(self.s1, self.s3))
+
+    def test_leader_salon_filter_and_city_cannot_widen_access(self):
+        self.client.force_authenticate(self.leader)
+        self.assertEqual(self.ids('/api/v1/orders/', {'salon__in': str(self.s2.id)}), self.order_ids(self.s2))
+        # Чужой город в фильтре не открывает чужие заказы
+        self.assertEqual(self.ids('/api/v1/orders/', {'city__in': str(self.samara.id)}), set())
+
+    def test_measurements_filtered_by_city(self):
+        self.client.force_authenticate(self.admin)
+        sm = User.objects.create_user(username='sm', password='x', role='service_manager', city=self.samara)
+        far = Measurement.objects.create(
+            request=MeasurementRequest.objects.create(
+                order=self.orders[self.s3], contact_name='К', contact_phone='+7', created_by=self.managers[self.s3],
+            ),
+            service_manager=sm,
+        )
+        Measurement.objects.create(
+            request=MeasurementRequest.objects.create(
+                order=self.orders[self.s1], contact_name='К', contact_phone='+7', created_by=self.managers[self.s1],
+            ),
+            service_manager=sm,
+        )
+        self.assertEqual(self.ids('/api/v1/measurements/', {'city__in': str(self.samara.id)}), {far.id})
+
+    def test_managers_list_narrows_by_city_and_salon(self):
+        self.client.force_authenticate(self.admin)
+        by_city = {m['id'] for m in self.client.get('/api/v1/orders/managers/', {'city__in': str(self.kazan.id)}).data}
+        self.assertEqual(by_city, {self.managers[self.s1].id, self.managers[self.s2].id})
+        by_salon = {m['id'] for m in self.client.get('/api/v1/orders/managers/', {'salon__in': str(self.s2.id)}).data}
+        self.assertEqual(by_salon, {self.managers[self.s2].id})

@@ -260,6 +260,7 @@ const OrderEdit = () => {
           onChange={setSales}
           showErrors={salesError}
           requireAnswer={requireDesignerAnswer}
+          cityId={salons.find((s) => s.id === form.salon)?.city ?? null}
         />
 
         {/* КП */}

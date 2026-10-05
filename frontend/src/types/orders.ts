@@ -284,9 +284,12 @@ export interface Designer {
   phone: string
   studio: string
   bonus_percent: number | null
+  // Город карточки: у каждого города свой список дизайнеров
+  city: number | null
+  city_name: string
 }
 
-export type CreateDesignerData = Omit<Designer, 'id'>
+export type CreateDesignerData = Omit<Designer, 'id' | 'city' | 'city_name'> & { city?: number | null }
 
 export type OrderProbability = 'high' | 'medium' | 'low'
 
@@ -414,8 +417,10 @@ export interface OrderFilters {
   status?: OrderStatus[]
   salon?: number | ''
   manager_id?: number | ''
-  // Фильтр руководителя: несколько менеджеров (id строками)
+  // Фильтры руководителя и админа: несколько менеджеров, салонов, городов (id строками)
   managers?: string[]
+  salons?: string[]
+  cities?: string[]
   search?: string
   my_orders?: boolean
   exclude_cancelled?: boolean

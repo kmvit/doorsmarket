@@ -39,6 +39,7 @@ from .serializers import (
     OrderSalesFieldsSerializer,
     ORDER_SALES_FIELDS,
     DesignerSerializer,
+    user_city_id,
     MeasurementSerializer,
     MeasurementListSerializer,
     PendingMeasurementRequestListSerializer,
@@ -166,7 +167,9 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                       viewsets.GenericViewSet):
     """
     Дизайнеры для поля заказа: поиск (?search=) по имени, студии и телефону,
-    заведение новой карточки. Удалять нельзя — на дизайнера ссылаются заказы.
+    заведение и правка карточки. Удалять нельзя — на дизайнера ссылаются заказы.
+    Список у каждого города свой: менеджер и руководитель видят дизайнеров
+    своего города, админ — всех, а ?city= сужает до города салона в заказе.
     """
     serializer_class = DesignerSerializer
     permission_classes = [IsAuthenticated]
@@ -174,7 +177,13 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     SEARCH_LIMIT = 30
 
     def get_queryset(self):
-        qs = Designer.objects.all()
+        user = self.request.user
+        qs = Designer.objects.select_related('city')
+        if user.role != 'admin':
+            city_id = user_city_id(user)
+            qs = qs.filter(city_id=city_id) if city_id else qs.none()
+        elif (city := self.request.query_params.get('city')) and city.isdigit():
+            qs = qs.filter(city_id=int(city))
         if self.action != 'list':
             return qs
         query = (self.request.query_params.get('search') or '').strip()
@@ -256,12 +265,33 @@ def requested_statuses(request, field='status'):
     return values
 
 
-def requested_manager_ids(request):
-    """Менеджеры из фильтра ?manager__in=1,2 (фильтр руководителя в списках)."""
+def requested_ids(request, param):
+    """Id из фильтра ?param=1,2 — мусор отбрасываем."""
     ids = set()
-    for chunk in request.query_params.getlist('manager__in'):
+    for chunk in request.query_params.getlist(param):
         ids.update(int(v) for v in chunk.split(',') if v.strip().isdigit())
     return ids
+
+
+def requested_manager_ids(request):
+    """Менеджеры из фильтра ?manager__in=1,2 (фильтр руководителя в списках)."""
+    return requested_ids(request, 'manager__in')
+
+
+def apply_people_filters(qs, request, order_path=''):
+    """
+    Фильтры руководителя и админа в списках: ?city__in, ?salon__in, ?manager__in.
+    order_path — путь от модели списка до заказа ('' для заказов,
+    'request__order__' для замеров, 'order__' для заявок). Видимость (ACL) уже
+    применена раньше: руководитель и с фильтром по городу видит только свой.
+    """
+    if cities := requested_ids(request, 'city__in'):
+        qs = qs.filter(**{f'{order_path}salon__city_id__in': cities})
+    if salons := requested_ids(request, 'salon__in'):
+        qs = qs.filter(**{f'{order_path}salon_id__in': salons})
+    if managers := requested_manager_ids(request):
+        qs = qs.filter(**{f'{order_path}manager_id__in': managers})
+    return qs
 
 
 # Завершённые статусы заказа: по умолчанию скрыты в общем списке
@@ -341,9 +371,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         manager_id = self.request.query_params.get('manager_id')
         if manager_id:
             qs = qs.filter(manager_id=manager_id)
-        manager_ids = requested_manager_ids(self.request)
-        if manager_ids:
-            qs = qs.filter(manager_id__in=manager_ids)
+        qs = apply_people_filters(qs, self.request)
 
         salon_id = self.request.query_params.get('salon_id')
         if salon_id:
@@ -392,8 +420,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         """
         Менеджеры для фильтра в списках: те, чьи заказы пользователь видит.
         Руководителю — менеджеры его города, админу — все, у кого есть заказы.
+        ?city__in / ?salon__in сужают список под выбранные в фильтре города и салоны.
         """
-        manager_ids = get_orders_queryset_for_user(request.user).values('manager_id')
+        orders = get_orders_queryset_for_user(request.user)
+        if cities := requested_ids(request, 'city__in'):
+            orders = orders.filter(salon__city_id__in=cities)
+        if salons := requested_ids(request, 'salon__in'):
+            orders = orders.filter(salon_id__in=salons)
+        manager_ids = orders.values('manager_id')
         managers = get_user_model().objects.filter(id__in=manager_ids).order_by('first_name', 'last_name', 'username')
         return Response(OrderManagerSerializer(managers, many=True).data)
 
@@ -523,7 +557,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         totals = data.pop('totals', None) or {}
 
         # Дизайнер, месяц оплаты, вероятность — с теми же правилами, что при ручном создании
-        sales = OrderSalesFieldsSerializer(data={f: data.get(f) for f in ORDER_SALES_FIELDS if f in data})
+        sales = OrderSalesFieldsSerializer(
+            data={f: data.get(f) for f in ORDER_SALES_FIELDS if f in data},
+            # Салон — чтобы не дать выбрать дизайнера из другого города
+            context={'salon': Salon.objects.filter(pk=salon_id).select_related('city').first()},
+        )
         sales.is_valid(raise_exception=True)
 
         order_kwargs = {
@@ -1380,9 +1418,7 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтры из ТЗ Workshop
         if self.request.query_params.get('mine') == 'true':
             qs = qs.filter(manager=user)
-        manager_ids = requested_manager_ids(self.request)
-        if manager_ids:
-            qs = qs.filter(manager_id__in=manager_ids)
+        qs = apply_people_filters(qs, self.request)
         if self.request.query_params.get('with_reminder_today') == 'true':
             today = timezone.localdate()
             qs = qs.filter(action_reminders__due_at__date=today, action_reminders__done=False).distinct()
@@ -1506,9 +1542,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         # замеры и замеры по неактуальным (отменённым) заказам.
         if self.request.query_params.get('exclude_finished') == 'true':
             qs = qs.exclude(is_done=True).exclude(request__order__status='cancelled')
-        manager_ids = requested_manager_ids(self.request)
-        if manager_ids:
-            qs = qs.filter(request__order__manager_id__in=manager_ids)
+        qs = apply_people_filters(qs, self.request, 'request__order__')
         return qs
 
     def filter_queryset(self, queryset):
@@ -1591,10 +1625,8 @@ class MeasurementViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _search_requests(qs, request):
-        """Поиск, фильтр по менеджеру и порядок для строк-заявок — как у списка замеров."""
-        manager_ids = requested_manager_ids(request)
-        if manager_ids:
-            qs = qs.filter(order__manager_id__in=manager_ids)
+        """Поиск, фильтры по городу, салону, менеджеру и порядок для строк-заявок — как у списка замеров."""
+        qs = apply_people_filters(qs, request, 'order__')
         search = (request.query_params.get('search') or '').strip()
         if search:
             qs = qs.filter(

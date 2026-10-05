@@ -71,11 +71,15 @@ interface Props {
   showErrors?: boolean
   requireAnswer?: boolean
   title?: string
+  // Город салона заказа: дизайнеров ищем и заводим в этом городе
+  cityId?: number | null
 }
 
 const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 
-const OrderSalesFieldsBlock = ({ value, onChange, showErrors = false, requireAnswer = true, title = 'Дизайнер и оплата' }: Props) => {
+const OrderSalesFieldsBlock = ({
+  value, onChange, showErrors = false, requireAnswer = true, title = 'Дизайнер и оплата', cityId = null,
+}: Props) => {
   const set = (patch: Partial<SalesFieldsValue>) => onChange({ ...value, ...patch })
   const error = showErrors ? salesFieldsError(value, requireAnswer) : null
 
@@ -109,7 +113,7 @@ const OrderSalesFieldsBlock = ({ value, onChange, showErrors = false, requireAns
 
       {value.has_designer && (
         <div className="mb-4">
-          <DesignerPicker value={value.designer} onChange={(designer) => set({ designer })} />
+          <DesignerPicker value={value.designer} onChange={(designer) => set({ designer })} cityId={cityId} />
         </div>
       )}
 
@@ -145,36 +149,72 @@ const OrderSalesFieldsBlock = ({ value, onChange, showErrors = false, requireAns
   )
 }
 
-// ---------- Выбор дизайнера: поиск по списку или новая карточка ----------
+// ---------- Выбор дизайнера: поиск, новая карточка, правка карточки ----------
 
-const DesignerPicker = ({ value, onChange }: { value: Designer | null; onChange: (d: Designer | null) => void }) => {
-  const [creating, setCreating] = useState(false)
+type PickerMode = 'view' | 'create' | 'edit'
 
-  if (value) {
+const DesignerPicker = ({ value, onChange, cityId }: {
+  value: Designer | null
+  onChange: (d: Designer | null) => void
+  cityId: number | null
+}) => {
+  const [mode, setMode] = useState<PickerMode>('view')
+
+  if (mode === 'edit' && value) {
     return (
-      <div className="flex items-start justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
-        <DesignerSummary designer={value} />
-        <button
-          type="button"
-          onClick={() => onChange(null)}
-          className="text-sm font-medium text-primary-600 hover:text-primary-700 whitespace-nowrap"
-        >
-          Изменить
-        </button>
-      </div>
-    )
-  }
-
-  if (creating) {
-    return (
-      <DesignerCreateForm
-        onCancel={() => setCreating(false)}
-        onCreated={(d) => { setCreating(false); onChange(d) }}
+      <DesignerForm
+        initial={value}
+        cityId={cityId}
+        onCancel={() => setMode('view')}
+        onSaved={(d) => { setMode('view'); onChange(d) }}
       />
     )
   }
 
-  return <DesignerSearch onSelect={onChange} onCreate={() => setCreating(true)} />
+  if (value) {
+    // Поменяли салон на салон другого города — этот дизайнер сервером не примется
+    const otherCity = Boolean(cityId && value.city && value.city !== cityId)
+    return (
+      <div className={`rounded-lg border px-4 py-3 ${otherCity ? 'border-red-300 bg-red-50' : 'border-primary-200 bg-primary-50'}`}>
+        <div className="flex items-start justify-between gap-3">
+          <DesignerSummary designer={value} />
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setMode('edit')}
+              className="text-sm font-medium text-primary-600 hover:text-primary-700 whitespace-nowrap"
+            >
+              Редактировать
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="text-sm text-gray-600 hover:text-gray-800 whitespace-nowrap"
+            >
+              Другой дизайнер
+            </button>
+          </div>
+        </div>
+        {otherCity && (
+          <p className="mt-2 text-xs font-medium text-red-600">
+            Дизайнер заведён в другом городе ({value.city_name}) — выберите дизайнера города этого салона
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  if (mode === 'create') {
+    return (
+      <DesignerForm
+        cityId={cityId}
+        onCancel={() => setMode('view')}
+        onSaved={(d) => { setMode('view'); onChange(d) }}
+      />
+    )
+  }
+
+  return <DesignerSearch onSelect={onChange} onCreate={() => setMode('create')} cityId={cityId} />
 }
 
 const DesignerSummary = ({ designer }: { designer: Designer }) => (
@@ -188,7 +228,11 @@ const DesignerSummary = ({ designer }: { designer: Designer }) => (
   </div>
 )
 
-const DesignerSearch = ({ onSelect, onCreate }: { onSelect: (d: Designer) => void; onCreate: () => void }) => {
+const DesignerSearch = ({ onSelect, onCreate, cityId }: {
+  onSelect: (d: Designer) => void
+  onCreate: () => void
+  cityId: number | null
+}) => {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Designer[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -200,7 +244,7 @@ const DesignerSearch = ({ onSelect, onCreate }: { onSelect: (d: Designer) => voi
     const t = setTimeout(async () => {
       setIsLoading(true)
       try {
-        const data = await designersAPI.search(query.trim())
+        const data = await designersAPI.search(query.trim(), cityId)
         // Ответ на устаревший запрос (пользователь уже печатает дальше) не показываем
         if (id === requestId.current) { setResults(data); setLoadError(false) }
       } catch {
@@ -210,7 +254,7 @@ const DesignerSearch = ({ onSelect, onCreate }: { onSelect: (d: Designer) => voi
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, cityId])
 
   return (
     <div className="rounded-lg border border-gray-200 p-3">
@@ -252,11 +296,18 @@ const DesignerSearch = ({ onSelect, onCreate }: { onSelect: (d: Designer) => voi
   )
 }
 
-const DesignerCreateForm = ({ onCancel, onCreated }: { onCancel: () => void; onCreated: (d: Designer) => void }) => {
-  const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [studio, setStudio] = useState('')
-  const [bonus, setBonus] = useState('')
+/** Карточка дизайнера: новая (initial не задан) или правка существующей. */
+const DesignerForm = ({ initial, cityId, onCancel, onSaved }: {
+  initial?: Designer
+  cityId: number | null
+  onCancel: () => void
+  onSaved: (d: Designer) => void
+}) => {
+  const isEdit = Boolean(initial)
+  const [fullName, setFullName] = useState(initial?.full_name ?? '')
+  const [phone, setPhone] = useState(initial?.phone ?? '')
+  const [studio, setStudio] = useState(initial?.studio ?? '')
+  const [bonus, setBonus] = useState(initial?.bonus_percent != null ? String(initial.bonus_percent) : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
 
@@ -269,19 +320,23 @@ const DesignerCreateForm = ({ onCancel, onCreated }: { onCancel: () => void; onC
     if (Object.keys(next).length) return
 
     setIsSaving(true)
+    const data = {
+      full_name: fullName.trim(),
+      phone,
+      studio: studio.trim(),
+      bonus_percent: bonus ? Number(bonus) : null,
+    }
     try {
-      const designer = await designersAPI.create({
-        full_name: fullName.trim(),
-        phone,
-        studio: studio.trim(),
-        bonus_percent: bonus ? Number(bonus) : null,
-      })
-      onCreated(designer)
+      const designer = initial
+        ? await designersAPI.update(initial.id, data)
+        // Новая карточка — в городе салона заказа (у менеджера сервер и так ставит его город)
+        : await designersAPI.create({ ...data, ...(cityId ? { city: cityId } : {}) })
+      onSaved(designer)
     } catch (err: any) {
-      const data = err.response?.data
-      if (data && typeof data === 'object') {
+      const resp = err.response?.data
+      if (resp && typeof resp === 'object') {
         setErrors(Object.fromEntries(
-          Object.entries(data).map(([k, v]) => [k, Array.isArray(v) ? v.join(' ') : String(v)]),
+          Object.entries(resp).map(([k, v]) => [k, Array.isArray(v) ? v.join(' ') : String(v)]),
         ))
       } else {
         setErrors({ form: err.message || 'Не удалось сохранить дизайнера' })
@@ -297,7 +352,11 @@ const DesignerCreateForm = ({ onCancel, onCreated }: { onCancel: () => void; onC
   // Enter или «Сохранить» отправили бы весь заказ
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-      <div className="text-sm font-semibold text-gray-800 mb-3">Новый дизайнер</div>
+      <div className="text-sm font-semibold text-gray-800 mb-1">{isEdit ? 'Карточка дизайнера' : 'Новый дизайнер'}</div>
+      {isEdit && (
+        <p className="mb-3 text-xs text-gray-500">Изменения сохранятся в карточке и будут видны во всех заказах с этим дизайнером</p>
+      )}
+      {!isEdit && <div className="mb-2" />}
       {errors.form && <div className="mb-2 text-sm text-red-600">{errors.form}</div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
@@ -335,7 +394,7 @@ const DesignerCreateForm = ({ onCancel, onCreated }: { onCancel: () => void; onC
           disabled={isSaving}
           className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-50"
         >
-          {isSaving ? 'Сохранение…' : 'Сохранить дизайнера'}
+          {isSaving ? 'Сохранение…' : isEdit ? 'Сохранить изменения' : 'Сохранить дизайнера'}
         </button>
         <button
           type="button"

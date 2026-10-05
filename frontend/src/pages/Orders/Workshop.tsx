@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import MultiSelect from '../../components/common/MultiSelect'
-import ManagerFilter from '../../components/orders/ManagerFilter'
+import PeopleFilters, { canFilterByPeople, EMPTY_PEOPLE_FILTER, PeopleFilterValue } from '../../components/orders/PeopleFilters'
 import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
 import { useAuthStore } from '../../store/authStore'
 import { WorkshopOrder, OrderStatus, OrderProbability, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
@@ -29,9 +29,9 @@ const Workshop = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus[]>([])
   const { user } = useAuthStore()
-  // Фильтр по менеджерам — для руководителя (и админа)
-  const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
-  const [managerFilter, setManagerFilter] = useState<string[]>([])
+  // Город / салон / менеджер — для руководителя и админа
+  const canFilterByManager = canFilterByPeople(user?.role)
+  const [people, setPeople] = useState<PeopleFilterValue>(EMPTY_PEOPLE_FILTER)
   const [mine, setMine] = useState(false)
   const [withReminderToday, setWithReminderToday] = useState(reminderParam === 'today')
   const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
@@ -47,7 +47,9 @@ const Workshop = () => {
         with_reminder_tomorrow: withReminderTomorrow || undefined,
         with_overdue_reminder: withOverdue || undefined,
         status: statusFilter,
-        managers: canFilterByManager ? managerFilter : undefined,
+        managers: canFilterByManager ? people.managers : undefined,
+        salons: canFilterByManager ? people.salons : undefined,
+        cities: canFilterByManager ? people.cities : undefined,
         search: search || undefined,
       })
       setOrders(data)
@@ -56,7 +58,7 @@ const Workshop = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [search, statusFilter, managerFilter, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue])
+  }, [search, statusFilter, people, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue])
 
   useEffect(() => {
     const t = setTimeout(load, 300)
@@ -101,16 +103,7 @@ const Workshop = () => {
             className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
           />
         </div>
-        {canFilterByManager && (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Менеджер</label>
-            <ManagerFilter
-              value={managerFilter}
-              onChange={setManagerFilter}
-              className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
-            />
-          </div>
-        )}
+        <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
           Мои

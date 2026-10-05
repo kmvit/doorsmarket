@@ -487,7 +487,13 @@ const KpUploadTab = ({
           {/* Дизайнер, месяц оплаты, вероятность — только для нового заказа */}
           {!replaceOrderId && !appendOrderId && (
             <div ref={salesRef}>
-              <OrderSalesFieldsBlock value={sales} onChange={setSales} showErrors={salesError} title="5. Дизайнер и оплата" />
+              <OrderSalesFieldsBlock
+                value={sales}
+                onChange={setSales}
+                showErrors={salesError}
+                title="5. Дизайнер и оплата"
+                cityId={salons.find((s) => s.id === salonId)?.city ?? null}
+              />
             </div>
           )}
 

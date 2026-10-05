@@ -29,7 +29,7 @@ class DesignerTestBase(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.manager)
         self.designer = Designer.objects.create(
-            full_name='Петрова Анна', phone='+79171234567', studio='Лофт', bonus_percent=10,
+            full_name='Петрова Анна', phone='+79171234567', studio='Лофт', bonus_percent=10, city=self.city,
         )
 
     def order_payload(self, **extra):
@@ -217,3 +217,78 @@ class DesignerPayoutTest(DesignerTestBase):
         paid = self.make_order('completed', designer_paid_at=timezone.now(), designer_paid_amount=100)
         response = self.client.post(f'/api/v1/orders/{paid.id}/designer_paid/', {'amount': '100'}, format='json')
         self.assertEqual(response.status_code, 400)
+
+
+class DesignerCityTest(DesignerTestBase):
+    """Дизайнеры по городам: свой список, телефон уникален в пределах города, правка карточки."""
+
+    def setUp(self):
+        super().setUp()
+        self.samara = City.objects.create(name='Самара')
+        self.far_salon = Salon.objects.create(name='Самарский', city=self.samara)
+        self.far_manager = User.objects.create_user(
+            username='far', password='x', role='manager', city=self.samara, salon=self.far_salon,
+        )
+        self.far_designer = Designer.objects.create(full_name='Волков Игорь', phone='+79270000000', city=self.samara)
+
+    def ids(self, client, **params):
+        response = client.get('/api/v1/designers/', params)
+        self.assertEqual(response.status_code, 200)
+        return {d['id'] for d in response.data}
+
+    def test_manager_sees_only_own_city(self):
+        self.assertEqual(self.ids(self.client), {self.designer.id})
+        self.assertEqual(self.ids(self.client, search='Волков'), set())
+
+    def test_created_designer_gets_managers_city(self):
+        response = self.client.post('/api/v1/designers/', {'full_name': 'Новиков', 'phone': '+79170001122'}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Designer.objects.get(pk=response.data['id']).city, self.city)
+        self.assertEqual(response.data['city_name'], 'Казань')
+
+    def test_same_phone_allowed_in_other_city(self):
+        far_client = APIClient()
+        far_client.force_authenticate(self.far_manager)
+        response = far_client.post('/api/v1/designers/', {
+            'full_name': 'Петрова Анна', 'phone': '+79171234567',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Designer.objects.filter(phone='+79171234567').count(), 2)
+
+    def test_manager_edits_designer(self):
+        response = self.client.patch(f'/api/v1/designers/{self.designer.id}/', {
+            'full_name': 'Петрова Анна Сергеевна', 'studio': 'Лофт-2', 'bonus_percent': 15, 'phone': '8 917 123-45-67',
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.designer.refresh_from_db()
+        self.assertEqual((self.designer.full_name, self.designer.studio, self.designer.bonus_percent),
+                         ('Петрова Анна Сергеевна', 'Лофт-2', 15))
+        # Правка не переносит дизайнера в другой город
+        self.assertEqual(self.designer.city, self.city)
+
+    def test_cannot_edit_designer_of_other_city(self):
+        response = self.client.patch(f'/api/v1/designers/{self.far_designer.id}/', {'studio': 'X'}, format='json')
+        self.assertEqual(response.status_code, 404)
+
+    def test_edit_to_duplicate_phone_rejected(self):
+        other = Designer.objects.create(full_name='Другой', phone='+79170000099', city=self.city)
+        response = self.client.patch(f'/api/v1/designers/{other.id}/', {'phone': '+79171234567'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('phone', response.data)
+
+    def test_order_rejects_designer_of_other_city(self):
+        response = self.create_manual(has_designer=True, designer=self.far_designer.id)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('designer', response.data)
+
+    def test_admin_sees_all_and_filters_by_city(self):
+        admin = User.objects.create_user(username='adm', password='x', role='admin')
+        client = APIClient()
+        client.force_authenticate(admin)
+        self.assertEqual(self.ids(client), {self.designer.id, self.far_designer.id})
+        self.assertEqual(self.ids(client, city=self.samara.id), {self.far_designer.id})
+        response = client.post('/api/v1/designers/', {
+            'full_name': 'Админский', 'phone': '+79990000000', 'city': self.samara.id,
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Designer.objects.get(pk=response.data['id']).city, self.samara)

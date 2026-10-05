@@ -207,7 +207,12 @@ const OrderCreate = () => {
 
         {/* Дизайнер, месяц оплаты, вероятность */}
         <div ref={salesRef}>
-          <OrderSalesFieldsBlock value={sales} onChange={setSales} showErrors={salesError} />
+          <OrderSalesFieldsBlock
+            value={sales}
+            onChange={setSales}
+            showErrors={salesError}
+            cityId={salons.find((s) => s.id === form.salon)?.city ?? null}
+          />
         </div>
 
         {/* КП */}

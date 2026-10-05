@@ -6,7 +6,7 @@ import { ORDER_STATUS_COLOR } from '../../types/orders'
 import OrdersMeasurementsSwitch from '../../components/orders/OrdersMeasurementsSwitch'
 import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
 import { usePersistedState } from '../../utils/persistedState'
-import ManagerFilter from '../../components/orders/ManagerFilter'
+import PeopleFilters, { canFilterByPeople, normalizePeopleFilter, EMPTY_PEOPLE_FILTER, PeopleFilterValue } from '../../components/orders/PeopleFilters'
 import { useAuthStore } from '../../store/authStore'
 
 const FOLDERS: { key: MeasurementFolder; label: string; color: string }[] = [
@@ -42,8 +42,9 @@ const MeasurementList = () => {
   const [excludeFinished, setExcludeFinished] = usePersistedState('measurements:exclude_finished', true)
   // Фильтр по менеджерам заказа — для руководителя (и админа)
   const { user } = useAuthStore()
-  const canFilterByManager = user?.role === 'leader' || user?.role === 'admin'
-  const [managerFilter, setManagerFilter] = usePersistedState<string[]>('measurements:managers', [])
+  const canFilterByManager = canFilterByPeople(user?.role)
+  const [rawPeople, setPeople] = usePersistedState<PeopleFilterValue>('measurements:people', EMPTY_PEOPLE_FILTER)
+  const people = normalizePeopleFilter(rawPeople)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -54,7 +55,9 @@ const MeasurementList = () => {
         search: search || undefined,
         // применяем только на вкладке «Все» (folder === '')
         exclude_finished: folder === '' && excludeFinished ? true : undefined,
-        managers: canFilterByManager ? managerFilter : undefined,
+        managers: canFilterByManager ? people.managers : undefined,
+        salons: canFilterByManager ? people.salons : undefined,
+        cities: canFilterByManager ? people.cities : undefined,
       })
       setMeasurements(data)
     } catch (err: any) {
@@ -62,7 +65,7 @@ const MeasurementList = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [folder, search, excludeFinished, managerFilter, canFilterByManager])
+  }, [folder, search, excludeFinished, rawPeople, canFilterByManager])
 
   // Папка из URL (переход с дашборда) важнее сохранённой вкладки
   useEffect(() => {
@@ -111,22 +114,18 @@ const MeasurementList = () => {
 
       {/* Поиск */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4">
-        <div className="flex flex-wrap gap-3">
-          <input
-            type="text"
-            placeholder="Поиск: № замера, № заказа, клиент, адрес, контакт, № КП, телефон…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[200px] rounded-lg border-gray-300 shadow-sm text-sm"
-          />
-          {canFilterByManager && (
-            <ManagerFilter
-              value={managerFilter}
-              onChange={setManagerFilter}
-              className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
-            />
-          )}
-        </div>
+        <input
+          type="text"
+          placeholder="Поиск: № замера, № заказа, клиент, адрес, контакт, № КП, телефон…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full rounded-lg border-gray-300 shadow-sm text-sm"
+        />
+        {canFilterByManager && (
+          <div className="flex flex-wrap gap-3 mt-3">
+            <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
+          </div>
+        )}
         {folder === '' && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-3">
             <input

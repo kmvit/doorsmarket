@@ -15,13 +15,23 @@ const LONG_TTL = 7 * 24 * 60 * 60 * 1000
 
 export const designersAPI = {
   // Поиск по фамилии/имени, студии и телефону; без запроса — первые 30
-  search: async (query: string): Promise<Designer[]> => {
-    const response = await apiClient.get('/designers/', { params: query ? { search: query } : {} })
+  // cityId — город салона заказа; сервер учитывает его только у админа
+  // (менеджер и руководитель и так видят дизайнеров своего города)
+  search: async (query: string, cityId?: number | null): Promise<Designer[]> => {
+    const params: Record<string, string> = {}
+    if (query) params.search = query
+    if (cityId) params.city = String(cityId)
+    const response = await apiClient.get('/designers/', { params })
     return Array.isArray(response.data) ? response.data : (response.data.results || [])
   },
 
   create: async (data: CreateDesignerData): Promise<Designer> => {
     const response = await apiClient.post('/designers/', data)
+    return response.data
+  },
+
+  update: async (id: number, data: Partial<CreateDesignerData>): Promise<Designer> => {
+    const response = await apiClient.patch(`/designers/${id}/`, data)
     return response.data
   },
 }
@@ -34,6 +44,8 @@ export const ordersAPI = {
     if (filters?.salon) params.salon = filters.salon
     if (filters?.manager_id) params.manager_id = filters.manager_id
     if (filters?.managers?.length) params.manager__in = filters.managers.join(',')
+    if (filters?.salons?.length) params.salon__in = filters.salons.join(',')
+    if (filters?.cities?.length) params.city__in = filters.cities.join(',')
     if (filters?.search) params.search = filters.search
     if (filters?.my_orders) params.my_orders = 'true'
     if (filters?.exclude_cancelled) params.exclude_cancelled = 'true'
@@ -52,11 +64,15 @@ export const ordersAPI = {
   },
 
   // Менеджеры для фильтра в списках — только те, чьи заказы пользователь видит
-  getManagers: async (): Promise<OrderManager[]> => {
+  // scope сужает список под выбранные в фильтре города и салоны
+  getManagers: async (scope?: { cities?: string[]; salons?: string[] }): Promise<OrderManager[]> => {
+    const params: Record<string, string> = {}
+    if (scope?.cities?.length) params.city__in = scope.cities.join(',')
+    if (scope?.salons?.length) params.salon__in = scope.salons.join(',')
     return withOfflineFallback({
-      cacheKey: 'orders_managers',
+      cacheKey: `orders_managers_${JSON.stringify(params)}`,
       request: async () => {
-        const response = await apiClient.get('/orders/managers/')
+        const response = await apiClient.get('/orders/managers/', { params })
         return Array.isArray(response.data) ? response.data : []
       },
       ttl: LONG_TTL,
@@ -311,7 +327,7 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; salons?: string[]; cities?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
@@ -319,6 +335,8 @@ export const workshopAPI = {
     if (params?.with_overdue_reminder) queryParams.with_overdue_reminder = 'true'
     if (params?.status?.length) queryParams.status__in = params.status.join(',')
     if (params?.managers?.length) queryParams.manager__in = params.managers.join(',')
+    if (params?.salons?.length) queryParams.salon__in = params.salons.join(',')
+    if (params?.cities?.length) queryParams.city__in = params.cities.join(',')
     if (params?.search) queryParams.search = params.search
     return withOfflineFallback({
       cacheKey: `workshop_list_${JSON.stringify(queryParams)}`,
