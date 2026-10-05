@@ -178,6 +178,8 @@ def build_context(offer):
             # и выводим, одним списком с подтянутыми позициями.
             'description_lines': _text_lines(item.description),
             'addon_lines': [_addon_line(link) for link in item.item_addons.all()],
+            # Цена на слайде — за комплект: полотно + отмеченные позиции × количество
+            'kit_amount': item.kit_amount(),
             'size': _door_size(order_item),
             'opening_type': order_item.get_opening_type_display() or '',
             'front_path': _side_image_path(item.front_custom_image, item.front_image),

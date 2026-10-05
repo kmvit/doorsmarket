@@ -226,7 +226,8 @@ const PrettyOfferOpeningCard = ({
           <p className="text-xs text-gray-500 mt-0.5">
             {size ? `${size} мм` : 'размер не указан'}
             {item.opening_type_display ? ` · ${item.opening_type_display}` : ''}
-            {item.amount ? ` · ${Number(item.amount).toLocaleString('ru-RU')} ₽` : ''}
+            {/* На слайд идёт стоимость комплекта: полотно + отмеченные позиции × количество */}
+            {item.kit_amount ? ` · комплект ${Number(item.kit_amount).toLocaleString('ru-RU')} ₽` : ''}
           </p>
         </div>
 

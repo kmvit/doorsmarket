@@ -126,7 +126,9 @@ export interface PrettyOfferItem {
   door_height: number | null
   door_width: number | null
   opening_type_display: string
+  // amount — полотно; kit_amount — комплект (полотно + отмеченные позиции × количество), он идёт на слайд
   amount: string | null
+  kit_amount: string | null
   description: string
   // Сопутствующие позиции заказа, попавшие в комплектацию этого проёма.
   addons: PrettyOfferItemAddon[]

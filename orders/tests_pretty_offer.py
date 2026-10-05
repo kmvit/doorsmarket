@@ -548,6 +548,44 @@ class PrettyOfferFlowTest(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(list(item.addons.values_list('pk', flat=True)), [self.box.pk])
 
+    def test_kit_amount_adds_checked_addons_with_quantity(self):
+        """На слайде — стоимость комплекта: полотно + отмеченные позиции × количество проёма."""
+        OrderAddon.objects.filter(pk=self.box.pk).update(price=Decimal('4500'))
+        # У наличника нет цены за единицу, только сумма на 2,5 шт. — 1000 ₽ за штуку
+        OrderAddon.objects.filter(pk=self.platband.pk).update(price=None, amount=Decimal('2500'))
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+
+        response = self.client.get(f'/api/v1/pretty-offer-items/{item.pk}/')
+        self.assertEqual(response.data['kit_amount'], '31500.00')     # пока только полотно
+
+        response = self.client.patch(
+            f'/api/v1/pretty-offer-items/{item.pk}/',
+            {'addons': [
+                {'addon': self.box.pk, 'quantity': '1'},
+                {'addon': self.platband.pk, 'quantity': '0.5'},
+            ]},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        # 31 500 + 4 500 × 1 + 1 000 × 0,5
+        self.assertEqual(response.data['kit_amount'], '36500.00')
+        self.assertEqual(response.data['amount'], '31500.00')        # полотно отдельно не меняется
+
+        # На слайд PDF идёт именно стоимость комплекта
+        from orders.pdf_pretty_offer import build_context
+        slide = next(
+            row for row in build_context(PrettyOffer.objects.get(order=self.order))['slides']
+            if row['order_item'].pk == self.item_ok.pk
+        )
+        self.assertEqual(slide['kit_amount'], Decimal('36500.00'))
+
+    def test_kit_amount_without_prices_is_empty(self):
+        OrderItem.objects.filter(pk=self.item_ok.pk).update(amount=None)
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        item = PrettyOffer.objects.get(order=self.order).items.get(order_item=self.item_ok)
+        self.assertIsNone(item.kit_amount())
+
     def test_addon_quantity_is_per_opening(self):
         """
         В КП количество общее на весь заказ: петель 12 на шесть проёмов. На

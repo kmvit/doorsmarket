@@ -1129,6 +1129,24 @@ class PrettyOfferItem(models.Model):
     def back_image_url(self):
         return self._side_image_url(self.back_custom_image, self.back_image)
 
+    def kit_amount(self):
+        """
+        Стоимость комплекта по проёму для красивого КП: полотно (сумма позиции
+        КП) плюс отмеченные в комплектации сопутствующие позиции × количество,
+        которое менеджер отвёл этому проёму. Цена единицы — из позиции; если её
+        нет, берём сумму позиции, делённую на её количество в КП.
+        None — ни у полотна, ни у позиций цены нет: показывать нечего.
+        """
+        total = None
+        if self.order_item.amount is not None:
+            total = Decimal(self.order_item.amount)
+        for link in self.item_addons.all():
+            unit = addon_unit_price(link.addon)
+            if unit is None or link.quantity is None:
+                continue
+            total = (total or Decimal(0)) + unit * Decimal(link.quantity)
+        return total.quantize(Decimal('0.01')) if total is not None else None
+
     @property
     def needs_clarification(self):
         """
@@ -1138,6 +1156,15 @@ class PrettyOfferItem(models.Model):
         if not self.front_image_url:
             return True
         return self.two_sided and not self.back_image_url
+
+
+def addon_unit_price(addon):
+    """Цена единицы сопутствующей позиции: «Цена», иначе «Сумма» / количество."""
+    if addon.price is not None:
+        return Decimal(addon.price)
+    if addon.amount is not None and addon.quantity:
+        return Decimal(addon.amount) / Decimal(addon.quantity)
+    return None
 
 
 class PrettyOfferItemAddon(models.Model):

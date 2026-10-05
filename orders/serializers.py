@@ -1125,6 +1125,8 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
         source='order_item.amount', max_digits=12, decimal_places=2, read_only=True,
     )
+    # Стоимость комплекта: полотно + отмеченные позиции × количество — она и идёт на слайд
+    kit_amount = serializers.SerializerMethodField()
     front_image_detail = DoorImageSerializer(source='front_image', read_only=True)
     back_image_detail = DoorImageSerializer(source='back_image', read_only=True)
     front_image_url = serializers.SerializerMethodField()
@@ -1137,7 +1139,7 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
         model = PrettyOfferItem
         fields = [
             'id', 'offer', 'order_item', 'opening_number', 'room_name', 'model_name',
-            'door_height', 'door_width', 'opening_type_display', 'amount',
+            'door_height', 'door_width', 'opening_type_display', 'amount', 'kit_amount',
             'description', 'addons', 'preset', 'two_sided',
             'front_image', 'back_image', 'front_image_detail', 'back_image_detail',
             'front_custom_image', 'back_custom_image',
@@ -1149,6 +1151,10 @@ class PrettyOfferItemSerializer(serializers.ModelSerializer):
             'front_custom_image': {'write_only': True},
             'back_custom_image': {'write_only': True},
         }
+
+    def get_kit_amount(self, obj):
+        value = obj.kit_amount()
+        return f'{value:.2f}' if value is not None else None
 
     def validate_addons(self, rows):
         """
