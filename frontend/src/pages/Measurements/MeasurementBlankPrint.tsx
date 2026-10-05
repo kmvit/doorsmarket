@@ -19,6 +19,23 @@ const fmtSize = (h: number | null, w: number | null, d?: number | null) => {
   return s
 }
 
+/**
+ * Размер с переносом только после «×» и «+»: числа не рвутся, а длинный размер
+ * двустворчатой двери («2400×670+670») не наезжает на соседнюю колонку.
+ */
+const SizeText = ({ text }: { text: string }) => {
+  // Без lookbehind в регулярке: старый Safari (iOS до 16.4) его не понимает,
+  // и из-за одной строки не загрузилось бы всё приложение
+  const parts = text.replace(/\s+/g, '').replace(/([×+])/g, '$1\n').split('\n').filter(Boolean)
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i}>{part}{i < parts.length - 1 && <wbr />}</span>
+      ))}
+    </>
+  )
+}
+
 // Пометка «доработать проём»: по высоте допускается отклонение до 10 мм включительно
 const reworkText = (op: MeasurementOpening): string =>
   openingReworkText(
@@ -86,7 +103,7 @@ const MeasurementBlankPrint = () => {
         /* Размер — одним куском: «2090×2520» рвалось посреди числа («…252 / 0»).
            Ширину колонке браузер подберёт сам. Тот же запрет есть в PDF-бланке
            (orders/templates/orders/measurement_blank.html) — править нужно оба. */
-        table.openings td.size { white-space: nowrap; }
+        table.openings td.size { white-space: normal; overflow-wrap: normal; word-break: keep-all; }
       `}</style>
 
       {/* Панель управления (не печатается) */}
@@ -194,13 +211,15 @@ const MeasurementBlankPrint = () => {
                   <td>{op.opening_number}</td>
                   <td className="left">{dash(op.room_name)}</td>
                   <td>{dash(op.door_type_display)}</td>
-                  <td className="size">{fmtSize(op.actual_height, op.actual_width, op.actual_depth)}</td>
+                  <td className="size"><SizeText text={fmtSize(op.actual_height, op.actual_width, op.actual_depth)} /></td>
                   <td className="size">
-                    {op.recommended_door_width_parts
-                      ? `${op.recommended_door_height ?? '—'}×${op.recommended_door_width_parts}`
-                      : fmtSize(op.recommended_door_height, op.recommended_door_width)}
+                    <SizeText
+                      text={op.recommended_door_width_parts
+                        ? `${op.recommended_door_height ?? '—'}×${op.recommended_door_width_parts}`
+                        : fmtSize(op.recommended_door_height, op.recommended_door_width)}
+                    />
                   </td>
-                  <td className="size">{fmtSize(op.recommended_opening_height, op.recommended_opening_width)}</td>
+                  <td className="size"><SizeText text={fmtSize(op.recommended_opening_height, op.recommended_opening_width)} /></td>
                   <td>
                     {reworkText(op)
                       ? <span className="text-red-700 font-semibold">{reworkText(op)}</span>

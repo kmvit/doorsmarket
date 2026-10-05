@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load blank_sizes %}<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -26,10 +26,10 @@
   table.openings th, table.openings td { border: 0.4pt solid #bbb; padding: 0.8mm 0.7mm; text-align: center; vertical-align: top; overflow-wrap: break-word; }
   table.openings th { background: #eef2f7; font-weight: 700; }
   table.openings td.left { text-align: left; }
-  /* Размер — одним куском: «2100×2520×100» рвалось посреди числа («…×10 / 0»),
-     и прочитать его было нельзя. Колонки размеров расширены под самый длинный
-     случай, чтобы запрет переноса не выталкивал текст за границу ячейки. */
-  table.openings td.size { white-space: nowrap; }
+  /* Размер переносится только после «×» и «+» (size_breaks), числа — целиком:
+     «2100×2520×100» рвалось посреди числа, а «2400×670+670» у двустворчатой
+     двери в одну строку не влезало и наезжало на соседнюю колонку. */
+  table.openings td.size { white-space: normal; overflow-wrap: normal; word-break: keep-all; }
   .warn { color: #b91c1c; font-weight: 600; }
   .conditions { margin-top: 5mm; padding: 3mm; border: 0.6pt solid #ccc; background: #fafafa; border-radius: 2mm; font-size: 8.2pt; line-height: 1.45; }
   ol.cond-list { margin: 2mm 0 0; padding-left: 5mm; }
@@ -104,9 +104,9 @@
         <td>{{ op.opening_number }}</td>
         <td class="left">{{ op.room_name|default:"—" }}</td>
         <td>{{ op.get_door_type_display|default:"—" }}</td>
-        <td class="size">{{ op.actual_height|default:"—" }}×{{ op.actual_width|default:"—" }}{% if op.actual_depth %}×{{ op.actual_depth }}{% endif %}</td>
-        <td class="size">{{ op.recommended_door_height|default:"—" }}×{{ op.recommended_door_width_parts|default:op.recommended_door_width|default:"—" }}</td>
-        <td class="size">{{ op.recommended_opening_height|default:"—" }}×{{ op.recommended_opening_width|default:"—" }}</td>
+        <td class="size">{{ op.actual_height|default:"—" }}×&#8203;{{ op.actual_width|default:"—" }}{% if op.actual_depth %}×&#8203;{{ op.actual_depth }}{% endif %}</td>
+        <td class="size">{{ op.recommended_door_height|default:"—" }}×&#8203;{{ op.recommended_door_width_parts|default:op.recommended_door_width|default:"—"|size_breaks }}</td>
+        <td class="size">{{ op.recommended_opening_height|default:"—" }}×&#8203;{{ op.recommended_opening_width|default:"—" }}</td>
         <td>{% if op.rework_text %}<span class="warn">{{ op.rework_text }}</span>{% else %}—{% endif %}</td>
         <td>{{ op.opening_display_full|default:"—" }}</td>
         <td>{% if op.addon_qty %}{{ op.addon_qty|floatformat:"-2" }}{% elif op.addon_width %}{{ op.addon_width }} мм{% else %}—{% endif %}</td>

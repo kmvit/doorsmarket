@@ -139,7 +139,8 @@ class MeasurementBlankSizesTest(TestCase):
     """
     Размер проёма в таблице бланка рвался посреди числа: «2100×2520×100»
     печаталось как «2100×2520×10 / 0», а «2090×2520» — как «2090×252 / 0».
-    Прочитать такое нельзя, поэтому размер набирается одной строкой.
+    Прочитать такое нельзя. Переносить можно только после «×» и «+» (у
+    двустворчатой двери «2400×670+670» в одну строку не помещается), числа — целиком.
     """
 
     def setUp(self):
@@ -177,15 +178,17 @@ class MeasurementBlankSizesTest(TestCase):
 
     def test_size_cells_are_not_broken_inside_a_number(self):
         html = self._render()
-        self.assertIn('table.openings td.size { white-space: nowrap; }', html)
+        # Внутри числа переноса нет: ни break-word, ни разрыва слов
+        self.assertIn('table.openings td.size { white-space: normal; overflow-wrap: normal; word-break: keep-all; }', html)
         # Все три колонки размеров помечены: факт, рек. дверь, рек. проём.
         self.assertEqual(html.count('<td class="size">'), 3)
 
-    def test_sizes_are_printed_as_a_whole(self):
+    def test_sizes_break_only_after_multiplication_sign(self):
         html = self._render()
-        self.assertIn('2100×2520×100', html)
-        self.assertIn('2090×2520', html)
-        self.assertIn('2010×620', html)
+        z = '&#8203;'  # невидимая точка переноса (в шаблоне — HTML-код)
+        self.assertIn(f'2100×{z}2520×{z}100', html)
+        self.assertIn(f'2090×{z}2520', html)
+        self.assertIn(f'2010×{z}620', html)
 
     def test_columns_still_fill_the_page(self):
         """Ширины колонок перераспределены — в сумме должно остаться 100%."""
