@@ -108,8 +108,14 @@ class ServiceManagerReportTest(TestCase):
     def test_filter_by_service_manager(self):
         self.assertEqual(self.counts(self.get(service_manager=self.ivan.id)), {self.ivan.id: 1})
 
-    def test_service_manager_has_no_access(self):
+    def test_service_manager_sees_only_own_report(self):
         self.client.force_authenticate(self.petr)
+        # Даже если попросить чужого СМ — отдаём только свой отчёт
+        data = self.get(service_manager=self.ivan.id)
+        self.assertEqual(self.counts(data), {self.petr.id: 2})
+
+    def test_manager_has_no_access(self):
+        self.client.force_authenticate(self.manager)
         self.assertEqual(self.client.get(URL).status_code, 403)
 
     def test_distance_counted_only_if_not_paid_on_site(self):

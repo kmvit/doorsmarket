@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { designerReportAPI, DesignerReport as Report } from '../../api/designerReport'
 import { useAuthStore } from '../../store/authStore'
@@ -14,6 +14,21 @@ const DesignerReport = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  // Поиск дизайнера по уже загруженному отчёту: фамилия, имя, студия, телефон
+  const [search, setSearch] = useState('')
+
+  const shown = useMemo(() => {
+    const rows = report?.designers ?? []
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    const digits = q.replace(/\D/g, '')
+    // «8 917…» и «+7 917…» — один номер
+    const phoneQuery = digits.length > 1 && digits[0] === '8' ? `7${digits.slice(1)}` : digits
+    return rows.filter(({ designer: d }) =>
+      d.full_name.toLowerCase().includes(q)
+      || (d.studio || '').toLowerCase().includes(q)
+      || (phoneQuery.length >= 3 && d.phone.replace(/\D/g, '').includes(phoneQuery)))
+  }, [report, search])
 
   useEffect(() => {
     let cancelled = false
@@ -35,7 +50,8 @@ const DesignerReport = () => {
     return next
   })
 
-  if (user && !['leader', 'admin'].includes(user.role)) {
+  // Менеджеру — по его салону (так отдаёт сервер)
+  if (user && !['leader', 'admin', 'manager'].includes(user.role)) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-6 rounded-xl">Отчёт доступен руководителю</div>
@@ -54,6 +70,23 @@ const DesignerReport = () => {
       </div>
 
       <DesignerReportFilterBar filters={filters} onChange={setFilters} />
+
+      {report && report.designers.length > 0 && (
+        <div className="mb-4">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск дизайнера: фамилия, имя, студия или телефон"
+            className="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+          />
+          {search.trim() && (
+            <p className="mt-1 text-xs text-gray-500">
+              Найдено: {shown.length} из {report.designers.length}
+            </p>
+          )}
+        </div>
+      )}
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{error}</div>}
 
@@ -89,7 +122,12 @@ const DesignerReport = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {report.designers.map((row) => {
+                {shown.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">По запросу «{search.trim()}» дизайнеров нет</td>
+                  </tr>
+                )}
+                {shown.map((row) => {
                   const d = row.designer
                   const isOpen = expanded.has(d.id)
                   return (

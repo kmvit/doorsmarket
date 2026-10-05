@@ -337,6 +337,26 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Отчёты: руководителю и админу — все, менеджеру — дизайнеры, сервис-менеджеру — его зарплата */}
+        {(isLeader || isSM || isManager || user?.role === 'admin') && (
+          <Link
+            to="/orders/reports"
+            className="mb-8 flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all"
+          >
+            <div>
+              <div className="text-lg font-semibold text-gray-900">{isSM ? 'Моя зарплата' : isManager ? 'Отчёт по дизайнерам' : 'Отчёты'}</div>
+              <div className="text-sm text-gray-500">
+                {isSM ? 'Мои замеры и расчёт за месяц'
+                  : isManager ? 'Заказы через дизайнеров вашего салона, бонусы'
+                    : 'Дизайнеры, отчёт по замерам (ЗП сервис-менеджеров)'}
+              </div>
+            </div>
+            <svg className="h-6 w-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        )}
+
         {(isManager || isSM) && stats.length > 0 && (
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Рекламации</h2>
         )}

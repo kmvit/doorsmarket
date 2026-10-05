@@ -19,6 +19,8 @@ const formatKm = (km: string | number) => `${Number(km).toLocaleString('ru-RU', 
 const ServiceManagerReport = () => {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
+  // Сервис-менеджер видит только свой отчёт (сервер отдаёт только его замеры)
+  const isSM = user?.role === 'service_manager'
   // Зарплату обычно считают за прошлый месяц
   const [period, setPeriod] = useState(() => {
     const p = periodPresets()[1]
@@ -41,7 +43,12 @@ const ServiceManagerReport = () => {
     setIsLoading(true)
     setError(null)
     serviceManagerReportAPI.get({ ...period, city })
-      .then((data) => { if (!cancelled) setReport(data) })
+      .then((data) => {
+        if (cancelled) return
+        setReport(data)
+        // У СМ в отчёте одна строка — сразу раскрываем его замеры
+        if (isSM) setExpanded(new Set(data.service_managers.map((r) => r.service_manager.id)))
+      })
       .catch((err) => { if (!cancelled) setError(err.response?.data?.detail || 'Не удалось загрузить отчёт') })
       .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
@@ -67,7 +74,7 @@ const ServiceManagerReport = () => {
 
   const periodLabel = [period.date_from, period.date_to].filter(Boolean).join('_') || 'всё-время'
 
-  if (user && !['leader', 'admin'].includes(user.role)) {
+  if (user && !['leader', 'admin', 'service_manager'].includes(user.role)) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-6 rounded-xl">Отчёт доступен руководителю</div>
@@ -82,8 +89,10 @@ const ServiceManagerReport = () => {
       </Link>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Отчёт по замерам</h1>
-          <p className="text-sm text-gray-500 mt-1">Расчёт зарплаты сервис-менеджеров за выполненные замеры</p>
+          <h1 className="text-2xl font-bold text-gray-900">{isSM ? 'Моя зарплата' : 'Отчёт по замерам'}</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {isSM ? 'Мои выполненные замеры и расчёт за период' : 'Расчёт зарплаты сервис-менеджеров за выполненные замеры'}
+          </p>
         </div>
         {report && report.service_managers.length > 0 && (
           <button
@@ -92,7 +101,7 @@ const ServiceManagerReport = () => {
             disabled={downloading !== null}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-xl disabled:opacity-50"
           >
-            {downloading === 'all' ? 'Готовим файл…' : 'Скачать Excel (все СМ)'}
+            {downloading === 'all' ? 'Готовим файл…' : isSM ? 'Скачать Excel' : 'Скачать Excel (все СМ)'}
           </button>
         )}
       </div>
@@ -166,7 +175,7 @@ const ServiceManagerReport = () => {
 
       {report && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <ReportTile label="Сервис-менеджеров" value={report.totals.service_managers_count} />
+          {!isSM && <ReportTile label="Сервис-менеджеров" value={report.totals.service_managers_count} />}
           <ReportTile label="Замеров" value={report.totals.measurements_count} />
           <ReportTile label="Проёмов" value={report.totals.openings_total} />
           <ReportTile label="Итого к выплате" value={formatRub(report.totals.total)} accent="text-green-700" />

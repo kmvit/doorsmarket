@@ -80,7 +80,10 @@ def build_report(request):
         qs = qs.filter(done_at__date__lte=date_to)
     if cities := _ids(request, 'city'):
         qs = qs.filter(request__order__salon__city_id__in=cities)
-    if sms := _ids(request, 'service_manager'):
+    if request.user.role == 'service_manager':
+        # СМ видит только свой отчёт — фильтры по другим СМ и городам не действуют
+        qs = qs.filter(service_manager=request.user)
+    elif sms := _ids(request, 'service_manager'):
         qs = qs.filter(service_manager_id__in=sms)
 
     # Каждая панель в проёме («галочка» + количество) в расчёте — как ещё один проём
@@ -152,8 +155,10 @@ class ServiceManagerReportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in REPORT_ROLES:
-            return Response({'detail': 'Отчёт доступен руководителю.'}, status=status.HTTP_403_FORBIDDEN)
+        # Руководитель и админ — по всем СМ (руководитель — своего города), СМ — свой
+        if request.user.role not in (*REPORT_ROLES, 'service_manager'):
+            return Response({'detail': 'Отчёт доступен руководителю и сервис-менеджеру.'},
+                            status=status.HTTP_403_FORBIDDEN)
 
         groups = build_report(request)
         if request.query_params.get('export') == 'xlsx':

@@ -17,6 +17,8 @@ from .api_views import get_orders_queryset_for_user
 from .models import OrderStatus
 
 REPORT_ROLES = ('leader', 'admin')
+# Отчёт по дизайнерам: менеджеру — по его салону (get_orders_queryset_for_user)
+DESIGNER_REPORT_ROLES = (*REPORT_ROLES, 'manager')
 
 
 def _ids(request, name):
@@ -51,10 +53,11 @@ class DesignerReportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in REPORT_ROLES:
-            return Response({'detail': 'Отчёт доступен руководителю.'}, status=status.HTTP_403_FORBIDDEN)
+        # Менеджер тоже видит отчёт, но только по своему салону — это даёт ACL ниже
+        if request.user.role not in DESIGNER_REPORT_ROLES:
+            return Response({'detail': 'Отчёт доступен руководителю и менеджеру.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Видимость — как у списка заказов: руководителю его город, админу всё
+        # Видимость — как у списка заказов: менеджеру его салон, руководителю город, админу всё
         # Позиции и вложения, которые подгружает базовый запрос, отчёту не нужны
         qs = (
             get_orders_queryset_for_user(request.user)
@@ -85,7 +88,7 @@ class DesignerReportView(APIView):
 
         # Сумма заказа: итог со скидкой, если он есть, иначе итог по КП
         orders = (
-            qs.select_related('designer', 'designer_paid_by')
+            qs.select_related('designer', 'designer__city', 'designer_paid_by')
             .annotate(report_amount=Coalesce(F('total_with_discount'), F('total_amount')))
             .order_by('-created_at')
         )
@@ -99,6 +102,7 @@ class DesignerReportView(APIView):
                     'designer': {
                         'id': d.id, 'full_name': d.full_name, 'phone': d.phone,
                         'studio': d.studio, 'bonus_percent': d.bonus_percent,
+                        'city_name': d.city.name if d.city_id else '',
                     },
                     'orders_count': 0,
                     'orders_amount': Decimal(0),

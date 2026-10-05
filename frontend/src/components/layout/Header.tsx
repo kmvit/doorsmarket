@@ -284,8 +284,9 @@ const Header = () => {
                 </Link>
               )}
 
-              {/* Отчёты — руководителю и админу в модуле заказов */}
-              {isOrdersModule && ['admin', 'leader'].includes(user.role) && (
+              {/* Отчёты — всегда в меню: руководителю и админу, СМ — его зарплата.
+                  Раньше пункт был только внутри раздела заказов, и его не находили */}
+              {['admin', 'leader', 'service_manager', 'manager'].includes(user.role) && (
                 <Link
                   to="/orders/reports"
                   className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -461,7 +462,7 @@ const Header = () => {
               </Link>
             )}
 
-            {['admin', 'leader'].includes(user.role) && (
+            {['admin', 'leader', 'service_manager', 'manager'].includes(user.role) && (
               <Link
                 to="/orders/reports"
                 onClick={() => setMobileMenuOpen(false)}

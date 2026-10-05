@@ -119,6 +119,18 @@ class DesignerReportTest(TestCase):
         self.assertEqual(data['totals']['orders_count'], 1)
         self.assertEqual(data['totals']['orders_amount'], '999999.00')
 
-    def test_manager_has_no_access(self):
+    def test_manager_sees_only_own_salon(self):
         self.client.force_authenticate(self.m1)
+        data = self.get()
+        # o1 и o3 — салон m1; o2 — другой салон того же города
+        self.assertEqual(
+            {o['id'] for r in data['designers'] for o in r['orders']},
+            {self.o1.id, self.o3.id},
+        )
+        # Фильтр по чужому салону ничего не открывает
+        self.assertEqual(self.get(salon=self.salon2.id)['totals']['orders_count'], 0)
+
+    def test_service_manager_has_no_access(self):
+        sm = User.objects.create_user(username='sm', password='x', role='service_manager', city=self.kazan)
+        self.client.force_authenticate(sm)
         self.assertEqual(self.client.get(URL).status_code, 403)
