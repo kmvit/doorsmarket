@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import PdfPages from './PdfPages'
 
 export interface FloatingFile {
   url: string
@@ -28,15 +30,18 @@ const isPdf = (name: string, url: string): boolean =>
   /\.pdf(\?|$)/i.test(name) || /\.pdf(\?|$)/i.test(url)
 
 /**
- * Просмотр файла поверх формы, не закрывая её: панель снизу примерно на треть
- * экрана, разворачивается на весь экран, картинка масштабируется щипком и
- * двигается пальцем. Крестик закрывает — повторное нажатие на файл открывает снова.
+ * Просмотр файла поверх формы. Открывается на весь экран; «Свернуть» опускает
+ * его в панель снизу (примерно треть экрана), чтобы вводить размеры, глядя на
+ * план. Картинка масштабируется щипком и двигается пальцем, PDF рисуется
+ * постранично (PdfPages). Крестик закрывает — повторное нажатие на файл открывает снова.
  *
  * Сделано отдельно от FileViewer: тот показывает файл модально и блокирует работу
  * с формой, а замерщику нужно видеть план и одновременно вводить размеры.
  */
 const FloatingFileViewer = ({ file, onClose, onHeightChange }: Props) => {
-  const [expanded, setExpanded] = useState(false)
+  // Сразу на весь экран: в панели снизу PDF мелкий и обрезанный, СМ не понимал,
+  // что окно можно развернуть
+  const [expanded, setExpanded] = useState(true)
   const [heightVh, setHeightVh] = useState(DEFAULT_HEIGHT_VH)
   // Масштаб и сдвиг картинки (щипок + перетаскивание)
   const [scale, setScale] = useState(1)
@@ -47,8 +52,9 @@ const FloatingFileViewer = ({ file, onClose, onHeightChange }: Props) => {
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
   const resizeRef = useRef<{ y: number; height: number } | null>(null)
 
-  // Новый файл — показываем его целиком, без унаследованного масштаба
+  // Новый файл — на весь экран и целиком, без унаследованного масштаба
   useEffect(() => {
+    setExpanded(true)
     setScale(1)
     setOffset({ x: 0, y: 0 })
   }, [file?.url])
@@ -119,7 +125,9 @@ const FloatingFileViewer = ({ file, onClose, onHeightChange }: Props) => {
     setOffset({ x: 0, y: 0 })
   }
 
-  return (
+  // Через портал в body: страница лежит в <main class="relative z-10">, и окно
+  // внутри него не поднималось выше шапки (z-20) — она закрывала строку с крестиком
+  return createPortal(
     <div
       className={
         expanded
@@ -200,7 +208,7 @@ const FloatingFileViewer = ({ file, onClose, onHeightChange }: Props) => {
             }}
           />
         ) : pdf ? (
-          <iframe src={file.url} title={file.name} className="w-full h-full bg-white" />
+          <PdfPages url={file.url} />
         ) : (
           <div className="text-center text-gray-300 text-sm px-4">
             <p className="mb-2">Просмотр этого типа файла недоступен</p>
@@ -210,7 +218,8 @@ const FloatingFileViewer = ({ file, onClose, onHeightChange }: Props) => {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

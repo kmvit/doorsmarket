@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import PdfPages from './PdfPages'
 
 interface FileViewerProps {
   fileUrl: string | null
@@ -63,7 +65,9 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
     }
   }
 
-  return (
+  // Через портал в body: страница лежит в <main class="relative z-10">, и окно
+  // внутри него не поднималось выше шапки (z-20) — она закрывала кнопку «Закрыть»
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col bg-black bg-opacity-90"
       onKeyDown={handleKeyDown}
@@ -123,13 +127,8 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
           </video>
         )}
 
-        {fileType === 'pdf' && (
-          <iframe
-            src={normalizedUrl}
-            className="w-full h-full bg-white"
-            title={fileName || 'PDF документ'}
-          />
-        )}
+        {/* PDF — через pdf.js, а не <iframe>: на iPhone во фрейме видна только первая страница */}
+        {fileType === 'pdf' && <PdfPages url={normalizedUrl} />}
 
         {fileType === 'other' && (
           <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md mx-4">
@@ -153,7 +152,8 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
