@@ -1,6 +1,7 @@
 """
 Cron: заявка на замер «висит» в статусе measurement_requested больше 1 раб. дня
 без назначенной даты → статус measurement_not_planned + push сервис-менеджерам города.
+Для повторного замера день отсчитывается от отправки на повтор, а не от создания заявки.
 
 Запуск: `python manage.py check_measurement_not_planned`
 Рекомендуется через crontab раз в час в рабочее время.
@@ -34,7 +35,13 @@ class Command(BaseCommand):
             measurement = getattr(mr, 'measurement', None)
             if measurement and measurement.measurement_date:
                 continue
-            if workdays_between(mr.created_at, today) <= THRESHOLD_WORKDAYS:
+            # Повторный замер: заявка старая, но СМ получил задание только когда
+            # менеджер отправил на повтор — день на планирование считаем от этого
+            # момента. Иначе заказ сразу уходил в «Замер не запланирован».
+            started_at = mr.created_at
+            if measurement and measurement.repeat_requested_at and measurement.repeat_requested_at > started_at:
+                started_at = measurement.repeat_requested_at
+            if workdays_between(started_at, today) <= THRESHOLD_WORKDAYS:
                 continue
 
             order.change_status(
