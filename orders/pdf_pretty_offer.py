@@ -219,6 +219,9 @@ def build_context(offer):
         'manager_name': manager_name,
         'salon_address': getattr(salon, 'address', '') or '',
         'salon_phone': getattr(salon, 'phone', '') or '',
+        # Город салона, а не сети: КП из Нижнего Новгорода не должно
+        # представляться казанским — на контактах стоял жёстко вписанный город.
+        'salon_city': getattr(getattr(salon, 'city', None), 'name', '') or '',
         # Год на обложке — всегда текущий: КП печатают сегодня, даже если
         # заказ завели в позапрошлом году.
         'offer_year': timezone.localdate().year,

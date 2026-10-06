@@ -444,7 +444,7 @@
   <div class="abs contacts-text">
     Торгово-производственная компания ACADEMY<br>
     Межкомнатные двери / Входные двери /<br>
-    Перегородки, г. Казань
+    Перегородки{% if salon_city %}, г. {{ salon_city }}{% endif %}
   </div>
   <div class="abs contacts-manager">
     {% if manager_name %}<div>Ваш менеджер: {{ manager_name }}</div>{% endif %}

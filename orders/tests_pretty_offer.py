@@ -1063,3 +1063,50 @@ class OfferTextPresetTest(TestCase):
         preset = OfferTextPreset.objects.get(name='EVO')
         self.assertIn('Полотно глухое высота 2000/2100 мм', preset.included_lines())
         self.assertIn('Толщина полотна 40 мм', preset.feature_lines())
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class PrettyOfferContactsCityTest(TestCase):
+    """
+    Город на контактах КП — город салона, а не жёстко вписанная Казань.
+
+    Менеджер из Нижнего Новгорода отдавал клиенту КП, где компания
+    представлялась казанской.
+    """
+
+    def make_order(self, city_name, salon_name='Салон'):
+        city = City.objects.create(name=city_name)
+        salon = Salon.objects.create(
+            name=salon_name, city=city, address='Бекетова, 13', phone='+7 (986) 762-97-12',
+        )
+        manager = User.objects.create_user(
+            username=f'mgr-{city_name}', password='x', role='manager',
+            city=city, salon=salon, first_name='Мария', last_name='Демина',
+        )
+        order = Order.objects.create(
+            manager=manager, salon=salon, client_name='Клиент',
+            status=OrderStatus.ACTIVE,
+        )
+        OrderItem.objects.create(
+            order=order, opening_number=1, model_name='Epsilon', quantity=1,
+        )
+        return order
+
+    def context_for(self, city_name):
+        from orders.pdf_pretty_offer import build_context
+        from orders.pretty_offer import build_or_refresh
+
+        order = self.make_order(city_name)
+        return build_context(build_or_refresh(order))
+
+    def test_city_comes_from_salon(self):
+        self.assertEqual(self.context_for('Нижний Новгород')['salon_city'], 'Нижний Новгород')
+        self.assertEqual(self.context_for('Казань')['salon_city'], 'Казань')
+
+    def test_contacts_slide_shows_salon_city(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string('orders/pretty_offer.html', self.context_for('Нижний Новгород'))
+        self.assertIn('Перегородки, г. Нижний Новгород', html)
+        # В списке городов сети Казань остаётся — проверяем именно контакты
+        self.assertNotIn('Перегородки, г. Казань', html)
