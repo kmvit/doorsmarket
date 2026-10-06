@@ -9,7 +9,9 @@ export interface ServiceManagerReportMeasurement {
   address: string
   client_name: string
   manager_name: string
-  payment_status: string      // «Оплачен на месте» / «Не оплачен» / '' — про удалённость
+  payment_status: string      // «Оплачен на месте» / «Не оплачен» — про оплату самого замера
+  paid_on_site: boolean       // оплачен на месте: в отчёте есть, в расчёт не идёт (суммы — 0)
+  distance_payment_display: string
   openings_count: number
   panels_count: number
   openings_total: number      // проёмы + панели

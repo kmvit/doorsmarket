@@ -287,6 +287,8 @@ export interface Designer {
   // Город карточки: у каждого города свой список дизайнеров
   city: number | null
   city_name: string
+  // Только в справочнике: сколько заказов через дизайнера
+  orders_count?: number
 }
 
 export type CreateDesignerData = Omit<Designer, 'id' | 'city' | 'city_name'> & { city?: number | null }

@@ -25,6 +25,14 @@ export const designersAPI = {
     return Array.isArray(response.data) ? response.data : (response.data.results || [])
   },
 
+  // Справочник: весь список (своего города; админу — всех или выбранного города)
+  directory: async (cityId?: number | null): Promise<Designer[]> => {
+    const params: Record<string, string> = { all: '1' }
+    if (cityId) params.city = String(cityId)
+    const response = await apiClient.get('/designers/', { params })
+    return Array.isArray(response.data) ? response.data : (response.data.results || [])
+  },
+
   create: async (data: CreateDesignerData): Promise<Designer> => {
     const response = await apiClient.post('/designers/', data)
     return response.data

@@ -292,3 +292,18 @@ class DesignerCityTest(DesignerTestBase):
         }, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Designer.objects.get(pk=response.data['id']).city, self.samara)
+
+
+class DesignerDirectoryTest(DesignerTestBase):
+    """Справочник дизайнеров: весь список города с числом заказов."""
+
+    def test_all_returns_full_city_list_with_orders_count(self):
+        for i in range(35):
+            Designer.objects.create(full_name=f'Дизайнер {i:02d}', phone=f'+7917000{i:04d}', city=self.city)
+        Order.objects.create(manager=self.manager, salon=self.salon, client_name='К', has_designer=True, designer=self.designer)
+        limited = self.client.get('/api/v1/designers/').data
+        self.assertEqual(len(limited), 30)                 # поиск в заказе — по-прежнему до 30
+        full = self.client.get('/api/v1/designers/', {'all': '1'}).data
+        self.assertEqual(len(full), 36)
+        anna = next(d for d in full if d['id'] == self.designer.id)
+        self.assertEqual(anna['orders_count'], 1)

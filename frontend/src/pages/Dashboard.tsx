@@ -337,24 +337,41 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Отчёты: руководителю и админу — все, менеджеру — дизайнеры, сервис-менеджеру — его зарплата */}
+        {/* Отчёты (руководителю и админу — все, менеджеру — дизайнеры, СМ — его зарплата)
+            и справочник дизайнеров (менеджеру, руководителю, админу) */}
         {(isLeader || isSM || isManager || user?.role === 'admin') && (
-          <Link
-            to="/orders/reports"
-            className="mb-8 flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all"
-          >
-            <div>
-              <div className="text-lg font-semibold text-gray-900">{isSM ? 'Моя зарплата' : isManager ? 'Отчёт по дизайнерам' : 'Отчёты'}</div>
-              <div className="text-sm text-gray-500">
-                {isSM ? 'Мои замеры и расчёт за месяц'
-                  : isManager ? 'Заказы через дизайнеров вашего салона, бонусы'
-                    : 'Дизайнеры, отчёт по замерам (ЗП сервис-менеджеров)'}
+          <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link
+              to="/orders/reports"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all"
+            >
+              <div>
+                <div className="text-lg font-semibold text-gray-900">{isSM ? 'Моя зарплата' : isManager ? 'Отчёт по дизайнерам' : 'Отчёты'}</div>
+                <div className="text-sm text-gray-500">
+                  {isSM ? 'Мои замеры и расчёт за месяц'
+                    : isManager ? 'Заказы через дизайнеров вашего салона, бонусы'
+                      : 'Дизайнеры, отчёт по замерам (ЗП сервис-менеджеров)'}
+                </div>
               </div>
-            </div>
-            <svg className="h-6 w-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+              <svg className="h-6 w-6 text-primary-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+            {!isSM && (
+              <Link
+                to="/orders/designers"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all"
+              >
+                <div>
+                  <div className="text-lg font-semibold text-gray-900">Дизайнеры</div>
+                  <div className="text-sm text-gray-500">Справочник: завести нового, поправить карточку</div>
+                </div>
+                <svg className="h-6 w-6 text-primary-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+              </svg>
+              </Link>
+            )}
+          </div>
         )}
 
         {(isManager || isSM) && stats.length > 0 && (

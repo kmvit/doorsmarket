@@ -166,6 +166,7 @@ const ServiceManagerReport = () => {
               </div>
               <div>Удалённость — {formatRub(report.tariff.distance_rate)} за км, если не оплачена на месте.</div>
               <div>Итого по замеру = сумма по замеру + удалённость. Итого за месяц — сумма по всем замерам.</div>
+              <div>Замер, оплаченный клиентом на месте, в отчёте виден, но в зарплату не идёт.</div>
             </div>
           </details>
         )}
@@ -258,7 +259,7 @@ const ServiceManagerReport = () => {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                   {row.measurements.map((m) => (
-                                    <tr key={m.id} className="align-top">
+                                    <tr key={m.id} className={`align-top ${m.paid_on_site ? 'bg-gray-50 text-gray-500' : ''}`}>
                                       <td className="px-3 py-2 text-gray-500">{m.number}</td>
                                       <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDay(m.done_at)}</td>
                                       <td className="px-3 py-2 min-w-[180px]">
@@ -272,7 +273,10 @@ const ServiceManagerReport = () => {
                                         </div>
                                       </td>
                                       <td className="px-3 py-2 text-gray-700">{m.manager_name}</td>
-                                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">{m.payment_status || '—'}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        <div className={m.paid_on_site ? 'text-gray-900' : 'text-gray-700'}>{m.payment_status || '—'}</div>
+                                        {m.paid_on_site && <div className="text-xs text-amber-600">в ЗП не учитывается</div>}
+                                      </td>
                                       <td className="px-3 py-2 text-right whitespace-nowrap">
                                         <div className="text-gray-900">{m.openings_total}</div>
                                         {m.panels_count > 0 && (

@@ -30,6 +30,7 @@ import DesignerReport from './pages/Reports/DesignerReport'
 import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
 import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
 import ReportsIndex from './pages/Reports/ReportsIndex'
+import DesignersPage from './pages/Orders/DesignersPage'
 import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
 import MeasurementBlankPrint from './pages/Measurements/MeasurementBlankPrint'
@@ -286,6 +287,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <PrettyOfferPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/designers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <DesignersPage />
                     </Layout>
                   </ProtectedRoute>
                 }

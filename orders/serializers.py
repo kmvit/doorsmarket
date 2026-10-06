@@ -218,10 +218,12 @@ class DesignerSerializer(serializers.ModelSerializer):
     # в том виде, как его ввели, а не нормализованный
     phone = serializers.CharField(max_length=30)
     city_name = serializers.CharField(source='city.name', read_only=True, default='')
+    # Только в справочнике (?all=1): сколько заказов оформлено через дизайнера
+    orders_count = serializers.IntegerField(read_only=True, required=False)
 
     class Meta:
         model = Designer
-        fields = ['id', 'full_name', 'phone', 'studio', 'bonus_percent', 'city', 'city_name']
+        fields = ['id', 'full_name', 'phone', 'studio', 'bonus_percent', 'city', 'city_name', 'orders_count']
         # Город ставит сервер: менеджеру и руководителю — их город, админу — переданный
         # (город салона в заказе). Валидаторы уникальности — свои, в validate.
         extra_kwargs = {'city': {'required': False, 'allow_null': True}}
@@ -856,12 +858,12 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'lift_required', 'lift_impossible_warning', 'order_status',
             'lift_available', 'stairs_available', 'carry_to_entrance', 'floor_number', 'floor_readiness',
             'kp_number', 'kp_date',
-            'distance_payment', 'distance_km',
+            'distance_payment', 'distance_km', 'paid_on_site',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
-            # Удалённость меняется только через set_site_conditions — там проверка
-            'distance_payment', 'distance_km',
+            # Удалённость и оплата на месте меняются только через set_site_conditions
+            'distance_payment', 'distance_km', 'paid_on_site',
             'is_draft', 'draft_saved_at',
             'is_processed', 'processed_at', 'client_access_token', 'short_code',
             'updated_after_done_at',

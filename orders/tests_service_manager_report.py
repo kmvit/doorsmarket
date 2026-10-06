@@ -123,13 +123,39 @@ class ServiceManagerReportTest(TestCase):
         Measurement.objects.filter(pk=self.m3.pk).update(distance_payment='on_site', distance_km=Decimal('50'))
         data = self.get()
         first = self.row(data, self.petr)['measurements'][0]
-        self.assertEqual(first['payment_status'], 'Не оплачен')
         self.assertEqual(first['distance_sum'], '375.00')      # 12,5 км × 30
         self.assertEqual(first['total'], '1125.00')            # 750 + 375
         ivan = self.row(data, self.ivan)
-        self.assertEqual(ivan['measurements'][0]['payment_status'], 'Оплачен на месте')
-        self.assertEqual(ivan['measurements'][0]['distance_sum'], '0.00')
+        self.assertEqual(ivan['measurements'][0]['distance_sum'], '0.00')   # удалённость оплачена на месте
         self.assertEqual(data['totals']['total'], '1125.00')
+
+    def test_measurement_paid_on_site_is_listed_but_not_counted(self):
+        Measurement.objects.filter(pk=self.m1.pk).update(
+            paid_on_site=True, distance_payment='invoice', distance_km=Decimal('10'),
+        )
+        data = self.get()
+        petr = self.row(data, self.petr)
+        first = petr['measurements'][0]
+        # В отчёте замер есть…
+        self.assertEqual(first['id'], self.m1.id)
+        self.assertEqual(first['payment_status'], 'Оплачен на месте')
+        self.assertTrue(first['paid_on_site'])
+        # …но в зарплату не идёт: ни сумма по замеру, ни удалённость
+        self.assertEqual((first['measurement_sum'], first['distance_sum'], first['total']), ('0.00', '0.00', '0.00'))
+        self.assertEqual(petr['total'], '0.00')
+        self.assertEqual(petr['measurements_count'], 2)
+        # Неоплаченный — как обычно
+        self.assertEqual(petr['measurements'][1]['payment_status'], 'Не оплачен')
+
+    def test_paid_on_site_saved_from_site_conditions(self):
+        self.client.force_authenticate(self.petr)
+        url = f'/api/v1/measurements/{self.m2.id}/set_site_conditions/'
+        response = self.client.post(url, {'paid_on_site': True}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['paid_on_site'])
+        self.client.post(url, {'paid_on_site': 'false'}, format='json')
+        self.m2.refresh_from_db()
+        self.assertFalse(self.m2.paid_on_site)
 
     def test_panels_count_as_extra_openings(self):
         # В m1 три проёма: у двух галочка «Панели» (2 и 1 шт.), у третьего количество без галочки не в счёт

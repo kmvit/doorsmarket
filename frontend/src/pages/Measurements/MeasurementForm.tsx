@@ -560,6 +560,7 @@ const MeasurementForm = () => {
     floor_readiness?: string
     distance_payment?: DistancePayment | ''
     distance_km?: string | null
+    paid_on_site?: boolean
   }) => {
     if (!m) return
     // Оптимистично обновляем локально
@@ -1017,6 +1018,17 @@ const MeasurementForm = () => {
               placeholder="Например: 25"
             />
           </div>
+          {/* Замер оплачен клиентом на месте: в отчёте по зарплате он есть, но в расчёт не идёт */}
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer md:col-span-2">
+            <input
+              type="checkbox"
+              checked={!!m.paid_on_site}
+              onChange={(e) => saveConditions({ paid_on_site: e.target.checked })}
+              disabled={!canEditOpenings}
+              className="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Замер оплачен на месте
+          </label>
         </div>
         {m.lift_impossible_warning && (
           <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm font-medium">

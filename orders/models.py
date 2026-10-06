@@ -738,6 +738,9 @@ class Measurement(models.Model):
         max_digits=6, decimal_places=1, null=True, blank=True,
         verbose_name='Расстояние, км',
     )
+    # Клиент оплатил замер СМ на месте: в отчёте по зарплате замер виден,
+    # но в расчёт не идёт
+    paid_on_site = models.BooleanField(default=False, verbose_name='Замер оплачен на месте')
     repeat_requested_at = models.DateTimeField(
         null=True, blank=True, verbose_name='Повторный замер назначен',
     )

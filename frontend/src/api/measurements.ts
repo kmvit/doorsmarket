@@ -6,6 +6,7 @@ import {
 import {
   MeasurementFolderCount, MeasurementRequest, DoorType, DOUBLE_DOOR_TYPE,
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
+  DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY,
 } from '../types/orders'
 import { measurementUtils, cacheUtils, withOfflineFallback, db } from '../services/offline'
 import { requestQueue, requestWithQueue, isNetworkError, resolveTempId } from '../services/sync'
@@ -143,6 +144,9 @@ const removeAttachmentFromLocalDetail = async (
   }
 }
 
+// Текст предупреждения по Inverso — копия серверного inverso_warning_text()
+const INVERSO_WARNING_TEXT = 'Inverso: увеличьте высоту полотна на 1 см.'
+
 // Локальный пересчёт рекомендаций проёма — зеркало серверного _recalc_recommendations.
 // Нужен в офлайне: сервер недоступен, а рек. размеры и текст должны появляться сразу.
 const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial<MeasurementOpening>): T => {
@@ -178,6 +182,15 @@ const recalcOpeningLocal = <T extends MeasurementOpening>(op: T, patch?: Partial
     op.actual_height, op.actual_width, op.recommended_door_height, op.recommended_door_width,
     op.door_type, op.recommended_opening_height, op.recommended_opening_width,
   )
+  // Подписи типа двери и открывания считает сервер (get_*_display), и офлайн они
+  // оставались пустыми или от прежнего значения: СМ выбирал открывание, оно
+  // сохранялось и уезжало на сервер, а в бланке на планшете стоял прочерк.
+  // Словари подписей — копия серверных choices, см. types/orders.ts.
+  op.door_type_display = op.door_type ? (DOOR_TYPE_DISPLAY[op.door_type] ?? '') : ''
+  op.opening_type_display = op.opening_type ? (OPENING_TYPE_DISPLAY[op.opening_type] ?? '') : ''
+  // Предупреждение по Inverso приходило тем же ответом сервера — офлайн СМ его
+  // не видел, хотя полотно надо поднять на сантиметр
+  op.inverso_warning = isInverso(op.opening_type) ? INVERSO_WARNING_TEXT : null
   return op
 }
 
@@ -410,6 +423,7 @@ export const measurementsAPI = {
       floor_readiness?: string
       distance_payment?: string
       distance_km?: string | null
+      paid_on_site?: boolean
     },
   ): Promise<Measurement> => {
     try {

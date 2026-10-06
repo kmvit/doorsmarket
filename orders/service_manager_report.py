@@ -6,7 +6,10 @@
 - количество проёмов — все проёмы плюс все панели в них;
 - сумма по замеру — по шкале от количества проёмов (OPENINGS_TARIFF ниже);
 - удалённость — км × 30 ₽, если она не оплачена клиентом на месте;
-- итого по замеру = сумма по замеру + удалённость.
+- итого по замеру = сумма по замеру + удалённость;
+- замер, оплаченный клиентом на месте (галочка в условиях объекта), в отчёте
+  есть, но в зарплату не идёт: суммы по нему — 0.
+Столбец «Оплачен/не оплачен» — про оплату самого замера.
 Итого за месяц — сумма «итого» всех замеров СМ. Номера замеров в отчёте
 каждого СМ идут с 1.
 """
@@ -50,13 +53,9 @@ def measurement_sum(openings):
     return OPENINGS_TARIFF[-1][1], True
 
 
-def payment_status(distance_payment):
-    """Столбец «Оплачен/не оплачен» — про удалённость: оплаченная на месте в расчёт не идёт."""
-    if distance_payment == DistancePayment.ON_SITE:
-        return 'Оплачен на месте'
-    if distance_payment == DistancePayment.INVOICE:
-        return 'Не оплачен'
-    return ''
+def payment_status(paid_on_site):
+    """Столбец «Оплачен/не оплачен» — оплачен ли замер клиентом на месте."""
+    return 'Оплачен на месте' if paid_on_site else 'Не оплачен'
 
 
 def _money(value):
@@ -112,6 +111,9 @@ def build_report(request):
         base, tariff_exceeded = measurement_sum(openings_total)
         counted_km = m.distance_km if m.distance_payment == DistancePayment.INVOICE and m.distance_km else Decimal(0)
         distance = counted_km * DISTANCE_RATE
+        if m.paid_on_site:
+            # Замер оплачен клиентом на месте — в отчёте он есть, в зарплату не идёт
+            base = distance = Decimal(0)
         total = base + distance
 
         g['measurements_count'] += 1
@@ -128,7 +130,9 @@ def build_report(request):
             'address': order.address,
             'client_name': order.client_name,
             'manager_name': _user_name(order.manager),
-            'payment_status': payment_status(m.distance_payment),
+            'payment_status': payment_status(m.paid_on_site),
+            'paid_on_site': m.paid_on_site,
+            'distance_payment_display': m.get_distance_payment_display() if m.distance_payment else '',
             'openings_count': m.openings_count,
             'panels_count': panels,
             'openings_total': openings_total,
@@ -229,7 +233,7 @@ def _xlsx_response(groups, request):
                 row['address'],
                 row['order_id'],
                 row['manager_name'],
-                row['payment_status'],
+                row['payment_status'] + (' — не учитывается' if row['paid_on_site'] else ''),
                 row['openings_total'],
                 float(row['measurement_sum']),
                 float(row['distance_sum']),

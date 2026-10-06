@@ -296,8 +296,8 @@ const DesignerSearch = ({ onSelect, onCreate, cityId }: {
   )
 }
 
-/** Карточка дизайнера: новая (initial не задан) или правка существующей. */
-const DesignerForm = ({ initial, cityId, onCancel, onSaved }: {
+/** Карточка дизайнера: новая (initial не задан) или правка существующей. Используется и в справочнике. */
+export const DesignerForm = ({ initial, cityId, onCancel, onSaved }: {
   initial?: Designer
   cityId: number | null
   onCancel: () => void

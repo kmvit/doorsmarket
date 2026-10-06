@@ -95,7 +95,7 @@ const Header = () => {
 
   return (
     <nav className="relative z-20 bg-white/90 backdrop-blur-md shadow-lg border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           {/* Логотип и основная навигация */}
           <div className="flex">
@@ -107,17 +107,17 @@ const Header = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                   </svg>
                 </div>
-                <span className="text-xl font-bold text-gray-900 hidden lg:block">Marketing Doors</span>
+                <span className="text-xl font-bold text-gray-900 whitespace-nowrap hidden min-[1700px]:block">Marketing Doors</span>
               </Link>
             </div>
 
             {/* Переключатель модулей */}
             {showModuleSwitcher && (
-              <div className="hidden md:flex items-center ml-6">
+              <div className="hidden xl:flex items-center ml-4 2xl:ml-6">
                 <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium">
                   <Link
                     to="/complaints"
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
                       !isOrdersModule
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-500 hover:text-gray-700'
@@ -127,7 +127,7 @@ const Header = () => {
                   </Link>
                   <Link
                     to="/orders"
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
                       isOrdersModule
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-500 hover:text-gray-700'
@@ -140,16 +140,19 @@ const Header = () => {
             )}
 
             {/* Навигационные ссылки (Desktop) */}
-            <div className="hidden md:ml-4 md:flex md:space-x-2">
+            {/* Полное меню — только на широком экране, уже — меню ☰: у менеджера пунктов
+                много, и на средней ширине они переносились и наезжали друг на друга.
+                Значки у пунктов — с 2xl: на 1280–1535 px с ними меню не помещалось */}
+            <div className="hidden xl:ml-3 xl:flex xl:space-x-1">
               <Link
                 to="/dashboard"
-                className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                   isActive('/dashboard')
                     ? 'text-primary-600 bg-primary-50'
                     : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                 }`}
               >
-                <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
                 Главная
@@ -158,13 +161,13 @@ const Header = () => {
               {user.role !== 'installer' && !ORDERS_ROLES.includes(user.role) && (
                 <Link
                   to="/complaints"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/complaints') || location.pathname.startsWith('/complaints/')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   Рекламации
@@ -174,13 +177,13 @@ const Header = () => {
               {(user.role === 'admin' || user.role === 'leader') && (
                 <Link
                   to="/users"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/users')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   Пользователи
@@ -190,45 +193,45 @@ const Header = () => {
               {(user.role === 'manager' || user.role === 'service_manager') && (
                 <Link
                   to="/shipping-registry"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/shipping-registry')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
-                  Реестр на отгрузку
+                  Отгрузка
                 </Link>
               )}
 
               {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && (
                 <Link
                   to="/return-registry"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/return-registry')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
                   </svg>
-                  Реестр на возврат
+                  Возвраты
                 </Link>
               )}
 
               {user.role === 'manager' && (
                 <Link
                   to="/manager/production"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/manager/production')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                   Производство
@@ -238,13 +241,13 @@ const Header = () => {
               {user.role === 'installer' && (
                 <Link
                   to="/installer/planning"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/installer/planning')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                   </svg>
                   Мои задачи
@@ -254,13 +257,13 @@ const Header = () => {
               {user.role === 'complaint_department' && (
                 <Link
                   to="/or/factory-complaints"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/or/factory-complaints')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   Фабричные рекламации
@@ -271,16 +274,33 @@ const Header = () => {
               {isOrdersModule && ORDERS_ROLES.includes(user.role) && (
                 <Link
                   to="/workshop"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/workshop')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                   </svg>
                   Наработки
+                </Link>
+              )}
+
+              {/* Справочник дизайнеров — менеджеру, руководителю, админу в модуле заказов */}
+              {isOrdersModule && ['manager', 'leader', 'admin'].includes(user.role) && (
+                <Link
+                  to="/orders/designers"
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+                    isActive('/orders/designers')
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
+                  }`}
+                >
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  Дизайнеры
                 </Link>
               )}
 
@@ -289,13 +309,13 @@ const Header = () => {
               {['admin', 'leader', 'service_manager', 'manager'].includes(user.role) && (
                 <Link
                   to="/orders/reports"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     location.pathname.startsWith('/orders/reports')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                   Отчёты
@@ -306,13 +326,13 @@ const Header = () => {
               {isOrdersModule && ['service_manager', 'admin', 'leader'].includes(user.role) && (
                 <Link
                   to="/measurements"
-                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     isActive('/measurements') || location.pathname.startsWith('/measurements/')
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
                   </svg>
                   Замеры
@@ -325,7 +345,7 @@ const Header = () => {
           {/* Профиль, бургер и выход */}
           <div className="flex items-center space-x-2">
             {/* Информация о пользователе (Desktop) */}
-            <div className="hidden md:flex items-center space-x-3">
+            <div className="hidden xl:flex items-center space-x-2">
               {/* Кнопка уведомлений */}
               <Link
                 to="/notifications"
@@ -339,15 +359,19 @@ const Header = () => {
                   <span className="absolute top-1 right-1 inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>
                 )}
               </Link>
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">
+              {/* Имя и роль — на очень широком экране (от 1920 px); иначе подсказка на аватаре */}
+              <div className="text-right hidden min-[1920px]:block">
+                <p className="text-sm font-medium text-gray-900 whitespace-nowrap">
                   {user.first_name && user.last_name
                     ? `${user.first_name} ${user.last_name}`
                     : user.username}
                 </p>
                 <p className="text-xs text-gray-600">{ROLE_DISPLAY[user.role] || user.role}</p>
               </div>
-              <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white font-bold">
+              <div
+                className="h-10 w-10 shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white font-bold"
+                title={`${user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username} — ${ROLE_DISPLAY[user.role] || user.role}`}
+              >
                 {user.username.slice(0, 2).toUpperCase()}
               </div>
               <button
@@ -361,7 +385,7 @@ const Header = () => {
             </div>
 
             {/* Аватар (Mobile) */}
-            <div className="md:hidden flex items-center space-x-2">
+            <div className="xl:hidden flex items-center space-x-2">
               <Link
                 to="/notifications"
                 className="relative inline-flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -401,7 +425,7 @@ const Header = () => {
 
       {/* Мобильное меню (скрытое по умолчанию) */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white/95 backdrop-blur-md border-t border-gray-200">
+        <div className="xl:hidden bg-white/95 backdrop-blur-md border-t border-gray-200">
           <div className="px-4 pt-2 pb-3 space-y-1">
             {/* Информация о пользователе */}
             <div className="px-3 py-3 border-b border-gray-200 mb-2">
@@ -459,6 +483,33 @@ const Header = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
                 </svg>
                 Замеры
+              </Link>
+            )}
+
+            {/* Наработки — как в полной шапке: роли модуля заказов */}
+            {ORDERS_ROLES.includes(user.role) && (
+              <Link
+                to="/workshop"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+              >
+                <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+                Наработки
+              </Link>
+            )}
+
+            {['manager', 'leader', 'admin'].includes(user.role) && (
+              <Link
+                to="/orders/designers"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+              >
+                <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Дизайнеры
               </Link>
             )}
 

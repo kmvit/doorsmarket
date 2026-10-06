@@ -115,6 +115,8 @@ export interface Measurement {
   // Удалённость объекта: кто платит и сколько км (в расчёт СМ идёт «включить в счёт»)
   distance_payment?: DistancePayment | ''
   distance_km?: string | null
+  // Клиент оплатил замер на месте: в отчёте по ЗП есть, в расчёт не идёт
+  paid_on_site?: boolean
   kp_number?: string | null
   kp_date?: string | null
 }

@@ -11,7 +11,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Q, Prefetch
+from django.db.models import Count, Q, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
@@ -186,9 +186,13 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             qs = qs.filter(city_id=int(city))
         if self.action != 'list':
             return qs
+        # Справочник (?all=1): весь список города с числом заказов, без ограничения
+        full = self.request.query_params.get('all') in ('1', 'true')
+        if full:
+            qs = qs.annotate(orders_count=Count('orders'))
         query = (self.request.query_params.get('search') or '').strip()
         if not query:
-            return qs[:self.SEARCH_LIMIT]
+            return qs if full else qs[:self.SEARCH_LIMIT]
         # Имя и студию сравниваем в Python: при локали базы «C» Postgres не меняет
         # регистр кириллицы, и ILIKE не нашёл бы «Петрову» по «петрова».
         # Дизайнеров немного — пройти их целиком дёшево.
@@ -204,7 +208,8 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             if len(digits) > 1 and digits[0] == '8':
                 digits = '7' + digits[1:]
             condition |= Q(phone__contains=digits)
-        return qs.filter(condition)[:self.SEARCH_LIMIT]
+        qs = qs.filter(condition)
+        return qs if full else qs[:self.SEARCH_LIMIT]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -1762,6 +1767,10 @@ class MeasurementViewSet(viewsets.ModelViewSet):
 
         # Удалённость объекта хранится в самом замере: это условия выезда СМ
         measurement_fields = []
+        if 'paid_on_site' in data:
+            # Строку «false» bool() считал бы «да» — разбираем явно
+            m.paid_on_site = data.get('paid_on_site') in (True, 1, '1', 'true', 'True', 'on')
+            measurement_fields.append('paid_on_site')
         if 'distance_payment' in data:
             payment = data.get('distance_payment') or ''
             if payment and payment not in DistancePayment.values:
