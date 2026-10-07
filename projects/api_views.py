@@ -65,6 +65,19 @@ def _manager_has_complaint_access(user, complaint):
     return False
 
 
+def group_leader_complaints_q(user):
+    """
+    Рекламации салонов руководителя группы. У рекламации своего салона нет —
+    берём салон менеджера заказа (он у рекламации обязателен). Свои (созданные
+    им или адресованные ему) видит всегда.
+    """
+    return (
+        Q(manager__salon_id__in=user.managed_salon_ids())
+        | Q(initiator=user)
+        | Q(recipient=user)
+    )
+
+
 class IsAuthenticated(permissions.IsAuthenticated):
     """Базовый класс для аутентифицированных пользователей"""
     pass
@@ -137,6 +150,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             # Руководитель видит все по своему городу
             if user.city:
                 queryset = queryset.filter(initiator__city=user.city)
+        elif user.role == 'group_leader':
+            # Руководитель группы — только рекламации своих салонов
+            queryset = queryset.filter(group_leader_complaints_q(user))
         elif user.role == 'service_manager':
             # Сервис-менеджер видит рекламации из своего города или созданные им
             user_city = getattr(user, 'city', None)
@@ -237,6 +253,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'sm_overdue': sm_overdue_filter,
                 },
             }
+            # Задачи руководителя группы — как у руководителя (видимость уже сужена выше)
+            role_task_filters['group_leader'] = role_task_filters['leader']
             
             role_filters = role_task_filters.get(user.role, {})
             task_filter = role_filters.get(my_tasks)
@@ -566,8 +584,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         user = request.user
         
-        # Админы, лидеры и Django staff/superuser имеют полный доступ
-        if user.role in ['admin', 'leader'] or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+        # Админы, лидеры и Django staff/superuser имеют полный доступ.
+        # Руководитель группы получает объект только из своих салонов (get_queryset).
+        if user.role in ['admin', 'leader', 'group_leader'] or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
             return
         
         # Проверка доступа по ролям
@@ -919,7 +938,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # Проверка прав доступа
-        if user.role not in ['service_manager', 'manager', 'admin', 'leader']:
+        if user.role not in ['service_manager', 'manager', 'admin', 'leader', 'group_leader']:
             return Response(
                 {'error': 'У вас нет прав для редактирования контактных данных'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1506,7 +1525,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # Проверяем права доступа
-        if user.role not in ['service_manager', 'admin', 'leader']:
+        if user.role not in ['service_manager', 'admin', 'leader', 'group_leader']:
             return Response(
                 {'error': 'Недостаточно прав для выполнения этого действия'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1726,7 +1745,7 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Проверка прав доступа согласно @role_required из views.py
-        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader']
+        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader', 'group_leader']
         if user.role not in allowed_roles:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("У вас нет прав для доступа к реестру на отгрузку")
@@ -1751,6 +1770,9 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
             else:
                 # Если город у СМ не задан, не показываем чужие города
                 queryset = queryset.none()
+        elif user.role == 'group_leader':
+            # Руководитель группы — записи менеджеров своих салонов
+            queryset = queryset.filter(manager__salon_id__in=user.managed_salon_ids())
         # admin/leader/service_manager/complaint_department - без дополнительной фильтрации
         
         exclude_delivered = self.request.query_params.get('exclude_delivered')
@@ -1809,7 +1831,7 @@ class ReturnRegistryViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
 
-        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader']
+        allowed_roles = ['manager', 'service_manager', 'complaint_department', 'admin', 'leader', 'group_leader']
         if user.role not in allowed_roles:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("У вас нет прав для доступа к реестру на возврат")
@@ -1827,6 +1849,9 @@ class ReturnRegistryViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(manager=user)
             else:
                 queryset = queryset.none()
+        elif user.role == 'group_leader':
+            # Руководитель группы — записи менеджеров своих салонов
+            queryset = queryset.filter(manager__salon_id__in=user.managed_salon_ids())
 
         exclude_sent = self.request.query_params.get('exclude_sent')
         if exclude_sent in ('true', '1', 'True') and 'sent' not in _requested(self.request, 'return_status'):
@@ -1872,6 +1897,8 @@ def _user_has_complaint_access(user, complaint):
     """Проверка доступа пользователя к рекламации (для DefectiveProduct, Attachment и т.д.)"""
     if user.role in ['admin', 'leader'] or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
         return True
+    if user.role == 'group_leader':
+        return Complaint.objects.filter(pk=complaint.pk).filter(group_leader_complaints_q(user)).exists()
     if complaint.initiator == user or complaint.recipient == user or complaint.manager == user:
         return True
     if complaint.installer_assigned == user:
@@ -2148,10 +2175,12 @@ class DashboardStatsView(APIView):
                     Q(status='moscow_service', moscow_service_deadline__lt=timezone.now())
                 )
             )
-        elif user.role == 'leader':
-            user_city = getattr(user, 'city', None)
-            if user_city:
-                leader_city_filter = Q(initiator__city=user_city)
+        elif user.role in ('leader', 'group_leader'):
+            if user.role == 'group_leader':
+                # Руководитель группы — рекламации своих салонов
+                leader_city_filter = group_leader_complaints_q(user)
+            elif getattr(user, 'city', None):
+                leader_city_filter = Q(initiator__city=user.city)
             else:
                 # Если у руководителя не задан город, не показываем чужие города
                 leader_city_filter = Q(pk__in=[])

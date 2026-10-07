@@ -65,7 +65,8 @@ class IsAuthenticated(permissions.IsAuthenticated):
 
 
 def get_orders_queryset_for_user(user):
-    """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город, admin — всё."""
+    """Базовый ACL-фильтр заказов: менеджер — свой салон, СМ/руководитель — свой город,
+    руководитель группы — закреплённые салоны, admin — всё."""
     qs = Order.objects.select_related(
         'manager', 'salon', 'salon__city', 'designer',
         # Заявка и замер — для просрочки и времени выезда в списке; без этого
@@ -83,6 +84,8 @@ def get_orders_queryset_for_user(user):
     )
     if user.role == 'admin':
         return qs
+    if user.role == 'group_leader':
+        return qs.filter(salon_id__in=user.managed_salon_ids())
     if user.role in ('leader', 'service_manager'):
         if hasattr(user, 'city') and user.city:
             return qs.filter(salon__city=user.city)
@@ -179,7 +182,10 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def get_queryset(self):
         user = self.request.user
         qs = Designer.objects.select_related('city')
-        if user.role != 'admin':
+        if user.role == 'group_leader':
+            # Салоны группы могут быть в разных городах — дизайнеры всех этих городов
+            qs = qs.filter(city__salons__id__in=user.managed_salon_ids()).distinct()
+        elif user.role != 'admin':
             city_id = user_city_id(user)
             qs = qs.filter(city_id=city_id) if city_id else qs.none()
         elif (city := self.request.query_params.get('city')) and city.isdigit():
@@ -232,6 +238,8 @@ class SalonViewSet(viewsets.ReadOnlyModelViewSet):
             if hasattr(user, 'salon') and user.salon_id:
                 return qs.filter(id=user.salon_id)
             return qs.none()
+        if user.role == 'group_leader':
+            return qs.filter(id__in=user.managed_salon_ids())
         # СМ и руководитель — все салоны своего города
         if hasattr(user, 'city') and user.city:
             return qs.filter(city=user.city)
@@ -440,7 +448,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def designer_paid(self, request, pk=None):
         """Менеджер отмечает выплату дизайнеру. Тело: {amount}. Заказ уходит из папки «Выплаты дизайнерам»."""
-        if request.user.role not in ('manager', 'admin', 'leader'):
+        if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response({'detail': 'Выплату дизайнеру отмечает менеджер.'}, status=status.HTTP_403_FORBIDDEN)
         order = self.get_object()
         if not (order.has_designer and order.designer_id):
@@ -968,7 +976,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """
         from django.utils.dateparse import parse_date
         order = self.get_object()
-        if request.user.role not in ('manager', 'admin', 'leader'):
+        if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Менять статус заказа может только менеджер/руководитель.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1057,7 +1065,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='mark_measurement_irrelevant')
     def mark_measurement_irrelevant(self, request, pk=None):
         """СМ помечает замер (или ещё не назначенную заявку) неактуальным."""
-        if request.user.role not in ('service_manager', 'admin', 'leader'):
+        if request.user.role not in ('service_manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Пометить замер неактуальным может только сервис-менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1102,7 +1110,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='confirm_measurement_irrelevant')
     def confirm_measurement_irrelevant(self, request, pk=None):
         """Менеджер подтверждает: заявка уходит в «Неактуальные» и из работы пропадает."""
-        if request.user.role not in ('manager', 'admin', 'leader'):
+        if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Решение по неактуальности принимает менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1134,7 +1142,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='keep_measurement_relevant')
     def keep_measurement_relevant(self, request, pk=None):
         """Менеджер оставляет замер актуальным: пометка снимается."""
-        if request.user.role not in ('manager', 'admin', 'leader'):
+        if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Решение по неактуальности принимает менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1939,7 +1947,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         существующие проёмы и снова нажимает «Замер выполнен» — после этого
         менеджеру опять приходит задание обработать замер.
         """
-        if request.user.role not in ('manager', 'admin', 'leader'):
+        if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Назначить повторный замер может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,

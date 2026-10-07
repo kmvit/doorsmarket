@@ -19,4 +19,9 @@ class UserAdmin(BaseUserAdmin):
     
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Дополнительная информация', {'fields': ('role', 'city', 'phone_number', 'salon')}),
+        ('Руководитель группы салонов', {
+            'fields': ('managed_salons',),
+            'description': 'Только для роли «Руководитель группы салонов»: какие салоны он видит.',
+        }),
     )
+    filter_horizontal = ('managed_salons',) + BaseUserAdmin.filter_horizontal

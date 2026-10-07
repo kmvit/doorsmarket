@@ -60,7 +60,7 @@ const DesignersPage = () => {
     setEditingId(null)
   }
 
-  if (user && !['manager', 'leader', 'admin'].includes(user.role)) {
+  if (user && !['manager', 'leader', 'group_leader', 'admin'].includes(user.role)) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-6 rounded-xl">Справочник дизайнеров вам недоступен</div>

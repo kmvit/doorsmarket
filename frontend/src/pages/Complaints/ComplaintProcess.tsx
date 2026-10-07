@@ -188,7 +188,7 @@ const ComplaintProcess = () => {
   }
 
   // Проверка прав доступа - только СМ, ОР, админ и руководитель могут обрабатывать рекламации
-  const canProcess = user?.role && ['service_manager', 'complaint_department', 'admin', 'leader'].includes(user.role)
+  const canProcess = user?.role && ['service_manager', 'complaint_department', 'admin', 'leader', 'group_leader'].includes(user.role)
   
   if (!canProcess) {
     return (

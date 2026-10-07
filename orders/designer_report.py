@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from .api_views import get_orders_queryset_for_user
 from .models import OrderStatus
 
-REPORT_ROLES = ('leader', 'admin')
+REPORT_ROLES = ('leader', 'group_leader', 'admin')
 # Отчёт по дизайнерам: менеджеру — по его салону (get_orders_queryset_for_user)
 DESIGNER_REPORT_ROLES = (*REPORT_ROLES, 'manager')
 

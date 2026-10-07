@@ -171,7 +171,7 @@ const ComplaintDetail = () => {
     currentComplaint.initiator.id === user.id ||
     user.role === 'admin' ||
     user.role === 'service_manager' ||
-    user.role === 'leader' ||
+    (user.role === 'leader' || user.role === 'group_leader') ||
     canDoManagerActions
   )
 
@@ -180,7 +180,7 @@ const ComplaintDetail = () => {
     user.role === 'service_manager' ||
     user.role === 'manager' ||
     user.role === 'admin' ||
-    user.role === 'leader'
+    (user.role === 'leader' || user.role === 'group_leader')
   )
 
   // ОР-действия (сервисная заявка Москва, возврат товара) сервер разрешает
@@ -885,7 +885,7 @@ const ComplaintDetail = () => {
               <h2 className="text-lg font-bold text-gray-900 mb-4">Действия</h2>
               <div className="space-y-2">
                 {/* Общие действия */}
-                {(user?.role === 'service_manager' || user?.role === 'manager' || user?.role === 'admin' || user?.role === 'leader' || user?.role === 'complaint_department') && (
+                {(user?.role === 'service_manager' || user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'complaint_department') && (
                   <Link to={`/complaints/${id}/history`}>
                     <Button variant="outline" className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-0">
                       <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1254,7 +1254,7 @@ const ComplaintDetail = () => {
                 )}
 
                 {/* Действия для ОР */}
-                {(user?.role === 'complaint_department' || user?.role === 'admin' || user?.role === 'leader') && (
+                {(user?.role === 'complaint_department' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
                   <>
                     {currentComplaint.complaint_type === 'factory' && 
                      ['sent', 'factory_response_overdue', 'factory_dispute'].includes(currentComplaint.status) && (

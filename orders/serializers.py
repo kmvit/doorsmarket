@@ -209,6 +209,11 @@ def user_city_id(user):
         return None
     if getattr(user, 'city_id', None):
         return user.city_id
+    if getattr(user, 'role', '') == 'group_leader':
+        # Город не указан — берём город первого из его салонов
+        from .models import Salon
+        salon = Salon.objects.filter(id__in=user.managed_salon_ids()).order_by('id').first()
+        return salon.city_id if salon is not None else None
     salon = getattr(user, 'salon', None)
     return salon.city_id if salon is not None else None
 
@@ -238,6 +243,14 @@ class DesignerSerializer(serializers.ModelSerializer):
         if user is not None and getattr(user, 'role', '') == 'admin':
             city = attrs.get('city')
             return city.id if city else (self.instance.city_id if self.instance else user_city_id(user))
+        if user is not None and getattr(user, 'role', '') == 'group_leader':
+            # Салоны группы бывают в разных городах: город берём переданный (салона
+            # в заказе), но только из городов его салонов
+            from .models import Salon
+            city = attrs.get('city')
+            allowed = set(Salon.objects.filter(id__in=user.managed_salon_ids()).values_list('city_id', flat=True))
+            if city and city.id in allowed:
+                return city.id
         return user_city_id(user)
 
     def validate_full_name(self, value):

@@ -455,7 +455,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                             'recipient': 'Не найден сервис-менеджер для назначения получателя'
                         })
                 # admin/leader создают с типом "Фабрика" — получатель ОР
-                elif complaint_type == 'factory' and request.user.role in ['admin', 'leader']:
+                elif complaint_type == 'factory' and request.user.role in ['admin', 'leader', 'group_leader']:
                     complaint_dept = User.objects.filter(role='complaint_department').first()
                     if complaint_dept:
                         validated_data['recipient'] = complaint_dept

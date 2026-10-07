@@ -54,7 +54,7 @@ const OrderList = () => {
   const showMeasurementTime = MEASUREMENT_DAY_FOLDERS.includes(folder)
   // Папка «Выплаты дизайнерам»: дизайнер и кнопка «Выплачен» в строке
   const showDesignerPayout = folder === 'designer_payouts'
-  const canMarkPayout = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'leader'
+  const canMarkPayout = user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')
 
   const folderLabel = folder
     ? (FOLDER_LABELS[folder] || ORDER_STATUS_DISPLAY[folder as OrderStatus] || folder)
@@ -189,7 +189,7 @@ const OrderList = () => {
           </div>
         )}
         <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
-        {(user?.role === 'service_manager' || user?.role === 'leader' || user?.role === 'admin') && (
+        {(user?.role === 'service_manager' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'admin') && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"

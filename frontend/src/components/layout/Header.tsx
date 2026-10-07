@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { ROLE_DISPLAY } from '../../utils/constants'
 import apiClient from '../../api/client'
 
-const ORDERS_ROLES = ['manager', 'service_manager', 'leader', 'admin']
+const ORDERS_ROLES = ['manager', 'service_manager', 'leader', 'group_leader', 'admin']
 
 const Header = () => {
   const { user, logout, isAuthenticated, isLoading } = useAuthStore()
@@ -174,7 +174,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {(user.role === 'admin' || user.role === 'leader') && (
+              {(user.role === 'admin' || (user.role === 'leader' || user.role === 'group_leader')) && (
                 <Link
                   to="/users"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -289,7 +289,7 @@ const Header = () => {
               )}
 
               {/* Справочник дизайнеров — менеджеру, руководителю, админу в модуле заказов */}
-              {isOrdersModule && ['manager', 'leader', 'admin'].includes(user.role) && (
+              {isOrdersModule && ['manager', 'leader', 'group_leader', 'admin'].includes(user.role) && (
                 <Link
                   to="/orders/designers"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -307,7 +307,7 @@ const Header = () => {
 
               {/* Отчёты — всегда в меню: руководителю и админу, СМ — его зарплата.
                   Раньше пункт был только внутри раздела заказов, и его не находили */}
-              {['admin', 'leader', 'service_manager', 'manager'].includes(user.role) && (
+              {['admin', 'leader', 'group_leader', 'service_manager', 'manager'].includes(user.role) && (
                 <Link
                   to="/orders/reports"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -325,7 +325,7 @@ const Header = () => {
 
               {/* Замеры — для СМ / admin / leader в модуле заказов; монтажнику —
                   всегда (замеры своего города, только просмотр) */}
-              {((isOrdersModule && ['service_manager', 'admin', 'leader'].includes(user.role))
+              {((isOrdersModule && ['service_manager', 'admin', 'leader', 'group_leader'].includes(user.role))
                 || user.role === 'installer') && (
                 <Link
                   to="/measurements"
@@ -503,7 +503,7 @@ const Header = () => {
               </Link>
             )}
 
-            {['manager', 'leader', 'admin'].includes(user.role) && (
+            {['manager', 'leader', 'group_leader', 'admin'].includes(user.role) && (
               <Link
                 to="/orders/designers"
                 onClick={() => setMobileMenuOpen(false)}
@@ -516,7 +516,7 @@ const Header = () => {
               </Link>
             )}
 
-            {['admin', 'leader', 'service_manager', 'manager'].includes(user.role) && (
+            {['admin', 'leader', 'group_leader', 'service_manager', 'manager'].includes(user.role) && (
               <Link
                 to="/orders/reports"
                 onClick={() => setMobileMenuOpen(false)}
@@ -542,7 +542,7 @@ const Header = () => {
               </Link>
             )}
 
-            {(user.role === 'admin' || user.role === 'leader') && (
+            {(user.role === 'admin' || (user.role === 'leader' || user.role === 'group_leader')) && (
               <Link
                 to="/users"
                 onClick={() => setMobileMenuOpen(false)}

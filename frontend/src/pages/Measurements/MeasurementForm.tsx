@@ -81,7 +81,7 @@ const MeasurementForm = () => {
   // обработка менеджером: после неё размеры перенесены в заказ, и правки идут
   // только через повторный замер.
   const canEditOpenings = !m?.is_processed && (
-    user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader'
+    user?.role === 'service_manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')
   )
   // Закрыть замер можно только один раз — кнопка живёт до «выполнен».
   const canMarkDone = !m?.is_done && canEditOpenings
@@ -89,7 +89,7 @@ const MeasurementForm = () => {
   const canAmendAfterDone = Boolean(m?.is_done) && canEditOpenings
   // Предупреждение про правки после закрытия нужно тем, кто замер обрабатывает,
   // а не тому, кто их только что внёс.
-  const showAmendedNotice = Boolean(m?.updated_after_done_at) && ['manager', 'admin', 'leader'].includes(user?.role || '')
+  const showAmendedNotice = Boolean(m?.updated_after_done_at) && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || '')
   const canUploadSignature = user?.role === 'service_manager' || user?.role === 'admin'
   // Старый сервер / офлайн-кеш без списка — показываем одиночное фото как раньше
   const signatures = m?.signatures
@@ -97,7 +97,7 @@ const MeasurementForm = () => {
   const canMarkProcessed = m?.is_done && !m?.is_processed && (user?.role === 'manager' || user?.role === 'admin')
   // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
   const canRequestRepeat = Boolean(
-    m?.is_done && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+    m?.is_done && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
   // «Неактуален»: помечает СМ, решает менеджер. Пока решения нет, замер
   // остаётся в работе — поэтому пометка это заявка, а не факт.
@@ -106,10 +106,10 @@ const MeasurementForm = () => {
   // ещё раз дёрнет менеджера, состояние объясняет бейдж.
   const canMarkIrrelevant = Boolean(
     !m?.is_done && !m?.is_irrelevant && !irrelevantPending &&
-    ['service_manager', 'admin', 'leader'].includes(user?.role || ''),
+    ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
   const canDecideIrrelevant = Boolean(
-    irrelevantPending && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+    irrelevantPending && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
 
   const load = async () => {

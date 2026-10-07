@@ -7,6 +7,7 @@ export const ROLES = {
   INSTALLER: 'installer',
   COMPLAINT_DEPARTMENT: 'complaint_department',
   LEADER: 'leader',
+  GROUP_LEADER: 'group_leader',
 } as const
 
 export const ROLE_DISPLAY: Record<string, string> = {
@@ -16,5 +17,6 @@ export const ROLE_DISPLAY: Record<string, string> = {
   installer: 'Монтажник',
   complaint_department: 'Отдел рекламаций',
   leader: 'Руководитель подразделения',
+  group_leader: 'Руководитель группы салонов',
 }
 

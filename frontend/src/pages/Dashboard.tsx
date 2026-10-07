@@ -61,10 +61,10 @@ const Dashboard = () => {
   const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
   const [orderFolders, setOrderFolders] = useState<OrderFolderCount[]>([])
 
-  const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'admin'].includes(user.role)
+  const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'group_leader', 'admin'].includes(user.role)
   const isManager = user?.role === 'manager'
   const isSM = user?.role === 'service_manager'
-  const isLeader = user?.role === 'leader'
+  const isLeader = (user?.role === 'leader' || user?.role === 'group_leader')
 
   // Папки Фазы 6: менеджеру — свои заказы, СМ и руководителю — заказы города (пайплайн замера)
   useEffect(() => {
@@ -176,6 +176,7 @@ const Dashboard = () => {
       installer: 'Монтажник',
       complaint_department: 'Отдел рекламаций',
       leader: 'Руководитель подразделения',
+      group_leader: 'Руководитель группы салонов',
     }
     return roles[role] || role
   }

@@ -448,7 +448,7 @@ const ComplaintCreate = () => {
   }
 
   const showRecipient = user && !['manager', 'installer', 'service_manager'].includes(user.role)
-  const showManagerField = user && ['service_manager', 'installer', 'admin', 'leader', 'complaint_department', 'manager'].includes(user.role)
+  const showManagerField = user && ['service_manager', 'installer', 'admin', 'leader', 'group_leader', 'complaint_department', 'manager'].includes(user.role)
 
   if (isLoadingData) {
     return (
@@ -509,7 +509,7 @@ const ComplaintCreate = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(user?.role === 'service_manager' || user?.role === 'admin' || user?.role === 'leader') && (
+              {(user?.role === 'service_manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
                 <>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">

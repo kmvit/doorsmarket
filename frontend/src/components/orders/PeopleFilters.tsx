@@ -14,7 +14,7 @@ export interface PeopleFilterValue {
 export const EMPTY_PEOPLE_FILTER: PeopleFilterValue = { cities: [], salons: [], managers: [] }
 
 /** Фильтры «город / салон / менеджер» видны руководителю и админу. */
-export const canFilterByPeople = (role?: string) => role === 'leader' || role === 'admin'
+export const canFilterByPeople = (role?: string) => (role === 'leader' || role === 'group_leader') || role === 'admin'
 
 /** Значение из sessionStorage старого формата (до городов и салонов) → новый вид. */
 export const normalizePeopleFilter = (v: unknown): PeopleFilterValue => {

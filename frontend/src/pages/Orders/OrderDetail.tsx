@@ -35,8 +35,8 @@ const OrderDetail = () => {
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
-  const canManage = canEdit || user?.role === 'leader'
-  const canUploadAttachments = canEdit || user?.role === 'service_manager' || user?.role === 'leader'
+  const canManage = canEdit || (user?.role === 'leader' || user?.role === 'group_leader')
+  const canUploadAttachments = canEdit || user?.role === 'service_manager' || (user?.role === 'leader' || user?.role === 'group_leader')
   // «Неактуален» доступен с момента заявки: клиент может отказаться до того,
   // как СМ назначил дату и замер вообще появился.
   const irrelevantPending = Boolean(
@@ -45,10 +45,10 @@ const OrderDetail = () => {
   const canMarkIrrelevant = Boolean(
     measurementRequest && !measurementRequest.is_irrelevant && !irrelevantPending &&
     !measurement?.is_done &&
-    ['service_manager', 'admin', 'leader'].includes(user?.role || ''),
+    ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
   const canDecideIrrelevant = Boolean(
-    irrelevantPending && ['manager', 'admin', 'leader'].includes(user?.role || ''),
+    irrelevantPending && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
   const [notifyingClient, setNotifyingClient] = useState(false)
   const [markingIrrelevant, setMarkingIrrelevant] = useState(false)
@@ -785,7 +785,7 @@ const OrderDetail = () => {
                   )}
                 </>
               ) : (
-                ['service_manager', 'admin', 'leader'].includes(user?.role || '') && (
+                ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || '') && (
                   <button
                     onClick={() => setShowScheduleModal(true)}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"

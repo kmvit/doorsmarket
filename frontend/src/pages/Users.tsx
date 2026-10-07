@@ -21,7 +21,7 @@ const Users = () => {
   const [error, setError] = useState<string | null>(null)
   const [roleFilter, setRoleFilter] = useState<string>('')
 
-  const canAccess = user?.role === 'admin' || user?.role === 'leader'
+  const canAccess = user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')
 
   const loadUsers = async () => {
     setIsLoading(true)

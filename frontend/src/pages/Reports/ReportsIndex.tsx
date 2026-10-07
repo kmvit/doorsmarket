@@ -9,7 +9,7 @@ const REPORTS = [
     title: 'Дизайнеры',
     text: 'Заказы через дизайнеров за период: суммы, статусы, выплаченные бонусы',
     // Менеджеру — по его салону
-    roles: ['admin', 'leader', 'manager'],
+    roles: ['admin', 'leader', 'group_leader', 'manager'],
   },
   {
     to: '/orders/reports/service-managers',
@@ -17,7 +17,7 @@ const REPORTS = [
     text: 'Замеры каждого СМ за период: проёмы, сумма по шкале, удалённость, итого за месяц, выгрузка в Excel',
     smTitle: 'Моя зарплата',
     smText: 'Мои замеры за период: проёмы, сумма по шкале, удалённость, итого за месяц, выгрузка в Excel',
-    roles: ['admin', 'leader', 'service_manager'],
+    roles: ['admin', 'leader', 'group_leader', 'service_manager'],
   },
 ]
 
