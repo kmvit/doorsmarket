@@ -35,6 +35,7 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
   const hint = ORDER_STATUS_HINT[order.status]
   const next = NEXT_STEPS[order.status]
   const canCancel = !['completed', 'cancelled'].includes(order.status)
+  const canRestore = order.status === 'cancelled'
 
   const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString('ru-RU') : '—')
 
@@ -163,7 +164,7 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
       )}
 
       {/* Кнопки переходов */}
-      {canManage && (next || canCancel) && (
+      {canManage && (next || canCancel || canRestore) && (
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
           {next && (
             <button
@@ -183,6 +184,17 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
               className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-60"
             >
               Не актуален
+            </button>
+          )}
+          {canRestore && (
+            <button
+              onClick={() => {
+                if (window.confirm('Вернуть заказ в статус «Создан»?')) doTransition('active')
+              }}
+              disabled={busy}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-60"
+            >
+              Вернуть в «Создан»
             </button>
           )}
         </div>

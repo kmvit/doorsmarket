@@ -58,6 +58,12 @@ export interface MeasurementOpening {
   recommendation_text: string
 }
 
+export interface MeasurementSignature {
+  id: number
+  url: string
+  created_at: string
+}
+
 export interface Measurement {
   id: number
   request: number
@@ -66,6 +72,8 @@ export interface Measurement {
   service_manager_name: string | null
   measurement_date: string | null
   signature_photo_url: string | null
+  // Фото подписанных бланков — их может быть несколько
+  signatures?: MeasurementSignature[]
   client_access_token: string
   short_code: string | null
   is_draft: boolean

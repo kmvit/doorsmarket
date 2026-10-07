@@ -100,6 +100,9 @@ const mediaUrls = (m: Measurement): string[] => {
   }
   if (m.opening_plan_url) urls.push(m.opening_plan_url)
   if (m.signature_photo_url) urls.push(m.signature_photo_url)
+  for (const s of m.signatures || []) {
+    if (s.url) urls.push(s.url)
+  }
   for (const a of m.attachments || []) {
     if (a.file_url) urls.push(a.file_url)
   }

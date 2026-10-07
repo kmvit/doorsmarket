@@ -50,7 +50,8 @@
   {# ===== Страница 1: шапка + проёмы + подпись ===== #}
   <div class="header-meta">
     <div>
-      <h1>Замеры дверных проёмов</h1>
+      {# Номер — тот же, что в имени скачанного файла (zamer_84.pdf) #}
+      <h1>Замеры дверных проёмов № {{ m.id }}</h1>
       <div class="muted small">к договору № {{ order.kp_number|default:"—" }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>
     </div>
     <div class="small muted" style="text-align:right;">
@@ -156,12 +157,12 @@
   </div>
 
   {# ===== Фото подписанного бланка — на отдельной странице, во весь лист (как схемы проёмов) ===== #}
-  {% if signature_path %}
+  {% for signature_path in signature_paths %}
   <div class="photo-page">
-    <div class="photo-cap">Фото подписанного бланка</div>
+    <div class="photo-cap">Фото подписанного бланка{% if signature_paths|length > 1 %} {{ forloop.counter }} из {{ signature_paths|length }}{% endif %}</div>
     <img class="photo-full" src="file://{{ signature_path }}" alt="Подпись">
   </div>
-  {% endif %}
+  {% endfor %}
 
   {# ===== Схемы/фото проёмов — каждое фото на отдельной странице, во весь лист ===== #}
   {% if opening_photos %}

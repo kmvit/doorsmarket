@@ -456,6 +456,10 @@ export const measurementsAPI = {
     })
   },
 
+  deleteSignature: async (id: number, signatureId: number): Promise<Measurement> => {
+    return requestWithQueue('POST', `/measurements/${id}/delete_signature/`, { signature_id: signatureId })
+  },
+
   // PDF-бланк замера: качаем как blob и открываем/скачиваем (эндпоинт под авторизацией).
   downloadBlankPdf: async (id: number): Promise<Blob> => {
     const response = await apiClient.get(`/measurements/${id}/download_blank_pdf/`, {

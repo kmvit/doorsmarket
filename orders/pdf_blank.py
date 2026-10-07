@@ -75,10 +75,13 @@ def render_measurement_blank(measurement) -> bytes:
                 if path:
                     plan_paths.append(path)
 
-    # Фото подписанного бланка (для уже подписанного замера).
-    signature_path = None
-    if measurement.signature_photo and _is_image(measurement.signature_photo.name):
-        signature_path = _abs_path(measurement.signature_photo)
+    # Фото подписанных бланков (для уже подписанного замера), каждое на своей странице.
+    signature_paths = []
+    for sig in measurement.signatures.all():
+        if _is_image(sig.file.name):
+            path = _abs_path(sig.file)
+            if path:
+                signature_paths.append(path)
 
     sm = measurement.service_manager
     sm_name = ''
@@ -92,7 +95,7 @@ def render_measurement_blank(measurement) -> bytes:
         'openings': openings,
         'opening_photos': opening_photos,
         'plan_paths': plan_paths,
-        'signature_path': signature_path,
+        'signature_paths': signature_paths,
         'sm_name': sm_name,
     })
 

@@ -823,6 +823,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
     request_comment = serializers.CharField(source='request.comment', read_only=True, allow_blank=True)
     opening_plan_url = serializers.SerializerMethodField()
     signature_photo_url = serializers.SerializerMethodField()
+    # Все фото подписанных бланков (их может быть несколько)
+    signatures = serializers.SerializerMethodField()
     # Все файлы плана открывания из заявки (их может быть несколько)
     opening_plan_urls = serializers.SerializerMethodField()
     lift_required = serializers.SerializerMethodField()
@@ -844,7 +846,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
         model = Measurement
         fields = [
             'id', 'request', 'order_id', 'service_manager', 'service_manager_name',
-            'measurement_date', 'signature_photo', 'signature_photo_url',
+            'measurement_date', 'signature_photo', 'signature_photo_url', 'signatures',
             'client_access_token', 'short_code', 'is_draft', 'draft_saved_at',
             'is_done', 'done_at', 'is_processed', 'processed_at', 'updated_after_done_at',
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
@@ -908,9 +910,15 @@ class MeasurementSerializer(serializers.ModelSerializer):
         return result
 
     def get_signature_photo_url(self, obj):
-        if obj.signature_photo:
-            return obj.signature_photo.url
-        return None
+        # Первое фото — для старых клиентов (офлайн-кеш, старый бандл)
+        first = next(iter(obj.signatures.all()), None)
+        return first.file.url if first else None
+
+    def get_signatures(self, obj):
+        return [
+            {'id': s.id, 'url': s.file.url, 'created_at': s.created_at}
+            for s in obj.signatures.all()
+        ]
 
     def get_lift_required(self, obj):
         from .recommendations import validate_lift_required

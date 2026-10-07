@@ -90,6 +90,10 @@ const MeasurementForm = () => {
   // Предупреждение про правки после закрытия нужно тем, кто замер обрабатывает,
   // а не тому, кто их только что внёс.
   const showAmendedNotice = Boolean(m?.updated_after_done_at) && ['manager', 'admin', 'leader'].includes(user?.role || '')
+  const canUploadSignature = user?.role === 'service_manager' || user?.role === 'admin'
+  // Старый сервер / офлайн-кеш без списка — показываем одиночное фото как раньше
+  const signatures = m?.signatures
+    ?? (m?.signature_photo_url ? [{ id: 0, url: m.signature_photo_url, created_at: '' }] : [])
   const canMarkProcessed = m?.is_done && !m?.is_processed && (user?.role === 'manager' || user?.role === 'admin')
   // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
   const canRequestRepeat = Boolean(
@@ -535,12 +539,16 @@ const MeasurementForm = () => {
     }
   }
 
+  // Бланков с подписью бывает несколько — каждое фото добавляется к списку
   const handleUploadSignature = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!m || !e.target.files?.[0]) return
+    const files = Array.from(e.target.files || [])
+    if (!m || files.length === 0) return
     setActionError(null)
     try {
-      const updated = await measurementsAPI.uploadSignature(m.id, e.target.files[0])
-      setM(updated)
+      for (const file of files) {
+        const updated = await measurementsAPI.uploadSignature(m.id, file)
+        setM(updated)
+      }
     } catch (err: any) {
       if (isQueuedError(err)) {
         setOfflineNotice('Нет сети: фото подписи сохранено и будет загружено при появлении интернета.')
@@ -549,6 +557,25 @@ const MeasurementForm = () => {
       setActionError(err.response?.data?.detail || 'Не удалось загрузить фото подписи')
     } finally {
       e.target.value = ''
+    }
+  }
+
+  const handleDeleteSignature = async (signatureId: number, index: number) => {
+    if (!m) return
+    if (!confirm(`Удалить фото подписи ${index + 1}?`)) return
+    setActionError(null)
+    try {
+      const updated = await measurementsAPI.deleteSignature(m.id, signatureId)
+      setM(updated)
+    } catch (err: any) {
+      if (isQueuedError(err)) {
+        setM((prev) => prev && {
+          ...prev, signatures: (prev.signatures || []).filter((s) => s.id !== signatureId),
+        })
+        setOfflineNotice('Нет сети: удаление сохранено и выполнится при появлении интернета.')
+        return
+      }
+      setActionError(err.response?.data?.detail || 'Не удалось удалить фото подписи')
     }
   }
 
@@ -626,7 +653,11 @@ const MeasurementForm = () => {
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <Link to="/measurements" className="hover:text-primary-600">Замеры</Link>
         <span>/</span>
-        <Link to={`/orders/${m.order_id}`} className="hover:text-primary-600">Заказ #{m.order_id}</Link>
+        {user?.role === 'installer' ? (
+          <span>Заказ #{m.order_id}</span>
+        ) : (
+          <Link to={`/orders/${m.order_id}`} className="hover:text-primary-600">Заказ #{m.order_id}</Link>
+        )}
         <span>/</span>
         <span className="text-gray-900">Замер #{m.id}</span>
       </div>
@@ -739,10 +770,10 @@ const MeasurementForm = () => {
           >
             🖨 Печать бланка
           </button>
-          {(user?.role === 'service_manager' || user?.role === 'admin') && (
+          {canUploadSignature && (
             <label className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer">
-              {m.signature_photo_url ? '↻ Заменить фото подписи' : '✍ Загрузить фото подписи'}
-              <input type="file" accept="image/*,.jfif" onChange={handleUploadSignature} className="hidden" />
+              {signatures.length > 0 ? '＋ Добавить фото подписи' : '✍ Загрузить фото подписи'}
+              <input type="file" accept="image/*,.jfif" multiple onChange={handleUploadSignature} className="hidden" />
             </label>
           )}
         </div>
@@ -897,16 +928,30 @@ const MeasurementForm = () => {
                 </label>
               )}
             </div>
-            {m.signature_photo_url && (
+            {signatures.length > 0 && (
               <div>
                 <span className="text-gray-500">Подпись клиента: </span>
-                <button
-                  type="button"
-                  onClick={() => setViewerFile({ url: m.signature_photo_url!, name: 'Подпись клиента' })}
-                  className="text-primary-600 hover:underline"
-                >
-                  Открыть
-                </button>
+                {signatures.map((s, i) => (
+                  <span key={s.id} className="inline-flex items-center gap-1 mr-3">
+                    <button
+                      type="button"
+                      onClick={() => setViewerFile({ url: s.url, name: `Подпись клиента ${i + 1}` })}
+                      className="text-primary-600 hover:underline"
+                    >
+                      {signatures.length > 1 ? `Открыть ${i + 1}` : 'Открыть'}
+                    </button>
+                    {canUploadSignature && s.id > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSignature(s.id, i)}
+                        title="Удалить фото подписи"
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
+                ))}
               </div>
             )}
           </div>

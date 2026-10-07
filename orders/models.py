@@ -355,6 +355,23 @@ class Order(models.Model):
     def mark_cancelled(self, actor=None):
         return self.change_status(OrderStatus.CANCELLED, actor=actor, description='Заказ отменён (не актуален)')
 
+    def mark_restored(self, actor=None):
+        """Возврат из «Не актуален» в «Создан». Подтверждённую неактуальность
+        замера тоже снимаем — иначе заказ так и не вернётся в рабочие списки."""
+        mr = MeasurementRequest.objects.filter(order=self, is_irrelevant=True).first()
+        if mr:
+            mr.irrelevant_requested_at = None
+            mr.irrelevant_requested_by = None
+            mr.irrelevant_reason = ''
+            mr.is_irrelevant = False
+            mr.irrelevant_confirmed_at = None
+            mr.irrelevant_confirmed_by = None
+            mr.save(update_fields=[
+                'irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason',
+                'is_irrelevant', 'irrelevant_confirmed_at', 'irrelevant_confirmed_by',
+            ])
+        return self.change_status(OrderStatus.ACTIVE, actor=actor, description='Заказ возвращён из «Не актуален»')
+
 
 class DoorType(models.TextChoices):
     ENTRANCE = 'entrance', 'Входная'
@@ -927,6 +944,34 @@ class MeasurementAttachment(models.Model):
 
     def __str__(self):
         return self.name or self.file.name
+
+
+class MeasurementSignature(models.Model):
+    """
+    Фото подписанного бланка замера. Бланков с подписью бывает несколько
+    (например, по разным этажам или после допзамера), поэтому их — список.
+    Старое одиночное поле Measurement.signature_photo перенесено сюда миграцией.
+    """
+    measurement = models.ForeignKey(
+        Measurement,
+        on_delete=models.CASCADE,
+        related_name='signatures',
+        verbose_name='Замер',
+    )
+    file = models.FileField(upload_to='orders/signatures/', verbose_name='Фото подписанного бланка')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Загрузил',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        verbose_name = 'Фото подписи замера'
+        verbose_name_plural = 'Фото подписей замера'
+
+    def __str__(self):
+        return self.file.name
 
 
 # ==================== Красивое КП ====================

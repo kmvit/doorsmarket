@@ -20,7 +20,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     DESIGNER_PAYOUT_STATUSES, DistancePayment, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
-    Measurement, MeasurementOpening, MeasurementAttachment, OrderActivityLog,
+    Measurement, MeasurementOpening, MeasurementAttachment, MeasurementSignature, OrderActivityLog,
     MeasurementRequestFile,
     OfferTextPreset, PrettyOffer, PrettyOfferAttachment, PrettyOfferItem,
 )
@@ -331,10 +331,11 @@ def apply_order_folder(qs, folder):
     if folder in MEASUREMENT_WORK_FOLDERS:
         qs = qs.exclude(measurement_request__is_irrelevant=True)
     if folder == 'created':
-        # «Создан» = черновик/активный без заявки на замер
+        # «Создан» = черновик/активный без заявки на замер. Заявка у активного
+        # бывает, если заказ вернули из «Не актуален», — его тоже показываем.
         return qs.filter(
-            status__in=[OrderStatus.DRAFT, OrderStatus.ACTIVE],
-            measurement_request__isnull=True,
+            Q(status=OrderStatus.ACTIVE)
+            | Q(status=OrderStatus.DRAFT, measurement_request__isnull=True),
         )
     if folder == 'today_measurement':
         # «Сегодня замер» = запланирован + дата замера сегодня
@@ -990,6 +991,13 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.mark_completed(actor=actor)
         elif target == OrderStatus.CANCELLED:
             order.mark_cancelled(actor=actor)
+        elif target == OrderStatus.ACTIVE:
+            if order.status != OrderStatus.CANCELLED:
+                return Response(
+                    {'detail': 'Вернуть в «Создан» можно только неактуальный заказ.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            order.mark_restored(actor=actor)
         else:
             return Response(
                 {'detail': f'Недопустимый целевой статус: {target}'},
@@ -1455,17 +1463,26 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
 # ==================== Phase 3: Замер ====================
 
 def get_measurements_queryset_for_user(user):
-    """ACL для замеров — те же правила, что и для заказов."""
-    accessible_orders = get_orders_queryset_for_user(user).values_list('id', flat=True)
-    return Measurement.objects.filter(
-        request__order_id__in=list(accessible_orders)
-    ).select_related(
+    """
+    ACL для замеров — те же правила, что и для заказов. Монтажнику заказы не
+    видны, но замеры своего города он смотрит (без права правки, см.
+    InstallerReadOnly).
+    """
+    if user.role == 'installer':
+        if not user.city_id:
+            return Measurement.objects.none()
+        qs = Measurement.objects.filter(request__order__salon__city_id=user.city_id)
+    else:
+        accessible_orders = get_orders_queryset_for_user(user).values_list('id', flat=True)
+        qs = Measurement.objects.filter(request__order_id__in=list(accessible_orders))
+    return qs.select_related(
         'request', 'request__order', 'request__order__manager',
         'request__order__salon', 'service_manager',
     ).prefetch_related(
         'openings',
         'openings__attachments',
         'attachments',
+        'signatures',
         'request__order__attachments',
         'request__order__attachments__order_item',
     )
@@ -1523,11 +1540,19 @@ def irrelevant_requests_without_measurement(user):
     ).select_related('order', 'order__manager', 'order__salon')
 
 
+class InstallerReadOnly(permissions.BasePermission):
+    """Монтажник замеры только смотрит: любые изменения — 403."""
+    message = 'Монтажник может только просматривать замеры.'
+
+    def has_permission(self, request, view):
+        return request.method in permissions.SAFE_METHODS or request.user.role != 'installer'
+
+
 class MeasurementViewSet(viewsets.ModelViewSet):
     """
     CRUD замеров. Доступен СМ (свой город), менеджеру (свой салон), admin/leader.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, InstallerReadOnly]
     filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
     filterset_fields = ['is_done', 'is_processed', 'is_draft', 'service_manager']
     search_fields = [
@@ -2020,7 +2045,10 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='upload_signature',
             parser_classes=[MultiPartParser, FormParser])
     def upload_signature(self, request, pk=None):
-        """Загрузка фото подписанного бланка → signature_photo."""
+        """
+        Добавляет фото подписанного бланка. Бланков с подписью бывает
+        несколько, поэтому фото добавляется к списку, а не заменяет прежнее.
+        """
         m = self.get_object()
         file = request.FILES.get('signature') or request.FILES.get('file')
         if not file:
@@ -2028,8 +2056,25 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 {'detail': 'Не передан файл подписи (поле signature).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        m.signature_photo = file
-        m.save(update_fields=['signature_photo', 'updated_at'])
+        MeasurementSignature.objects.create(measurement=m, file=file, uploaded_by=request.user)
+        m.save(update_fields=['updated_at'])
+        # Перечитываем: список подписей у m уже подгружен (prefetch) и устарел
+        m = self.get_object()
+        return Response(MeasurementSerializer(m, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='delete_signature')
+    def delete_signature(self, request, pk=None):
+        """Удаляет одно фото подписи. Тело: {signature_id}."""
+        m = self.get_object()
+        sig = MeasurementSignature.objects.filter(
+            measurement=m, pk=request.data.get('signature_id'),
+        ).first()
+        if not sig:
+            return Response({'detail': 'Фото подписи не найдено.'}, status=status.HTTP_404_NOT_FOUND)
+        sig.file.delete(save=False)
+        sig.delete()
+        m.save(update_fields=['updated_at'])
+        m = self.get_object()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
 
@@ -2130,7 +2175,7 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
     Каждая такая правка помечается в замере и попадает в журнал заказа, чтобы
     менеджер не пропустил изменения в уже закрытом замере.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, InstallerReadOnly]
     serializer_class = MeasurementOpeningSerializer
 
     def get_queryset(self):
@@ -2365,7 +2410,7 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
 
 class MeasurementAttachmentViewSet(viewsets.ModelViewSet):
     """Загрузка / удаление вложений замера."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, InstallerReadOnly]
     serializer_class = MeasurementAttachmentSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 

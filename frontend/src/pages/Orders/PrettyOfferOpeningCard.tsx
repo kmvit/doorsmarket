@@ -341,7 +341,7 @@ const PrettyOfferOpeningCard = ({
                           onMouseDown={() => (savingWithAddons.current = true)}
                           onBlur={() => saveQuantity(row.addon)}
                           aria-label="Количество в проёме"
-                          className="w-16 shrink-0 rounded-lg border-gray-300 shadow-sm text-xs text-right focus:border-primary-500 focus:ring-primary-500"
+                          className="w-16 shrink-0 rounded-lg border-gray-300 shadow-sm px-1 text-xs text-center focus:border-primary-500 focus:ring-primary-500"
                         />
                         <span className="text-xs text-gray-500 shrink-0">шт.</span>
                         <button

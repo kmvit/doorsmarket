@@ -271,7 +271,8 @@ const Header = () => {
               )}
 
               {/* Workshop (Наработки) — только в модуле заказов */}
-              {isOrdersModule && ORDERS_ROLES.includes(user.role) && (
+              {/* Наработки — у СМ своя работа в «Замерах» */}
+              {isOrdersModule && ORDERS_ROLES.includes(user.role) && user.role !== 'service_manager' && (
                 <Link
                   to="/workshop"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -322,8 +323,10 @@ const Header = () => {
                 </Link>
               )}
 
-              {/* Замеры — для СМ / admin / leader в модуле заказов */}
-              {isOrdersModule && ['service_manager', 'admin', 'leader'].includes(user.role) && (
+              {/* Замеры — для СМ / admin / leader в модуле заказов; монтажнику —
+                  всегда (замеры своего города, только просмотр) */}
+              {((isOrdersModule && ['service_manager', 'admin', 'leader'].includes(user.role))
+                || user.role === 'installer') && (
                 <Link
                   to="/measurements"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -473,7 +476,7 @@ const Header = () => {
               Главная
             </Link>
 
-            {ORDERS_ROLES.includes(user.role) && (
+            {(ORDERS_ROLES.includes(user.role) || user.role === 'installer') && (
               <Link
                 to="/measurements"
                 onClick={() => setMobileMenuOpen(false)}
@@ -487,7 +490,7 @@ const Header = () => {
             )}
 
             {/* Наработки — как в полной шапке: роли модуля заказов */}
-            {ORDERS_ROLES.includes(user.role) && (
+            {ORDERS_ROLES.includes(user.role) && user.role !== 'service_manager' && (
               <Link
                 to="/workshop"
                 onClick={() => setMobileMenuOpen(false)}

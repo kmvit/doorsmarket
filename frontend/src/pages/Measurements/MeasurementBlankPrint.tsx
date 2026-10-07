@@ -82,6 +82,9 @@ const MeasurementBlankPrint = () => {
   }
 
   const smName = m.service_manager_name || '—'
+  const signatureUrls = m.signatures?.length
+    ? m.signatures.map((s) => s.url)
+    : (m.signature_photo_url ? [m.signature_photo_url] : [])
   const openingImages = m.attachments.filter(
     (a) => a.file_url && /\.(jpe?g|png|gif|webp|bmp)$/i.test(a.file_url.split('?')[0]),
   )
@@ -129,7 +132,7 @@ const MeasurementBlankPrint = () => {
         {/* Шапка */}
         <div className="flex justify-between items-start border-b-2 border-gray-800 pb-3 mb-4">
           <div>
-            <h1 className="text-xl font-bold m-0">Замеры дверных проёмов</h1>
+            <h1 className="text-xl font-bold m-0">Замеры дверных проёмов № {m.id}</h1>
             <div className="text-xs text-gray-500">
               к договору № {dash(m.kp_number)}
               {m.kp_date ? ` от ${new Date(m.kp_date).toLocaleDateString('ru-RU')}` : ''}
@@ -277,11 +280,15 @@ const MeasurementBlankPrint = () => {
           </div>
         </div>
 
-        {/* Фото подписанного бланка */}
-        {m.signature_photo_url && (
+        {/* Фото подписанных бланков (их может быть несколько) */}
+        {signatureUrls.length > 0 && (
           <div className="mt-4">
             <div className="text-xs text-gray-500 mb-1">Фото подписанного бланка:</div>
-            <HideOnError src={m.signature_photo_url} alt="Подпись" className="max-w-[300px] max-h-[170px] border border-gray-300" />
+            <div className="flex flex-wrap gap-2">
+              {signatureUrls.map((url) => (
+                <HideOnError key={url} src={url} alt="Подпись" className="max-w-[300px] max-h-[170px] border border-gray-300" />
+              ))}
+            </div>
           </div>
         )}
 

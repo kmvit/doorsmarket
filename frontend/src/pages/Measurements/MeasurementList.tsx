@@ -43,6 +43,8 @@ const MeasurementList = () => {
   // Фильтр по менеджерам заказа — для руководителя (и админа)
   const { user } = useAuthStore()
   const canFilterByManager = canFilterByPeople(user?.role)
+  // Монтажник смотрит замеры своего города: заказов ему не видно, «Моих» замеров нет
+  const isInstaller = user?.role === 'installer'
   const [rawPeople, setPeople] = usePersistedState<PeopleFilterValue>('measurements:people', EMPTY_PEOPLE_FILTER)
   const people = normalizePeopleFilter(rawPeople)
 
@@ -87,7 +89,7 @@ const MeasurementList = () => {
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
       {/* Переключатель Заказы / Замеры */}
-      <OrdersMeasurementsSwitch active="measurements" />
+      {!isInstaller && <OrdersMeasurementsSwitch active="measurements" />}
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Замеры</h1>
@@ -99,7 +101,7 @@ const MeasurementList = () => {
 
       {/* Папки-фильтры */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {FOLDERS.map((f) => (
+        {FOLDERS.filter((f) => !(isInstaller && f.key === 'mine')).map((f) => (
           <button
             key={f.key || 'all'}
             onClick={() => setFolder(f.key)}
@@ -181,13 +183,17 @@ const MeasurementList = () => {
                       {m.is_request_only ? <span className="text-xs text-amber-700">заявка</span> : `№ ${m.id}`}
                     </td>
                     <td className="px-3 py-2">
-                      <Link
-                        to={`/orders/${m.order_id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-primary-600 font-medium hover:underline"
-                      >
-                        #{m.order_id}
-                      </Link>
+                      {isInstaller ? (
+                        <span className="font-medium text-gray-700">#{m.order_id}</span>
+                      ) : (
+                        <Link
+                          to={`/orders/${m.order_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary-600 font-medium hover:underline"
+                        >
+                          #{m.order_id}
+                        </Link>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-medium text-gray-900">{m.client_name}</div>
