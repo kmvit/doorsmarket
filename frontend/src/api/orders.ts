@@ -204,6 +204,12 @@ export const ordersAPI = {
     return requestWithQueue('POST', `/orders/${orderId}/append_from_parsed/`, data)
   },
 
+  // Какой замер брать для связки позиций с проёмами (null — последний)
+  setLinkMeasurement: async (orderId: number, measurementId: number | null): Promise<Order> => {
+    const response = await apiClient.post(`/orders/${orderId}/set_link_measurement/`, { measurement_id: measurementId })
+    return response.data
+  },
+
   getMeasurementRequest: async (orderId: number): Promise<MeasurementRequest | null> => {
     return withOfflineFallback({
       cacheKey: `order_measurement_request_${orderId}`,

@@ -94,10 +94,13 @@ const MeasurementForm = () => {
   // Старый сервер / офлайн-кеш без списка — показываем одиночное фото как раньше
   const signatures = m?.signatures
     ?? (m?.signature_photo_url ? [{ id: 0, url: m.signature_photo_url, created_at: '' }] : [])
-  const canMarkProcessed = m?.is_done && !m?.is_processed && (user?.role === 'manager' || user?.role === 'admin')
+  // По заказу назначен повторный замер — обрабатывают и повторяют уже его
+  const supersededBy = m?.newer_measurement_id || null
+  const canMarkProcessed = m?.is_done && !m?.is_processed && !supersededBy
+    && (user?.role === 'manager' || user?.role === 'admin')
   // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
   const canRequestRepeat = Boolean(
-    m?.is_done && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
+    m?.is_done && !supersededBy && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
   )
   // «Неактуален»: помечает СМ, решает менеджер. Пока решения нет, замер
   // остаётся в работе — поэтому пометка это заявка, а не факт.
@@ -437,13 +440,14 @@ const MeasurementForm = () => {
 
   const handleRequestRepeat = async () => {
     if (!m || requestingRepeat) return
-    if (!confirm('Назначить повторный замер? Замер снова станет невыполненным и попадёт сервис-менеджеру в «Назначить замер».')) return
+    if (!confirm('Назначить повторный замер? Будет создан новый замер с данными этого — он попадёт сервис-менеджеру в «Назначить замер». Этот замер сохранится.')) return
     const reason = prompt('Причина повторного замера (необязательно):', '') ?? ''
     setRequestingRepeat(true)
     setActionError(null)
     try {
-      const updated = await measurementsAPI.requestRepeat(m.id, reason.trim())
-      setM(updated)
+      // Повторный замер — новый замер со своим номером: переходим на него
+      const created = await measurementsAPI.requestRepeat(m.id, reason.trim())
+      navigate(`/measurements/${created.id}`)
     } catch (err: any) {
       setActionError(err?.response?.data?.detail || 'Не удалось назначить повторный замер')
     } finally {
@@ -798,12 +802,20 @@ const MeasurementForm = () => {
         </div>
       )}
       {/* Менеджер вернул замер на повторный выезд — СМ должен видеть это и причину */}
-      {m.repeat_count > 0 && !m.is_done && (
+      {m.previous && !m.is_done && (
         <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl mb-4">
-          <span className="font-semibold">↻ Повторный замер №{m.repeat_count}.</span>{' '}
-          {m.repeat_reason
-            ? `Причина: ${m.repeat_reason}`
-            : 'Менеджер вернул замер — проверьте и скорректируйте данные, затем снова нажмите «Замер выполнен».'}
+          <span className="font-semibold">↻ Повторный замер к </span>
+          <Link to={`/measurements/${m.previous}`} className="font-semibold underline">замеру №{m.previous}</Link>.{' '}
+          {m.repeat_reason ? `Причина: ${m.repeat_reason}. ` : ''}
+          Данные скопированы из прежнего замера — проверьте и скорректируйте их, затем нажмите «Замер выполнен».
+        </div>
+      )}
+      {supersededBy && (
+        <div className="bg-gray-50 border border-gray-300 text-gray-800 px-4 py-3 rounded-xl mb-4">
+          По заказу назначен повторный замер —{' '}
+          <Link to={`/measurements/${supersededBy}`} className="font-semibold text-primary-600 underline">
+            замер №{supersededBy}
+          </Link>. Этот замер сохранён как был.
         </div>
       )}
       {draftNotice && (

@@ -125,6 +125,8 @@ def build_report(request):
             # Порядковый номер в отчёте этого СМ — с 1
             'number': g['measurements_count'],
             'id': m.id,
+            # Повторный замер — отдельная строка; номер замера, к которому он повторный
+            'previous_id': m.previous_id,
             'order_id': order.id,
             'done_at': m.done_at,
             'address': order.address,

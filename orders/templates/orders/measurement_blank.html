@@ -71,6 +71,8 @@
         <td class="k">Этаж</td><td class="v">{{ order.floor_number|default:"—" }}</td></tr>
     <tr><td class="k">Готовность пола</td><td class="v">{{ order.floor_readiness|default:"—" }}</td>
         <td class="k">Проёмов</td><td class="v">{{ openings|length }}</td></tr>
+    <tr><td class="k">Расстояние</td><td class="v">{% if m.distance_km %}{{ m.distance_km|floatformat:"-2" }} км{% else %}—{% endif %}</td>
+        <td class="k"></td><td class="v"></td></tr>
   </table>
 
   <div class="section-title">Проёмы</div>

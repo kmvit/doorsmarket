@@ -181,9 +181,14 @@ class AmendMeasurementAfterDoneTest(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
 
+        # Повторный замер — новый замер: прежний остаётся выполненным со своей
+        # пометкой, а у нового пометки нет, но правка проёма в него скопирована
         self.measurement.refresh_from_db()
-        self.assertFalse(self.measurement.is_done)
-        self.assertIsNone(self.measurement.updated_after_done_at)
+        self.assertTrue(self.measurement.is_done)
+        new = Measurement.objects.get(previous=self.measurement)
+        self.assertFalse(new.is_done)
+        self.assertIsNone(new.updated_after_done_at)
+        self.assertEqual(new.openings.get().actual_height, 2150)
 
     # ---------- доступ ----------
 

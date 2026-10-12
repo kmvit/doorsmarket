@@ -181,6 +181,10 @@ const MeasurementBlankPrint = () => {
               <td className="text-gray-500 pr-2 py-0.5">Проёмов</td>
               <td className="font-semibold py-0.5">{m.openings.length}</td>
             </tr>
+            <tr>
+              <td className="text-gray-500 pr-2 py-0.5">Расстояние</td>
+              <td className="font-semibold py-0.5">{m.distance_km ? `${Number(m.distance_km)} км` : '—'}</td>
+            </tr>
           </tbody>
         </table>
 

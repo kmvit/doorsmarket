@@ -270,6 +270,7 @@ const ServiceManagerReport = () => {
                                         <Link to={`/orders/${m.order_id}`} className="text-primary-600 hover:underline">#{m.order_id}</Link>
                                         <div className="text-xs">
                                           <Link to={`/measurements/${m.id}`} className="text-gray-500 hover:underline">замер №{m.id}</Link>
+                                          {m.previous_id && <div className="text-amber-700">повторный к №{m.previous_id}</div>}
                                         </div>
                                       </td>
                                       <td className="px-3 py-2 text-gray-700">{m.manager_name}</td>

@@ -86,6 +86,9 @@ export interface Measurement {
   processed_at: string | null
   // Повторный замер: сколько раз менеджер возвращал замер СМ на доработку
   repeat_count: number
+  // Повторный замер: к какому замеру он сделан и есть ли по заказу замер новее
+  previous?: number | null
+  newer_measurement_id?: number | null
   repeat_requested_at: string | null
   repeat_reason: string
   /** Замер признан неактуальным — менеджер подтвердил пометку СМ */
@@ -154,6 +157,7 @@ export interface MeasurementListItem {
   is_irrelevant?: boolean
   irrelevant_requested_at?: string | null
   repeat_count: number
+  previous?: number | null
   service_manager: number | null
   service_manager_name: string | null
   order_status: OrderStatus

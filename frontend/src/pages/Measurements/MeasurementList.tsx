@@ -181,6 +181,7 @@ const MeasurementList = () => {
                   >
                     <td className="px-3 py-2 font-medium text-gray-900">
                       {m.is_request_only ? <span className="text-xs text-amber-700">заявка</span> : `№ ${m.id}`}
+                      {m.previous && <div className="text-xs font-normal text-amber-700">повторный к №{m.previous}</div>}
                     </td>
                     <td className="px-3 py-2">
                       {isInstaller ? (

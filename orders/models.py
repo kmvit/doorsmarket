@@ -234,6 +234,15 @@ class Order(models.Model):
         verbose_name='Выплачено дизайнеру',
     )
     designer_paid_at = models.DateTimeField(null=True, blank=True, verbose_name='Когда выплачено дизайнеру')
+    # Замер для связки позиций КП с проёмами. Пусто — берётся последний замер заказа.
+    link_measurement = models.ForeignKey(
+        'Measurement',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Замер для связки с позициями',
+    )
     designer_paid_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='designer_payouts', verbose_name='Кто отметил выплату',
@@ -354,6 +363,18 @@ class Order(models.Model):
 
     def mark_cancelled(self, actor=None):
         return self.change_status(OrderStatus.CANCELLED, actor=actor, description='Заказ отменён (не актуален)')
+
+    def measurements(self):
+        """Все замеры заказа по порядку (первичный, затем повторные)."""
+        return Measurement.objects.filter(request__order=self).order_by('id')
+
+    def measurement_for_linking(self):
+        """Замер для связки позиций с проёмами: выбранный менеджером, иначе последний."""
+        if self.link_measurement_id:
+            m = self.measurements().filter(id=self.link_measurement_id).first()
+            if m:
+                return m
+        return self.measurements().last()
 
     def mark_restored(self, actor=None):
         """Возврат из «Не актуален» в «Создан». Подтверждённую неактуальность
@@ -609,6 +630,15 @@ class MeasurementRequest(models.Model):
     def __str__(self):
         return f'Заявка на замер по заказу #{self.order_id}'
 
+    @property
+    def measurement(self):
+        """
+        Текущий замер заявки — последний созданный (повторный замер — новый
+        замер рядом с прежним). None — замер ещё не создан. Берёт подгруженные
+        prefetch_related('measurements') данные, если они есть.
+        """
+        return max(self.measurements.all(), key=lambda m: m.id, default=None)
+
 
 class MeasurementRequestFile(models.Model):
     """
@@ -684,14 +714,23 @@ class DistancePayment(models.TextChoices):
 
 class Measurement(models.Model):
     """
-    Замер (один на заявку). Создаётся СМ при назначении даты.
-    Привязан к MeasurementRequest 1:1.
+    Замер по заявке. Создаётся СМ при назначении даты. Повторный замер —
+    новый замер той же заявки (копия предыдущего, previous → на него), прежний
+    сохраняется. Текущий замер заявки — последний (MeasurementRequest.measurement).
     """
-    request = models.OneToOneField(
+    request = models.ForeignKey(
         MeasurementRequest,
         on_delete=models.CASCADE,
-        related_name='measurement',
+        related_name='measurements',
         verbose_name='Заявка на замер',
+    )
+    previous = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='repeats',
+        verbose_name='Повтор замера',
     )
     service_manager = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -792,6 +831,53 @@ class Measurement(models.Model):
 
     def __str__(self):
         return f'Замер по заказу #{self.request.order_id}'
+
+    # Поля замера, которые не переносятся в повторный: своя дата, статус
+    # выполнения/обработки, подпись и ссылки — у нового замера свои
+    REPEAT_SKIP_FIELDS = {
+        'id', 'previous', 'measurement_date', 'signature_photo', 'client_access_token',
+        'short_code', 'is_draft', 'draft_saved_at', 'is_done', 'done_at', 'is_processed',
+        'processed_at', 'updated_after_done_at', 'repeat_count', 'repeat_requested_at',
+        'repeat_reason', 'created_at', 'updated_at',
+    }
+
+    def make_repeat(self, reason=''):
+        """
+        Повторный замер — новый замер той же заявки, заполненный копией этого:
+        условия объекта, проёмы (со связками с позициями КП), фото и файлы.
+        Подписи не копируются: новый бланк клиент подписывает заново. Этот замер
+        остаётся как был. Файлы не дублируются на диске — копии ссылаются на те же
+        (удаление вложения файл не стирает).
+        """
+        from django.utils import timezone
+
+        new = Measurement(
+            previous=self,
+            repeat_count=(self.repeat_count or 0) + 1,
+            repeat_requested_at=timezone.now(),
+            repeat_reason=reason,
+        )
+        for field in self._meta.concrete_fields:
+            if field.name not in self.REPEAT_SKIP_FIELDS:
+                setattr(new, field.attname, getattr(self, field.attname))
+        new.save()
+
+        opening_map = {}
+        for op in self.openings.all().order_by('id'):
+            old_id = op.id
+            op.pk = None
+            op.id = None
+            op.measurement = new
+            op.client_uid = ''
+            op.save()
+            opening_map[old_id] = op
+        for att in self.attachments.all().order_by('id'):
+            att.pk = None
+            att.id = None
+            att.measurement = new
+            att.opening = opening_map.get(att.opening_id) if att.opening_id else None
+            att.save()
+        return new
 
     def save(self, *args, **kwargs):
         # Генерируем уникальный короткий код при первом сохранении

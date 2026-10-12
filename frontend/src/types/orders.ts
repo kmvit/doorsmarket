@@ -311,6 +311,17 @@ export interface OrderSalesFields {
   order_probability: OrderProbability | ''
 }
 
+export interface OrderMeasurementBrief {
+  id: number
+  previous_id: number | null
+  measurement_date: string | null
+  is_done: boolean
+  done_at: string | null
+  is_processed: boolean
+  repeat_reason: string
+  service_manager_name: string | null
+}
+
 export interface Order {
   id: number
   created_at: string
@@ -333,6 +344,10 @@ export interface Order {
   designer_paid_amount?: string | null
   designer_paid_at?: string | null
   designer_paid_by_name?: string | null
+  // Все замеры заказа по порядку (повторный замер — отдельный замер рядом)
+  measurements?: OrderMeasurementBrief[]
+  // Замер для связки позиций с проёмами: выбранный менеджером или последний
+  link_measurement_id?: number | null
   floor_readiness: string
   comment: string
   status: OrderStatus

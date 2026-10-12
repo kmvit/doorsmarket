@@ -7,7 +7,7 @@ import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
 import OrderStatusWorkflow from './OrderStatusWorkflow'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
-import { Measurement } from '../../types/measurements'
+import { Measurement, DISTANCE_PAYMENT_DISPLAY, DistancePayment } from '../../types/measurements'
 import ScheduleMeasurementModal from '../Measurements/ScheduleMeasurementModal'
 import OrderAttachmentsBlock from '../../components/orders/OrderAttachmentsBlock'
 import MeasurementLinkSection from './MeasurementLinkSection'
@@ -15,6 +15,9 @@ import HScrollSync from '../../components/common/HScrollSync'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 import FileViewer from '../../components/common/FileViewer'
 import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
+
+const yesNo = (v: boolean | null | undefined, yes = 'Да', no = 'Нет') =>
+  v === true ? yes : v === false ? no : '—'
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -26,7 +29,10 @@ const OrderDetail = () => {
   const [isDeleting, setIsDeleting] = useState(false)
   const [measurementRequest, setMeasurementRequest] = useState<MeasurementRequest | null>(null)
   const [showMrModal, setShowMrModal] = useState(false)
+  // Текущий (последний) замер заказа; повторный замер — новый замер рядом с прежним
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
+  // Замер для связки позиций с проёмами: выбранный менеджером, по умолчанию последний
+  const [linkMeasurement, setLinkMeasurement] = useState<Measurement | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [viewerFile, setViewerFile] = useState<{ url: string; name: string } | null>(null)
   const [pdfGenerating, setPdfGenerating] = useState(false)
@@ -74,24 +80,35 @@ const OrderDetail = () => {
     }
   }
 
-  const loadMeasurement = async (mr: MeasurementRequest | null) => {
-    if (!mr) {
+  const loadMeasurement = async (mr: MeasurementRequest | null, ord: Order | null = order) => {
+    const list = ord?.measurements || []
+    const current = list[list.length - 1]
+    if (!mr || !current) {
       setMeasurement(null)
+      setLinkMeasurement(null)
       return
     }
     try {
-      // Найдём замер этого заказа через список (фильтруем по order_id).
-      // Пропускаем строки-заявки без созданного замера (id === null).
-      const list = await measurementsAPI.list({})
-      const found = list.find((x) => x.order_id === Number(id) && x.id != null)
-      if (found && found.id != null) {
-        const full = await measurementsAPI.getById(found.id)
-        setMeasurement(full)
-      } else {
-        setMeasurement(null)
-      }
+      const full = await measurementsAPI.getById(current.id)
+      setMeasurement(full)
+      const linkId = ord?.link_measurement_id
+      setLinkMeasurement(
+        linkId && linkId !== full.id ? await measurementsAPI.getById(linkId) : full,
+      )
     } catch {
       setMeasurement(null)
+      setLinkMeasurement(null)
+    }
+  }
+
+  const handleSelectLinkMeasurement = async (measurementId: number) => {
+    if (!order) return
+    try {
+      const data = await ordersAPI.setLinkMeasurement(order.id, measurementId)
+      setOrder(data)
+      await loadMeasurement(measurementRequest, data)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Не удалось выбрать замер')
     }
   }
 
@@ -105,7 +122,7 @@ const OrderDetail = () => {
         ])
         setOrder(data)
         setMeasurementRequest(mr)
-        await loadMeasurement(mr)
+        await loadMeasurement(mr, data)
       } catch (err: any) {
         setError('Заказ не найден или нет доступа')
       } finally {
@@ -127,7 +144,7 @@ const OrderDetail = () => {
     try {
       const data = await ordersAPI.getById(Number(id))
       setOrder(data)
-      await loadMeasurement(measurementRequest)
+      await loadMeasurement(measurementRequest, data)
     } catch {}
   }
 
@@ -144,12 +161,12 @@ const OrderDetail = () => {
     }
   }
 
-  // Повторный замер: замер возвращается СМ (снова «Заявка на замер», без даты),
-  // СМ корректирует существующие проёмы и снова закрывает замер
+  // Повторный замер: создаётся новый замер (копия этого) тому же СМ, прежний
+  // остаётся; заказ снова в «Заявка на замер»
   const handleRequestRepeat = async () => {
     if (!measurement || requestingRepeat) return
     if (!window.confirm(
-      'Назначить повторный замер? Замер снова станет невыполненным и попадёт сервис-менеджеру в «Назначить замер».',
+      'Назначить повторный замер? Будет создан новый замер с данными этого — он попадёт сервис-менеджеру в «Назначить замер». Этот замер сохранится.',
     )) return
     const reason = window.prompt('Причина повторного замера (необязательно):', '') ?? ''
     setRequestingRepeat(true)
@@ -904,11 +921,11 @@ const OrderDetail = () => {
                 <dt className="text-gray-500">Проёмы</dt>
                 <dd className="text-gray-900">{measurement.openings.length} шт</dd>
               </div>
-              {measurement.repeat_count > 0 && (
+              {measurement.previous && (
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Повторный замер</dt>
-                  <dd className="text-amber-700 font-medium">
-                    №{measurement.repeat_count}
+                  <dd className="text-amber-700 font-medium text-right">
+                    к замеру №{measurement.previous}
                     {measurement.repeat_reason ? ` — ${measurement.repeat_reason}` : ''}
                   </dd>
                 </div>
@@ -929,14 +946,68 @@ const OrderDetail = () => {
           ) : (
             <p className="text-sm text-gray-500">Замер ещё не создан. Когда СМ назначит дату, замер появится здесь.</p>
           )}
+          {/* Все замеры заказа по порядку: прежние сохраняются, повторный — отдельный замер */}
+          {(order.measurements?.length || 0) > 1 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Замеры по заказу</div>
+              <ol className="space-y-1 text-sm">
+                {order.measurements!.map((mb, i) => (
+                  <li key={mb.id} className="flex flex-wrap items-center gap-x-2">
+                    <span className="text-gray-400">{i + 1}.</span>
+                    <Link to={`/measurements/${mb.id}`} className="font-medium text-primary-600 hover:underline">
+                      Замер №{mb.id}
+                    </Link>
+                    {mb.previous_id && <span className="text-xs text-amber-700">повторный к №{mb.previous_id}</span>}
+                    <span className="text-xs text-gray-500">
+                      {mb.is_processed ? 'обработан' : mb.is_done ? 'выполнен' : mb.measurement_date ? 'запланирован' : 'ожидает назначения'}
+                      {mb.done_at ? ` · ${new Date(mb.done_at).toLocaleDateString('ru-RU')}` : ''}
+                      {mb.service_manager_name ? ` · ${mb.service_manager_name}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Условия объекта — заполняет СМ в замере; менеджеру видно здесь, не открывая замер */}
+      {measurement && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Условия объекта</h2>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+            {([
+              ['Подъём на лифте', yesNo(measurement.lift_available)],
+              ['Подъём по лестнице', yesNo(measurement.stairs_available)],
+              ['Пронос до подъезда', yesNo(measurement.carry_to_entrance, 'Нужен', 'Не нужен')],
+              ['Этаж', measurement.floor_number || '—'],
+              ['Готовность пола', measurement.floor_readiness || '—'],
+              ['Оплата удалённости', measurement.distance_payment
+                ? DISTANCE_PAYMENT_DISPLAY[measurement.distance_payment as DistancePayment] : '—'],
+              ['Расстояние', measurement.distance_km ? `${Number(measurement.distance_km)} км` : '—'],
+              ['Замер оплачен на месте', measurement.paid_on_site ? 'Да' : 'Нет'],
+            ] as [string, string][]).map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3">
+                <dt className="text-gray-500">{label}</dt>
+                <dd className="text-gray-900 text-right">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {measurement.lift_impossible_warning && (
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm font-medium">
+              ⚠️ {measurement.lift_impossible_warning}
+            </div>
+          )}
         </div>
       )}
 
       {/* Связка позиций КП с проёмами замера — только менеджер/admin (СМ не имеет прав) */}
-      {measurement && measurement.is_done && canEdit && (
+      {linkMeasurement && canEdit && (order.measurements || []).some((mb) => mb.is_done) && (
         <MeasurementLinkSection
           order={order}
-          measurement={measurement}
+          measurement={linkMeasurement}
+          measurements={order.measurements || []}
+          onSelectMeasurement={handleSelectLinkMeasurement}
           onApplied={reloadOrder}
           onLinksSaved={() => loadMeasurement(measurementRequest)}
         />

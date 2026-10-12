@@ -55,7 +55,8 @@ class NotPlannedRepeatTest(TestCase):
 
     def test_repeat_not_planned_for_long_is_flagged(self, _push):
         self.client.post(f'/api/v1/measurements/{self.m.id}/request_repeat/', {}, format='json')
-        Measurement.objects.filter(pk=self.m.pk).update(repeat_requested_at=timezone.now() - timedelta(days=7))
+        # Повторный замер — новый замер; день на планирование считается от его назначения
+        Measurement.objects.filter(previous=self.m).update(repeat_requested_at=timezone.now() - timedelta(days=7))
         self.assertEqual(self.run_cron(), OrderStatus.MEASUREMENT_NOT_PLANNED)
 
     def test_old_request_without_date_is_flagged(self, _push):

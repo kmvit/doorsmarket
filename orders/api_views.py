@@ -11,7 +11,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, Q, Prefetch
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
@@ -71,9 +71,14 @@ def get_orders_queryset_for_user(user):
         'manager', 'salon', 'salon__city', 'designer',
         # Заявка и замер — для просрочки и времени выезда в списке; без этого
         # каждая строка списка тянула их отдельным запросом
-        'measurement_request', 'measurement_request__measurement',
-        'measurement_request__measurement__service_manager',
+        'measurement_request',
     ).prefetch_related(
+        # Замеров у заявки может быть несколько (повторные) — текущий берётся
+        # из подгруженного списка (MeasurementRequest.measurement)
+        Prefetch(
+            'measurement_request__measurements',
+            queryset=Measurement.objects.select_related('service_manager'),
+        ),
         'items',
         'items__attachments',
         'addons',
@@ -332,6 +337,13 @@ MEASUREMENT_WORK_FOLDERS = frozenset({
 MEASUREMENT_DAY_FOLDERS = frozenset({'today_measurement', 'tomorrow_measurement'})
 
 
+def _orders_with_open_measurement_on(day):
+    """Заказы, у которых невыполненный (текущий) замер назначен на этот день."""
+    return Measurement.objects.filter(
+        is_done=False, measurement_date__date=day,
+    ).values('request__order_id')
+
+
 def apply_order_folder(qs, folder):
     """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
     if not folder:
@@ -349,13 +361,13 @@ def apply_order_folder(qs, folder):
         # «Сегодня замер» = запланирован + дата замера сегодня
         return qs.filter(
             status=OrderStatus.MEASUREMENT_SCHEDULED,
-            measurement_request__measurement__measurement_date__date=timezone.localdate(),
+            id__in=_orders_with_open_measurement_on(timezone.localdate()),
         )
     if folder == 'tomorrow_measurement':
         # «Замеры на завтра» = запланирован + дата замера завтра
         return qs.filter(
             status=OrderStatus.MEASUREMENT_SCHEDULED,
-            measurement_request__measurement__measurement_date__date=timezone.localdate() + timedelta(days=1),
+            id__in=_orders_with_open_measurement_on(timezone.localdate() + timedelta(days=1)),
         )
     if folder == 'designer_payouts':
         # Заказ с дизайнером ушёл в производство (и дальше), а выплату ещё не отметили
@@ -449,7 +461,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             self.request.query_params.get('folder') in MEASUREMENT_DAY_FOLDERS
             and not self.request.query_params.get('ordering')
         ):
-            qs = qs.order_by('measurement_request__measurement__measurement_date', 'id')
+            # Время выезда текущего (невыполненного) замера; прежние замеры уже выполнены
+            qs = qs.annotate(visit_at=Subquery(
+                Measurement.objects.filter(request__order=OuterRef('pk'), is_done=False)
+                .order_by('-id').values('measurement_date')[:1]
+            )).order_by('visit_at', 'id')
         return qs
 
     @action(detail=False, methods=['get'])
@@ -930,6 +946,29 @@ class OrderViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if is_create else status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=['post'], url_path='set_link_measurement')
+    def set_link_measurement(self, request, pk=None):
+        """
+        POST /orders/{id}/set_link_measurement/  Body: {measurement_id: int | null}
+        Какой замер заказа брать для связки позиций КП с проёмами. null — последний.
+        """
+        order = self.get_object()
+        if request.user.role not in ('manager', 'admin'):
+            return Response(
+                {'detail': 'Выбирать замер для связки может только менеджер.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        mid = request.data.get('measurement_id')
+        if mid in (None, '', 'null'):
+            order.link_measurement = None
+        else:
+            m = order.measurements().filter(pk=mid).first()
+            if m is None:
+                return Response({'detail': 'Такого замера в заказе нет.'}, status=status.HTTP_400_BAD_REQUEST)
+            order.link_measurement = m
+        order.save(update_fields=['link_measurement'])
+        return Response(OrderDetailSerializer(order, context={'request': request}).data)
+
     # ---------- Phase 3.5: применить связанный замер к позициям заказа ----------
     @action(detail=True, methods=['post'], url_path='apply_measurement_to_items')
     def apply_measurement_to_items(self, request, pk=None):
@@ -947,12 +986,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         mr = MeasurementRequest.objects.filter(order=order).first()
-        if not mr or not hasattr(mr, 'measurement'):
+        m = order.measurement_for_linking()
+        if not mr or m is None:
             return Response(
                 {'detail': 'Замер по заказу не создан'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        m = mr.measurement
         linked_openings = list(
             m.openings.filter(order_item__order_id=order.id).select_related('order_item')
         )
@@ -1575,7 +1614,7 @@ def irrelevant_requests_without_measurement(user):
     accessible = get_orders_queryset_for_user(user).values_list('id', flat=True)
     return MeasurementRequest.objects.filter(
         order_id__in=list(accessible),
-        measurement__isnull=True,
+        measurements__isnull=True,
         is_irrelevant=True,
     ).select_related('order', 'order__manager', 'order__salon')
 
@@ -1687,7 +1726,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         qs = MeasurementRequest.objects.filter(
             order_id__in=list(accessible),
             order__status__in=[OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_NOT_PLANNED],
-            measurement__isnull=True,
+            measurements__isnull=True,
             # Признанные неактуальными заявки из работы уходят — как и замеры
             is_irrelevant=False,
         ).select_related('order', 'order__manager', 'order__salon')
@@ -1958,6 +1997,13 @@ class MeasurementViewSet(viewsets.ModelViewSet):
                 {'detail': 'Сначала замер должен быть выполнен СМ.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        current = m.request.measurement
+        if current is not None and current.id != m.id:
+            # Иначе заказ ушёл бы в «Замер обработан», пока повторный ещё в работе
+            return Response(
+                {'detail': f'По заказу назначен повторный замер №{current.id} — обрабатывается он.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         m.is_processed = True
         m.processed_at = timezone.now()
         m.save(update_fields=['is_processed', 'processed_at', 'updated_at'])
@@ -1973,44 +2019,39 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         """
         POST /measurements/{id}/request_repeat/
         Body: {reason?: str}
-        Менеджер отправляет заказ на повторный замер: тот же замер снова становится
-        невыполненным и без даты, заказ возвращается в статус «Заявка на замер»,
-        и замер снова появляется у СМ в папке «Назначить замер». СМ корректирует
-        существующие проёмы и снова нажимает «Замер выполнен» — после этого
-        менеджеру опять приходит задание обработать замер.
+        Менеджер назначает повторный замер: создаётся НОВЫЙ замер той же заявки
+        (свой номер), заполненный копией этого — проёмы, фото, условия объекта.
+        Прежний замер остаётся как был (он нужен и для истории, и для отчёта по
+        ЗП СМ). Новый уходит тому же СМ в «Назначить замер», заказ возвращается
+        в «Заявка на замер». Связка с позициями по умолчанию берёт последний замер.
         """
         if request.user.role not in ('manager', 'admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Назначить повторный замер может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        m = self.get_object()
-        if not m.is_done:
+        prev = self.get_object()
+        if not prev.is_done:
             return Response(
                 {'detail': 'Замер ещё не выполнен — повторный замер назначать не из чего.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        current = prev.request.measurement
+        if current is not None and current.id != prev.id:
+            return Response(
+                {'detail': f'По заказу уже есть более новый замер №{current.id} — '
+                           f'повторный назначается от последнего.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         reason = (request.data.get('reason') or '').strip()[:500]
-        m.is_done = False
-        m.done_at = None
-        m.is_processed = False
-        m.processed_at = None
-        m.is_draft = False
-        m.updated_after_done_at = None
-        # Дату сбрасываем: замер нужно заново запланировать (папка «Назначить замер»)
-        m.measurement_date = None
-        m.repeat_count = (m.repeat_count or 0) + 1
-        m.repeat_requested_at = timezone.now()
-        m.repeat_reason = reason
-        m.save(update_fields=[
-            'is_done', 'done_at', 'is_processed', 'processed_at', 'is_draft',
-            'updated_after_done_at',
-            'measurement_date', 'repeat_count', 'repeat_requested_at', 'repeat_reason',
-            'updated_at',
-        ])
+        m = prev.make_repeat(reason=reason)
 
         order = m.request.order
-        description = f'Назначен повторный замер №{m.repeat_count}'
+        # Связка с позициями снова по умолчанию — по последнему (новому) замеру
+        if order.link_measurement_id:
+            order.link_measurement = None
+            order.save(update_fields=['link_measurement'])
+        description = f'Назначен повторный замер №{m.id} (к замеру №{prev.id})'
         if reason:
             description = f'{description}. Причина: {reason}'
         order.change_status(

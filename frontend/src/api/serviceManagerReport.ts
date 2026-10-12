@@ -4,6 +4,7 @@ import apiClient from './client'
 export interface ServiceManagerReportMeasurement {
   number: number              // порядковый № в отчёте СМ, с 1
   id: number
+  previous_id?: number | null  // повторный замер — к какому замеру
   order_id: number
   done_at: string
   address: string

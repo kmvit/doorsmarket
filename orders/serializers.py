@@ -124,9 +124,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
         """
         Снимок из связанного MeasurementOpening (если менеджер привязал замер).
         Используется в OrderDetail для столбцов «из Замера» и столбца «Рекомендации».
-        Берём самый свежий связанный проём — на случай нескольких замеров по заказу.
+        Замеров по заказу может быть несколько (повторные) — берём проём того
+        замера, который выбран для связки (по умолчанию последнего).
         """
-        op = obj.measurement_openings.order_by('-id').first()
+        cache = self.context.setdefault('_link_measurement_ids', {})
+        if obj.order_id not in cache:
+            m = obj.order.measurement_for_linking()
+            cache[obj.order_id] = m.id if m else None
+        op = obj.measurement_openings.filter(measurement_id=cache[obj.order_id]).order_by('-id').first()
         if op is None:
             return None
         from .recommendations import build_recommendation_text
@@ -371,6 +376,21 @@ class OrderListSerializer(serializers.ModelSerializer):
         return not (request is not None and request.is_irrelevant)
 
 
+def measurement_brief(m):
+    """Короткая карточка замера для списка замеров заказа."""
+    sm = m.service_manager
+    return {
+        'id': m.id,
+        'previous_id': m.previous_id,
+        'measurement_date': m.measurement_date,
+        'is_done': m.is_done,
+        'done_at': m.done_at,
+        'is_processed': m.is_processed,
+        'repeat_reason': m.repeat_reason,
+        'service_manager_name': (f'{sm.first_name} {sm.last_name}'.strip() or sm.username) if sm else None,
+    }
+
+
 class OrderDetailSerializer(serializers.ModelSerializer):
     manager = OrderManagerSerializer(read_only=True)
     salon = SalonSerializer(read_only=True)
@@ -385,11 +405,16 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     designer = DesignerSerializer(read_only=True)
     order_probability_display = serializers.CharField(source='get_order_probability_display', read_only=True)
     designer_paid_by_name = serializers.SerializerMethodField()
+    # Все замеры заказа по порядку (повторный замер — отдельный замер рядом)
+    measurements = serializers.SerializerMethodField()
+    # Замер, по которому связываются позиции с проёмами: выбранный или последний
+    link_measurement_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon',
+            'measurements', 'link_measurement_id',
             *ORDER_SALES_FIELDS, 'order_probability_display',
             'designer_paid_amount', 'designer_paid_at', 'designer_paid_by_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
@@ -413,6 +438,13 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             return False
         request = getattr(obj, 'measurement_request', None)
         return not (request is not None and request.is_irrelevant)
+
+    def get_measurements(self, obj):
+        return [measurement_brief(m) for m in obj.measurements().select_related('service_manager')]
+
+    def get_link_measurement_id(self, obj):
+        m = obj.measurement_for_linking()
+        return m.id if m else None
 
     def get_designer_paid_by_name(self, obj):
         u = obj.designer_paid_by
@@ -854,6 +886,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
     floor_readiness = serializers.CharField(source='request.order.floor_readiness', read_only=True, allow_blank=True)
 
     irrelevant_requested_by_name = serializers.SerializerMethodField()
+    # Повторные замеры: от какого замера этот и есть ли по заявке замер новее
+    newer_measurement_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Measurement
@@ -865,7 +899,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
             'is_irrelevant', 'irrelevant_requested_at', 'irrelevant_reason',
             'irrelevant_requested_by_name', 'irrelevant_confirmed_at',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'previous', 'newer_measurement_id',
             'openings', 'attachments', 'order_attachments',
             'client_name', 'address', 'contact_name', 'contact_position', 'contact_phone',
             'request_comment',
@@ -876,6 +910,7 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'distance_payment', 'distance_km', 'paid_on_site',
         ]
         read_only_fields = [
+            'previous',
             'id', 'created_at', 'updated_at', 'is_done', 'done_at',
             # Удалённость и оплата на месте меняются только через set_site_conditions
             'distance_payment', 'distance_km', 'paid_on_site',
@@ -888,6 +923,11 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'service_manager',
         ]
         extra_kwargs = {'signature_photo': {'write_only': True, 'required': False}}
+
+    def get_newer_measurement_id(self, obj):
+        """Номер текущего замера заявки, если он не этот (назначен повторный)."""
+        current = obj.request.measurement if obj.request_id else None
+        return current.id if current is not None and current.id != obj.id else None
 
     def get_service_manager_name(self, obj):
         u = obj.service_manager
@@ -986,7 +1026,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
             'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
             'updated_after_done_at',
             'is_irrelevant', 'irrelevant_requested_at',
-            'repeat_count',
+            'repeat_count', 'previous',
             'service_manager', 'service_manager_name',
             'order_status', 'order_status_display', 'manager_name', 'created_at',
         ]

@@ -222,10 +222,14 @@ def available_source_images(order):
 
     measurement_attachments = MeasurementAttachment.objects.filter(
         measurement__request__order=order
-    ).select_related('opening')
+    ).select_related('opening').order_by('-measurement_id', 'id')
+    # Повторный замер копирует фото прежнего (тот же файл) — показываем каждое один раз,
+    # из самого нового замера
+    seen_files = set()
     for attachment in measurement_attachments:
-        if not _is_image(attachment.file.name):
+        if not _is_image(attachment.file.name) or attachment.file.name in seen_files:
             continue
+        seen_files.add(attachment.file.name)
         where = 'Замер'
         if attachment.opening_id:
             where = f'Замер, проём {attachment.opening.opening_number}'

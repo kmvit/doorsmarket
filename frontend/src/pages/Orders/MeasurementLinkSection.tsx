@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Order, OrderAttachment } from '../../types/orders'
+import { Order, OrderAttachment, OrderMeasurementBrief } from '../../types/orders'
 import { Measurement, MeasurementOpening, MeasurementAttachment } from '../../types/measurements'
 import { measurementOpeningsAPI } from '../../api/measurements'
 import { ordersAPI } from '../../api/orders'
@@ -8,6 +8,9 @@ import FileViewer from '../../components/common/FileViewer'
 interface Props {
   order: Order
   measurement: Measurement
+  // Замеры заказа (повторные — отдельные замеры): менеджер выбирает, по какому связывать
+  measurements?: OrderMeasurementBrief[]
+  onSelectMeasurement?: (measurementId: number) => void
   onApplied: () => void
   onLinksSaved?: () => void
 }
@@ -61,7 +64,9 @@ const AttachmentThumbs = ({
   )
 }
 
-const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }: Props) => {
+const MeasurementLinkSection = ({
+  order, measurement, measurements = [], onSelectMeasurement, onApplied, onLinksSaved,
+}: Props) => {
   const items = order.items || []
   const openings = measurement.openings || []
 
@@ -177,15 +182,47 @@ const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }:
     }
   }
 
-  if (!measurement.is_done) return null
+  // Выбор замера — когда их несколько (по умолчанию последний)
+  const picker = measurements.length > 1 && onSelectMeasurement && (
+    <label className="flex flex-wrap items-center gap-2 text-sm text-gray-700 mb-3">
+      Замер для связки:
+      <select
+        value={measurement.id}
+        onChange={(e) => onSelectMeasurement(Number(e.target.value))}
+        className="rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+      >
+        {measurements.map((mb, i) => (
+          <option key={mb.id} value={mb.id}>
+            №{mb.id}{mb.previous_id ? ` (повторный к №${mb.previous_id})` : ''}
+            {i === measurements.length - 1 ? ' — последний' : ''}
+            {mb.is_done ? '' : ' — ещё не выполнен'}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+
+  if (!measurement.is_done) {
+    if (!picker) return null
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <h2 className="text-base font-bold text-gray-900 mb-3">Связка позиций КП с проёмами замера</h2>
+        {picker}
+        <p className="text-sm text-gray-500">
+          Замер №{measurement.id} ещё не выполнен — связывать можно после выполнения
+          или выберите выполненный замер.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <h2 className="text-base font-bold text-gray-900">
           Связка позиций КП с проёмами замера
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleSaveLinks}
             disabled={isSavingLinks}
@@ -205,6 +242,7 @@ const MeasurementLinkSection = ({ order, measurement, onApplied, onLinksSaved }:
         </div>
       </div>
 
+      {picker}
       <p className="text-xs text-gray-500 mb-3">
         Слева — позиции КП, справа — фактические проёмы замера (с размерами, открыванием и фото).
         Сопоставьте проём двери, выберите соответствие в выпадающем списке и нажмите «Сохранить связки»,

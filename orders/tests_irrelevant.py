@@ -208,7 +208,7 @@ class IrrelevantBeforeMeasurementTest(TestCase):
         return [r for r in response.data if r.get('is_request_only')]
 
     def test_request_without_measurement_can_be_marked(self):
-        self.assertFalse(hasattr(self.request_obj, 'measurement'))
+        self.assertIsNone(self.request_obj.measurement)
 
         response = self.sm_client.post(
             self.url('mark_measurement_irrelevant'),
