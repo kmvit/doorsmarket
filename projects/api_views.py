@@ -14,6 +14,7 @@ from datetime import datetime
 
 from .models import (
     Complaint,
+    INSTALLATION_STAGE_STATUSES,
     DefectiveProduct,
     ComplaintAttachment,
     ComplaintComment,
@@ -291,11 +292,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         
         # Проверяем просрочку для рекламаций с монтажником
+        # Дату монтажа мог поставить и СМ, тогда момента назначения монтажника
+        # может не быть — поэтому смотрим на этап, а не на installer_assigned_at
         installer_complaints = queryset.filter(
             installer_assigned__isnull=False,
-            installer_assigned_at__isnull=False
-        ).exclude(
-            status__in=['completed', 'resolved', 'closed']
+            status__in=INSTALLATION_STAGE_STATUSES,
         )
         
         for complaint in installer_complaints:
@@ -322,11 +323,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         монтажа уже в будущем.
         """
         complaint = self.get_object()
-        if (
-            complaint.installer_assigned_id
-            and complaint.installer_assigned_at
-            and complaint.status not in ('completed', 'resolved', 'closed')
-        ):
+        if complaint.installer_assigned_id and complaint.status in INSTALLATION_STAGE_STATUSES:
             complaint.check_installer_overdue()
             complaint.refresh_from_db()
         if complaint.status in ('moscow_service', 'moscow_service_overdue'):

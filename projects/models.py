@@ -76,6 +76,18 @@ class ComplaintStatus(models.TextChoices):
     SENT = 'sent', 'Отправлена'
 
 
+# Этап монтажа: монтажник назначен, монтаж ждёт даты или запланирован. Только
+# на нём бывает «Просрочена монтажником».
+INSTALLATION_STAGE_STATUSES = {
+    ComplaintStatus.WAITING_INSTALLER_DATE,
+    ComplaintStatus.NEEDS_PLANNING,
+    ComplaintStatus.INSTALLER_NOT_PLANNED,
+    ComplaintStatus.INSTALLATION_PLANNED,
+    ComplaintStatus.BOTH_PLANNED,
+    ComplaintStatus.INSTALLER_OVERDUE,
+}
+
+
 class ComplaintType(models.TextChoices):
     """Типы рекламаций"""
     MANAGER = 'manager', 'Менеджер'
@@ -994,7 +1006,7 @@ class Complaint(models.Model):
                 message=f'Рекламация #{self.id} требует перезаказа — обработайте заново.'
             )
 
-    def check_installer_overdue(self):
+    def check_installer_overdue(self, notify=True):
         """
         Проверяет просрочку монтажа.
 
@@ -1004,15 +1016,19 @@ class Complaint(models.Model):
         - если запланированная дата прошла, а монтаж не выполнен — просрочка;
         - если дата монтажа вообще не назначена — fallback на старое правило
           «> 30 дней с момента назначения монтажника».
+
+        notify=False — только статус, без push и SMS монтажнику (разовая разметка
+        накопившихся просрочек, см. команду mark_installer_overdue_silently).
         """
-        if not self.installer_assigned or not self.installer_assigned_at:
+        if not self.installer_assigned:
             return False
 
-        # Если рекламацию увели из маршрута монтажника (СМ сменил тип на «Менеджер»
-        # или «Фабрика»), просрочка монтажа к ней больше не относится. Без этой
-        # проверки list() тут же откатывает переадресацию обратно в «Просрочена
-        # монтажником», и кажется, что рекламация «не перенаправляется».
-        if self.complaint_type != ComplaintType.INSTALLER:
+        # Просрочка монтажа — только пока рекламация на этапе монтажа, какого бы
+        # типа она ни была: у «Менеджера» и «Фабрики» монтаж тоже планирует СМ.
+        # Если рекламацию увели с этого этапа (СМ сменил тип — статус стал «В работе»
+        # или «Отправлена»), просрочки нет: иначе list() откатывал бы переадресацию
+        # обратно в «Просрочена монтажником».
+        if self.status not in INSTALLATION_STAGE_STATUSES:
             return False
 
         # Проверяем, не завершена ли уже рекламация (или на проверке у СМ)
@@ -1039,14 +1055,18 @@ class Complaint(models.Model):
             is_overdue = self.planned_installation_date <= now
         else:
             # Дата ещё не назначена — старое правило: > 30 дней с момента назначения
-            is_overdue = self.installer_assigned_at <= (now - timedelta(days=30))
+            is_overdue = bool(self.installer_assigned_at) and (
+                self.installer_assigned_at <= (now - timedelta(days=30))
+            )
 
         if is_overdue:
             # Если еще не помечена как просроченная
             if self.status != ComplaintStatus.INSTALLER_OVERDUE:
                 self.status = ComplaintStatus.INSTALLER_OVERDUE
                 self.save(update_fields=['status'])
-                
+                if not notify:
+                    return True
+
                 # Отправляем push и SMS монтажнику
                 try:
                     # Формируем ссылку на рекламацию
