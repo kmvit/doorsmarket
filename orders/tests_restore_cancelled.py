@@ -72,3 +72,41 @@ class RestoreCancelledOrderTest(TestCase):
         )
         self.client.force_authenticate(installer)
         self.assertIn(self._restore(order).status_code, (403, 404))
+
+    def test_resubmit_measurement_request_after_restore(self):
+        """Заказ с неактуальным замером вернули в «Создан» — заявку можно подать заново."""
+        from django.utils import timezone
+        from orders.models import Measurement
+
+        order = self._order(OrderStatus.CANCELLED)
+        sm = User.objects.create_user(username='sm', password='x', role='service_manager', city=self.city)
+        mr = MeasurementRequest.objects.create(
+            order=order, contact_name='Клиент', contact_phone='+700',
+            created_by=self.manager, is_irrelevant=True,
+        )
+        m = Measurement.objects.create(request=mr, service_manager=sm, measurement_date=timezone.now())
+        self.assertEqual(self._restore(order).status_code, 200)
+
+        response = self.client.post(
+            f'/api/v1/orders/{order.id}/measurement-request/',
+            {'contact_name': 'Клиент', 'contact_phone': '+79270000000'}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        m.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.MEASUREMENT_REQUESTED)
+        self.assertIsNone(m.measurement_date)
+        self.assertIn(order.id, self._folder_ids('measurement_requested'))
+
+    def test_edit_request_does_not_change_status(self):
+        """Обычная правка заявки у заказа в работе статус не трогает."""
+        order = self._order(OrderStatus.MEASUREMENT_SCHEDULED)
+        MeasurementRequest.objects.create(
+            order=order, contact_name='Клиент', contact_phone='+700', created_by=self.manager,
+        )
+        response = self.client.post(
+            f'/api/v1/orders/{order.id}/measurement-request/', {'comment': 'x'}, format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, OrderStatus.MEASUREMENT_SCHEDULED)

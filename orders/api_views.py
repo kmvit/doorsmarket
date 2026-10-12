@@ -368,6 +368,29 @@ def apply_order_folder(qs, folder):
     return qs
 
 
+def _reset_measurement_for_resubmit(mr):
+    """
+    Повторная подача заявки: снимаем неактуальность (если осталась) и сбрасываем
+    дату несостоявшегося выезда — замер снова попадает к СМ в «Назначить замер».
+    Уже введённые проёмы не трогаем.
+    """
+    if mr.is_irrelevant or mr.irrelevant_requested_at:
+        mr.irrelevant_requested_at = None
+        mr.irrelevant_requested_by = None
+        mr.irrelevant_reason = ''
+        mr.is_irrelevant = False
+        mr.irrelevant_confirmed_at = None
+        mr.irrelevant_confirmed_by = None
+        mr.save(update_fields=[
+            'irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason',
+            'is_irrelevant', 'irrelevant_confirmed_at', 'irrelevant_confirmed_by',
+        ])
+    m = Measurement.objects.filter(request=mr, is_done=False).first()
+    if m and m.measurement_date:
+        m.measurement_date = None
+        m.save(update_fields=['measurement_date', 'updated_at'])
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
@@ -850,6 +873,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         is_create = instance is None
+        # Заказ вернули из «Не актуален» в «Создан», а заявка с прошлого раза
+        # осталась: её сохранение — новая подача, как будто заявку создали заново.
+        is_resubmit = not is_create and order.status in (OrderStatus.DRAFT, OrderStatus.ACTIVE)
         instance = serializer.save(
             order=order,
             created_by=request.user if is_create else instance.created_by,
@@ -887,7 +913,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         address_provided = 'address' in request.data
         if address_provided:
             order.address = (request.data.get('address') or '').strip()[:500]
-        if is_create:
+        if is_resubmit:
+            _reset_measurement_for_resubmit(instance)
+            order.log_activity(
+                ActivityKind.MEASUREMENT_REQUESTED, actor=request.user,
+                description='Заявка на замер подана повторно',
+            )
+        if is_create or is_resubmit:
             order.status = OrderStatus.MEASUREMENT_REQUESTED
             order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED, save=False)
             order.save()
