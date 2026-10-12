@@ -184,11 +184,14 @@ class ServiceManagerReportTest(TestCase):
         wb = load_workbook(BytesIO(response.content))
         ws = wb['Пётр Петров']
         self.assertEqual(ws['A2'].value, '№')
-        self.assertEqual(ws['J2'].value, 'Итого по замеру')
+        self.assertEqual(ws['E2'].value, 'Номер замера')
+        self.assertEqual(ws['K2'].value, 'Итого по замеру')
         self.assertEqual(ws['A3'].value, 1)
-        self.assertEqual(ws['J3'].value, 750)
+        self.assertIsInstance(ws['E3'].value, int)
+        self.assertEqual(ws['K3'].value, 750)
+        self.assertEqual(ws['I3'].number_format, '#,##0.00')
         self.assertEqual(ws['A5'].value, 'Итого за месяц')
-        self.assertEqual(ws['J5'].value, 750)
+        self.assertEqual(ws['K5'].value, 750)
 
 
 class TariffTest(SimpleTestCase):

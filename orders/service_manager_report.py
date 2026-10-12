@@ -195,10 +195,19 @@ class ServiceManagerReportView(APIView):
 
 
 XLSX_HEADERS = [
-    '№', 'Дата', 'Адрес', 'Номер заказа', 'Менеджер', 'Оплачен/не оплачен',
+    '№', 'Дата', 'Адрес', 'Номер заказа', 'Номер замера', 'Менеджер', 'Оплачен/не оплачен',
     'Количество проёмов', 'Сумма по замеру', 'Удалённость', 'Итого по замеру',
 ]
-XLSX_WIDTHS = [6, 12, 40, 14, 22, 20, 12, 16, 14, 16]
+XLSX_WIDTHS = [6, 12, 40, 14, 16, 22, 20, 12, 16, 14, 16]
+# Денежные столбцы (1-based) — «Сумма по замеру», «Удалённость», «Итого»
+XLSX_MONEY_COLS = (9, 11)
+
+
+def _measurement_label(row):
+    """Номер замера; у повторного — к какому замеру он сделан."""
+    if row.get('previous_id'):
+        return f"{row['id']} (повторный к №{row['previous_id']})"
+    return row['id']
 
 
 def _xlsx_response(groups, request):
@@ -234,6 +243,7 @@ def _xlsx_response(groups, request):
                 timezone.localtime(row['done_at']).date(),
                 row['address'],
                 row['order_id'],
+                _measurement_label(row),
                 row['manager_name'],
                 row['payment_status'] + (' — не учитывается' if row['paid_on_site'] else ''),
                 row['openings_total'],
@@ -243,13 +253,13 @@ def _xlsx_response(groups, request):
             ])
             ws.cell(ws.max_row, 2).number_format = 'DD.MM.YYYY'
         if g:
-            ws.append(['Итого за месяц', None, None, None, None, None, g['openings_total'],
+            ws.append(['Итого за месяц', None, None, None, None, None, None, g['openings_total'],
                        float(g['measurements_sum']), float(g['distance_sum']), float(g['total'])])
             for cell in ws[ws.max_row]:
                 cell.font = Font(bold=True)
         for i, width in enumerate(XLSX_WIDTHS, start=1):
             ws.column_dimensions[get_column_letter(i)].width = width
-        for r in ws.iter_rows(min_row=3, min_col=8, max_col=10):
+        for r in ws.iter_rows(min_row=3, min_col=XLSX_MONEY_COLS[0], max_col=XLSX_MONEY_COLS[1]):
             for cell in r:
                 cell.number_format = '#,##0.00'
 

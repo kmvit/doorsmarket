@@ -118,3 +118,11 @@ class RepeatMeasurementTest(TestCase):
         self.assertEqual({r['id'] for r in rows}, {self.first.id, new.id})
         repeat_row = next(r for r in rows if r['id'] == new.id)
         self.assertEqual(repeat_row['previous_id'], self.first.id)
+
+        # В Excel — номер замера, у повторного с пометкой
+        from io import BytesIO
+        from openpyxl import load_workbook
+        xlsx = sm_client.get('/api/v1/reports/service-managers/', {'export': 'xlsx'})
+        ws = load_workbook(BytesIO(xlsx.content)).active
+        labels = {ws.cell(r, 5).value for r in range(3, 5)}
+        self.assertEqual(labels, {self.first.id, f'{new.id} (повторный к №{self.first.id})'})
