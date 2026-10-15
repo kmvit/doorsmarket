@@ -165,6 +165,9 @@ const OrderHistory = () => {
                 {log.kind === 'sms_sent' && log.meta?.suppressed && (
                   <p className="text-xs text-amber-600 mt-1">SMS отключены (тест-режим) — не отправлено</p>
                 )}
+                {log.kind === 'sms_sent' && log.meta?.channel === 'max' && (
+                  <p className="text-xs text-blue-600 mt-1">Доставлено в MAX вместо SMS</p>
+                )}
                 <p className="text-xs text-gray-400 mt-2">{log.actor_name}</p>
               </div>
             </li>

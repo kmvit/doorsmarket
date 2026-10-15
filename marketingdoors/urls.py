@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/v1/', include('projects.api_urls')),
     path('api/v1/', include('orders.urls')),
     path('api/v1/', include('catalog.urls')),
+    path('api/v1/', include('maxbot.urls')),
     path('', include('projects.urls')),
 ]
 

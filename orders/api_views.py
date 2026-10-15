@@ -137,26 +137,29 @@ def _push_about_irrelevant(order, *, recipient, actor, title, body):
 
 def send_client_sms(order, phone, message, *, actor=None, meta=None):
     """
-    Отправляет SMS клиенту/контактному и пишет событие в журнал заказа.
+    Отправляет уведомление клиенту/контактному и пишет событие в журнал заказа:
+    в MAX, если клиент подключил бота, иначе SMS (канал — meta.channel).
     Возвращает True если отправка прошла или была намеренно отключена (тест-режим).
     Логирует всегда (с пометками sms_ok / suppressed).
 
-    SMS по заказам можно отключить флагом ORDERS_SMS_ENABLED=False (на время теста).
+    Уведомления по заказам можно отключить флагом ORDERS_SMS_ENABLED=False (на время теста).
     """
-    from users.push_utils import send_sms_to_phone
+    from maxbot.sending import send_client_message
     enabled = getattr(settings, 'ORDERS_SMS_ENABLED', True)
     suppressed = not enabled
-    ok = False
+    channel = None
     if enabled and phone:
         try:
-            ok = send_sms_to_phone(phone, message)
+            channel = send_client_message(phone, message)
         except Exception:  # noqa: BLE001
-            ok = False
+            channel = None
+    ok = channel is not None
     order.log_activity(
         ActivityKind.SMS_SENT,
         actor=actor,
         description=message[:500],
-        meta={**(meta or {}), 'phone': phone or '', 'sms_ok': ok, 'suppressed': suppressed},
+        meta={**(meta or {}), 'phone': phone or '', 'sms_ok': ok, 'channel': channel or '',
+              'suppressed': suppressed},
     )
     # В тест-режиме считаем «обработанным», чтобы экшены (недозвон) не падали 400.
     return ok or suppressed

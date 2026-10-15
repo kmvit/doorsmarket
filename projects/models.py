@@ -4,7 +4,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
-from users.push_utils import send_sms_notification, send_sms_to_phone
+from maxbot.sending import send_client_message
+from users.push_utils import send_sms_notification
 
 logger = logging.getLogger(__name__)
 
@@ -856,12 +857,10 @@ class Complaint(models.Model):
                 production_date_str = production_deadline.strftime("%d.%m.%Y")
                 sms_text = f"Приносим извинения! Срок пр-ва по Вашей рекламации {production_date_str}."
                 
-                sms_sent = send_sms_to_phone(
-                    phone_number=self.contact_phone,
-                    message=sms_text,
-                )
-                if sms_sent:
-                    logger.info('SMS отправлено клиенту на номер %s для рекламации #%s', self.contact_phone, self.id)
+                channel = send_client_message(self.contact_phone, sms_text)
+                if channel:
+                    logger.info('Уведомление (%s) отправлено клиенту на номер %s для рекламации #%s',
+                                channel, self.contact_phone, self.id)
             except Exception as exc:
                 logger.error(
                     'Ошибка отправки SMS клиенту на номер %s для рекламации #%s: %s',
@@ -937,12 +936,10 @@ class Complaint(models.Model):
                 installation_date_str = installation_date.strftime("%d.%m.%Y %H:%M")
                 sms_text = f"По Вашей рекламации запланирован монтаж на {installation_date_str}."
                 
-                sms_sent = send_sms_to_phone(
-                    phone_number=self.contact_phone,
-                    message=sms_text,
-                )
-                if sms_sent:
-                    logger.info('SMS отправлено клиенту на номер %s для рекламации #%s', self.contact_phone, self.id)
+                channel = send_client_message(self.contact_phone, sms_text)
+                if channel:
+                    logger.info('Уведомление (%s) отправлено клиенту на номер %s для рекламации #%s',
+                                channel, self.contact_phone, self.id)
             except Exception as exc:
                 logger.error(
                     'Ошибка отправки SMS клиенту на номер %s для рекламации #%s: %s',
@@ -1267,12 +1264,10 @@ class Complaint(models.Model):
                 # Формируем текст SMS
                 sms_text = "По рекламации планируется доставка. В теч. 5 р.д. с Вами свяжутся."
                 
-                sms_sent = send_sms_to_phone(
-                    phone_number=self.contact_phone,
-                    message=sms_text,
-                )
-                if sms_sent:
-                    logger.info('SMS отправлено клиенту на номер %s для рекламации #%s', self.contact_phone, self.id)
+                channel = send_client_message(self.contact_phone, sms_text)
+                if channel:
+                    logger.info('Уведомление (%s) отправлено клиенту на номер %s для рекламации #%s',
+                                channel, self.contact_phone, self.id)
             except Exception as exc:
                 logger.error(
                     'Ошибка отправки SMS клиенту на номер %s для рекламации #%s: %s',
@@ -1448,12 +1443,10 @@ class Complaint(models.Model):
                 installation_date_str = installation_date.strftime("%d.%m.%Y %H:%M")
                 sms_text = f"По Вашей рекламации запланирован монтаж на {installation_date_str}."
                 
-                sms_sent = send_sms_to_phone(
-                    phone_number=self.contact_phone,
-                    message=sms_text,
-                )
-                if sms_sent:
-                    logger.info('SMS отправлено клиенту на номер %s для рекламации #%s', self.contact_phone, self.id)
+                channel = send_client_message(self.contact_phone, sms_text)
+                if channel:
+                    logger.info('Уведомление (%s) отправлено клиенту на номер %s для рекламации #%s',
+                                channel, self.contact_phone, self.id)
             except Exception as exc:
                 logger.error(
                     'Ошибка отправки SMS клиенту на номер %s для рекламации #%s: %s',

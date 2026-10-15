@@ -25,7 +25,7 @@ User = get_user_model()
 
 @patch('users.push_utils.send_push_notification')
 @patch('projects.models.send_sms_notification')
-@patch('projects.models.send_sms_to_phone')
+@patch('projects.models.send_client_message')
 class InstallerOverdueTest(TestCase):
     def setUp(self):
         city = City.objects.create(name='Казань')
