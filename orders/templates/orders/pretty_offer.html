@@ -159,6 +159,10 @@
     left: 40pt; top: 340pt; width: 300pt; text-align: center;
     font-size: 10pt; color: #444; line-height: 1.7;
   }
+  .cover-manager {
+    left: 40pt; top: 392pt; width: 300pt; text-align: center;
+    font-size: 10pt; color: #555; line-height: 1.6;
+  }
   .cover-arch {
     left: 148pt; top: 470pt; width: 78pt; height: 70pt;
     background: #d9d9d9; border-radius: 39pt 39pt 0 0;
@@ -232,10 +236,6 @@
     left: 110pt; top: 172pt; width: 500pt; text-align: center;
     font-size: 12pt; line-height: 1.35; color: #1a1a1a;
   }
-  .contacts-manager {
-    left: 110pt; top: 240pt; width: 500pt; text-align: center;
-    font-size: 10pt; line-height: 1.6; color: #555;
-  }
   .contacts-arch {
     left: 285pt; top: 430pt; width: 150pt; height: 110pt;
     background: #d9d9d9; border-radius: 75pt 75pt 0 0;
@@ -256,6 +256,11 @@
   <div class="abs cover-meta">
     <div>{{ order.client_name|default:"—" }}</div>
     {% if order.kp_number %}<div>КП № {{ order.kp_number }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>{% endif %}
+  </div>
+  <div class="abs cover-manager">
+    {% if manager_name %}<div>Ваш менеджер: {{ manager_name }}</div>{% endif %}
+    {% if salon_address %}<div>{{ salon_address }}</div>{% endif %}
+    {% if salon_phone %}<div>{{ salon_phone }}</div>{% endif %}
   </div>
   <div class="abs cover-arch"></div>
   <div class="abs cover-year">{{ offer_year }}</div>
@@ -445,11 +450,6 @@
     Торгово-производственная компания ACADEMY<br>
     Межкомнатные двери / Входные двери /<br>
     Перегородки{% if salon_city %}, г. {{ salon_city }}{% endif %}
-  </div>
-  <div class="abs contacts-manager">
-    {% if manager_name %}<div>Ваш менеджер: {{ manager_name }}</div>{% endif %}
-    {% if salon_address %}<div>{{ salon_address }}</div>{% endif %}
-    {% if salon_phone %}<div>{{ salon_phone }}</div>{% endif %}
   </div>
   <div class="abs contacts-arch"></div>
 </div>
