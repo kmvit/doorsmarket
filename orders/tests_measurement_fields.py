@@ -7,6 +7,7 @@
         python manage.py test orders.tests_measurement_fields
 """
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -74,6 +75,27 @@ class MeasurementDistanceTest(MeasurementTestBase):
     def test_distance_is_optional(self):
         response = self.client.post(f'/api/v1/measurements/{self.m.id}/mark_done/', {}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
+
+
+class MeasurementDonePushTest(MeasurementTestBase):
+    """Замер выполнен — push менеджеру заказа."""
+
+    @patch('users.push_utils.send_push_notification')
+    def test_manager_gets_push(self, push):
+        response = self.client.post(f'/api/v1/measurements/{self.m.id}/mark_done/')
+        self.assertEqual(response.status_code, 200, response.data)
+        push.assert_called_once()
+        kwargs = push.call_args.kwargs
+        self.assertEqual(kwargs['user'], self.order.manager)
+        self.assertEqual(kwargs['url'], f'/orders/{self.order.id}')
+        self.assertIn('Иванов', kwargs['body'])
+
+    @patch('users.push_utils.send_push_notification')
+    def test_no_push_when_not_done(self, push):
+        Order.objects.filter(pk=self.order.pk).update(floor_number='')
+        response = self.client.post(f'/api/v1/measurements/{self.m.id}/mark_done/')
+        self.assertEqual(response.status_code, 400)
+        push.assert_not_called()
 
 
 class OpeningPanelsTest(MeasurementTestBase):
@@ -156,28 +178,6 @@ class DoubleDoorOpeningTest(MeasurementTestBase):
         self.assertIn('A+C, рабочая C', html)
 
 
-class OpeningCreateRetryTest(MeasurementTestBase):
-    """Повтор создания проёма из офлайн-очереди (ответ потерялся) не делает дубль."""
-
-    def post(self, **data):
-        return self.client.post('/api/v1/measurement-openings/', {'measurement': self.m.id, **data}, format='json')
-
-    def test_same_client_uid_returns_existing_opening(self):
-        first = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
-        self.assertEqual(first.status_code, 201, first.data)
-        again = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
-        self.assertEqual(again.status_code, 200, again.data)
-        self.assertEqual(again.data['id'], first.data['id'])
-        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 1)
-
-    def test_different_uids_and_no_uid_create_separate_openings(self):
-        self.post(opening_number=1, client_uid='abc-1')
-        self.post(opening_number=2, client_uid='abc-2')
-        self.post(opening_number=3)
-        self.post(opening_number=4)
-        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 4)
-
-
 class SlidingDoorOpeningTest(MeasurementTestBase):
     """Сдвижная дверь: открывание только вправо или влево."""
 
@@ -219,6 +219,28 @@ class FrameAndSlopesTypeTest(SimpleTestCase):
         for door_type in ('opening_frame', 'entrance_slopes'):
             self.assertEqual(calculate_door_recommendation(2100, 900, door_type), (None, None))
             self.assertEqual(build_recommendation_text(2100, 900, 2000, 800, door_type), '')
+
+
+class OpeningCreateRetryTest(MeasurementTestBase):
+    """Повтор создания проёма из офлайн-очереди (ответ потерялся) не делает дубль."""
+
+    def post(self, **data):
+        return self.client.post('/api/v1/measurement-openings/', {'measurement': self.m.id, **data}, format='json')
+
+    def test_same_client_uid_returns_existing_opening(self):
+        first = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
+        self.assertEqual(first.status_code, 201, first.data)
+        again = self.post(opening_number=1, room_name='Спальня', client_uid='abc-1')
+        self.assertEqual(again.status_code, 200, again.data)
+        self.assertEqual(again.data['id'], first.data['id'])
+        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 1)
+
+    def test_different_uids_and_no_uid_create_separate_openings(self):
+        self.post(opening_number=1, client_uid='abc-1')
+        self.post(opening_number=2, client_uid='abc-2')
+        self.post(opening_number=3)
+        self.post(opening_number=4)
+        self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 4)
 
 
 class BlankSizeBreaksTest(SimpleTestCase):

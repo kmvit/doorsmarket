@@ -1969,6 +1969,24 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         mr = m.request
         phone = mr.contact_phone or order.contact_phone
         send_client_sms(order, phone, sms_templates.measurement_done(m), actor=request.user)
+
+        # Push менеджеру заказа — дальше замер обрабатывает он
+        if order.manager_id and order.manager_id != request.user.pk:
+            try:
+                from users.push_utils import send_push_notification
+                sm_name = _sm_name_phone(request.user)[0]
+                send_push_notification(
+                    user=order.manager,
+                    title=f'Замер выполнен — заказ #{order.id}',
+                    body=f'{order.client_name}. Замер №{m.id} выполнил {sm_name}, можно обрабатывать.',
+                    url=f'/orders/{order.id}',
+                    data={'measurementId': m.id, 'orderId': order.id},
+                )
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).error(
+                    'Ошибка push о выполненном замере #%s: %s', m.id, exc,
+                )
         return Response(MeasurementSerializer(m, context={'request': request}).data)
 
     # ---- Уведомление клиенту о недозвоне (кнопка «Отправить / Повторно») ----
