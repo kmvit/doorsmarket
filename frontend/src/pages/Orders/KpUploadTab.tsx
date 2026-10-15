@@ -4,6 +4,7 @@ import { ordersAPI } from '../../api/orders'
 import {
   Salon, ParsedKpData, ParsedKpItem, ParsedKpAddon,
   ADDON_KIND_DISPLAY, AddonKind, OpeningType, DOOR_TYPE_DISPLAY, DOUBLE_DOOR_TYPE, sumDoorWidthParts,
+  OPENING_TYPE_SHORT, openingTypesForDoor,
 } from '../../types/orders'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import HScrollSync from '../../components/common/HScrollSync'
@@ -81,6 +82,10 @@ const KpUploadTab = ({
       next.door_width = sumDoorWidthParts(value)
     }
     if (next.door_type !== DOUBLE_DOOR_TYPE) next.door_width_parts = ''
+    // Смена типа двери: открывание из «чужого» набора сбрасываем (сдвижной — только вправо/влево)
+    if (field === 'door_type' && next.opening_type && !openingTypesForDoor(next.door_type).includes(next.opening_type as OpeningType)) {
+      next.opening_type = ''
+    }
     items[idx] = next
     setParsed({ ...parsed, items })
   }
@@ -349,12 +354,13 @@ const KpUploadTab = ({
                         <td className="px-2 py-1.5 align-top">
                           <select value={item.opening_type} onChange={(e) => updateItem(idx, 'opening_type', e.target.value)} className="rounded border-gray-300 text-sm">
                             <option value="">—</option>
-                            <option value="A">A</option>
-                            <option value="B">B</option>
-                            <option value="B_INVERSO">B Inv.</option>
-                            <option value="C">C</option>
-                            <option value="D">D</option>
-                            <option value="D_INVERSO">D Inv.</option>
+                            {/* Открывания по типу двери; распознанное из КП, но «чужое», не прячем */}
+                            {(item.opening_type && !openingTypesForDoor(item.door_type).includes(item.opening_type as OpeningType)
+                              ? [item.opening_type as OpeningType, ...openingTypesForDoor(item.door_type)]
+                              : openingTypesForDoor(item.door_type)
+                            ).map((value) => (
+                              <option key={value} value={value}>{OPENING_TYPE_SHORT[value] || value}</option>
+                            ))}
                           </select>
                         </td>
                         <td className="px-2 py-1.5 align-top"><input type="number" value={item.door_height ?? ''} onChange={(e) => updateItem(idx, 'door_height', e.target.value ? Number(e.target.value) : null)} className="w-16 rounded border-gray-300 text-sm" /></td>

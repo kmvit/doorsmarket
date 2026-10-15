@@ -13,7 +13,7 @@ import { Measurement, MeasurementOpening, MeasurementAttachment, DistancePayment
 import {
   DOOR_TYPE_DISPLAY, OPENING_TYPE_DISPLAY, OPENING_TYPE_SHORT, DoorType, DOUBLE_DOOR_TYPE,
   NO_AUTO_RECOMMENDATION_DOOR_TYPES, splitDoubleDoorWidth, sumDoorWidthParts,
-  OpeningType, SINGLE_OPENING_TYPES, DOUBLE_OPENING_TYPES, WORKING_LEAVES, WorkingLeaf,
+  OpeningType, openingTypesForDoor, WORKING_LEAVES, WorkingLeaf,
 } from '../../types/orders'
 import { isQueuedError } from '../../services/sync'
 import ScheduleMeasurementModal from './ScheduleMeasurementModal'
@@ -31,17 +31,18 @@ const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
 // чтобы «1,5» и «1.5» сохранялись одинаково и не ломали замер (в т.ч. офлайн).
 const normalizeDecimal = (value: string): string => value.replace(',', '.')
 
-// Двустворчатой двери — свои открывания (A+C / B+D / B+D Inverso), остальным — одиночные.
-// Старое значение, не подходящее к типу двери, оставляем в списке, чтобы оно не пропало молча.
+// Двустворчатой двери — свои открывания (A+C / B+D / B+D Inverso), сдвижной — вправо/влево,
+// остальным — одиночные. Старое значение, не подходящее к типу двери, оставляем
+// в списке, чтобы оно не пропало молча.
 const openingOptions = (op: MeasurementOpening): OpeningType[] => {
-  const options = op.door_type === DOUBLE_DOOR_TYPE ? DOUBLE_OPENING_TYPES : SINGLE_OPENING_TYPES
+  const options = openingTypesForDoor(op.door_type)
   return op.opening_type && !options.includes(op.opening_type) ? [op.opening_type, ...options] : options
 }
 
 // Смена типа двери: открывание из «чужого» набора и рабочую створку сбрасываем
 const openingResetForDoorType = (op: MeasurementOpening, doorType: string) => {
   const isDouble = doorType === DOUBLE_DOOR_TYPE
-  const allowed = isDouble ? DOUBLE_OPENING_TYPES : SINGLE_OPENING_TYPES
+  const allowed = openingTypesForDoor(doorType)
   return {
     opening_type: op.opening_type && !allowed.includes(op.opening_type) ? '' as OpeningType : op.opening_type,
     working_leaf: isDouble ? op.working_leaf : '' as WorkingLeaf,

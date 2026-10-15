@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    Salon, Designer, Order, OrderItem, DoorType, DOUBLE_OPENING_TYPES, OrderAddon, OrderAttachment, ActivityKind,
+    Salon, Designer, Order, OrderItem, DoorType, DOUBLE_OPENING_TYPES, SLIDING_OPENING_TYPES, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
     OrderActivityLog, OVERDUE_STATUSES,
@@ -748,13 +748,15 @@ class MeasurementAttachmentSerializer(serializers.ModelSerializer):
 def validate_opening_double_door(serializer, attrs):
     """
     Двустворчатой двери — только открывания A+C / B+D / B+D Inverso и рабочая
-    створка; остальным дверям — только одиночные открывания, створки нет.
-    Проверяем открывание, только когда его меняют: у старых двустворчатых
-    проёмов могло остаться одиночное, и любая другая правка не должна падать.
+    створка; сдвижной — только вправо/влево; остальным дверям — только одиночные
+    открывания, створки нет.
+    Проверяем открывание, только когда его меняют: у старых проёмов могло
+    остаться открывание из другого набора, и любая другая правка не должна падать.
     """
     instance = serializer.instance
     door_type = attrs.get('door_type', instance.door_type if instance else '')
     is_double = door_type == DoorType.DOUBLE
+    is_sliding = door_type == DoorType.SLIDING
     opening = attrs.get('opening_type')
     opening_changed = 'opening_type' in attrs and (instance is None or opening != instance.opening_type)
     if opening_changed and opening:
@@ -762,6 +764,10 @@ def validate_opening_double_door(serializer, attrs):
             raise serializers.ValidationError({'opening_type': 'Для двустворчатой двери открывание: A+C, B+D или B+D Inverso'})
         if not is_double and opening in DOUBLE_OPENING_TYPES:
             raise serializers.ValidationError({'opening_type': 'Открывания A+C / B+D — только для двустворчатой двери'})
+        if is_sliding and opening not in SLIDING_OPENING_TYPES:
+            raise serializers.ValidationError({'opening_type': 'Для сдвижной двери открывание: вправо или влево'})
+        if not is_sliding and opening in SLIDING_OPENING_TYPES:
+            raise serializers.ValidationError({'opening_type': 'Открывание вправо/влево — только для сдвижной двери'})
     if not is_double:
         attrs['working_leaf'] = ''
     return attrs

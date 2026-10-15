@@ -72,8 +72,8 @@ export const ORDER_STATUS_HINT: Partial<Record<OrderStatus, string>> = {
   shipped: 'Поставьте в график монтажа',
 }
 
-export type DoorType = 'entrance' | 'interior' | 'sliding' | 'double' | 'other' | ''
-export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | 'A_C' | 'B_D' | 'B_D_INVERSO' | ''
+export type DoorType = 'entrance' | 'interior' | 'sliding' | 'double' | 'opening_frame' | 'entrance_slopes' | 'other' | ''
+export type OpeningType = 'A' | 'B' | 'B_INVERSO' | 'C' | 'D' | 'D_INVERSO' | 'A_C' | 'B_D' | 'B_D_INVERSO' | 'right' | 'left' | ''
 export type AddonKind = 'box' | 'platband' | 'extension' | 'hinges' | 'handle' | 'mechanism' | 'glass' | 'extra' | 'service'
 
 export const DOOR_TYPE_DISPLAY: Record<string, string> = {
@@ -81,12 +81,14 @@ export const DOOR_TYPE_DISPLAY: Record<string, string> = {
   interior: 'Межкомнатная',
   sliding: 'Сдвижная',
   double: 'Двустворчатая',
+  opening_frame: 'Обрамление проёма',
+  entrance_slopes: 'Откосы на входную дверь',
   other: 'Другое',
 }
 
 // Типы дверей без авторасчёта рекомендаций — СМ заполняет их вручную,
 // и поля не обязательны
-export const NO_AUTO_RECOMMENDATION_DOOR_TYPES: DoorType[] = ['sliding', 'other']
+export const NO_AUTO_RECOMMENDATION_DOOR_TYPES: DoorType[] = ['sliding', 'opening_frame', 'entrance_slopes', 'other']
 // Двустворчатая: ширина задаётся суммой ширин двух полотен («800 + 800»)
 export const DOUBLE_DOOR_TYPE: DoorType = 'double'
 
@@ -115,6 +117,8 @@ export const OPENING_TYPE_DISPLAY: Record<string, string> = {
   A_C: 'A+C',
   B_D: 'B+D',
   B_D_INVERSO: 'B+D Inverso',
+  right: 'Вправо',
+  left: 'Влево',
 }
 
 export const OPENING_TYPE_SHORT: Record<string, string> = {
@@ -127,11 +131,21 @@ export const OPENING_TYPE_SHORT: Record<string, string> = {
   A_C: 'A+C',
   B_D: 'B+D',
   B_D_INVERSO: 'B+D Inverso',
+  right: 'Вправо',
+  left: 'Влево',
 }
 
-// Открывания одностворчатых дверей и двустворчатых — наборы не пересекаются
+// Открывания одностворчатых, двустворчатых и сдвижных дверей — наборы не пересекаются
 export const SINGLE_OPENING_TYPES: OpeningType[] = ['A', 'B', 'B_INVERSO', 'C', 'D', 'D_INVERSO']
 export const DOUBLE_OPENING_TYPES: OpeningType[] = ['A_C', 'B_D', 'B_D_INVERSO']
+export const SLIDING_OPENING_TYPES: OpeningType[] = ['right', 'left']
+
+// Какие открывания доступны двери этого типа
+export const openingTypesForDoor = (doorType?: string | null): OpeningType[] => {
+  if (doorType === DOUBLE_DOOR_TYPE) return DOUBLE_OPENING_TYPES
+  if (doorType === 'sliding') return SLIDING_OPENING_TYPES
+  return SINGLE_OPENING_TYPES
+}
 
 // Рабочая створка двустворчатой двери
 export const WORKING_LEAVES = ['A', 'B', 'C', 'D'] as const

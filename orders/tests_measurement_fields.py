@@ -178,6 +178,49 @@ class OpeningCreateRetryTest(MeasurementTestBase):
         self.assertEqual(MeasurementOpening.objects.filter(measurement=self.m).count(), 4)
 
 
+class SlidingDoorOpeningTest(MeasurementTestBase):
+    """Сдвижная дверь: открывание только вправо или влево."""
+
+    def setUp(self):
+        super().setUp()
+        self.opening = MeasurementOpening.objects.create(measurement=self.m, opening_number=1, door_type='sliding')
+
+    def patch(self, **data):
+        return self.client.patch(f'/api/v1/measurement-openings/{self.opening.id}/', data, format='json')
+
+    def test_sliding_accepts_right_and_left(self):
+        for opening in ('right', 'left'):
+            response = self.patch(opening_type=opening)
+            self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['opening_type_display'], 'Влево')
+
+    def test_sliding_rejects_swing_and_double_openings(self):
+        self.assertEqual(self.patch(opening_type='A').status_code, 400)
+        self.assertEqual(self.patch(opening_type='B_D').status_code, 400)
+
+    def test_swing_door_rejects_right_left(self):
+        MeasurementOpening.objects.filter(pk=self.opening.pk).update(door_type='interior')
+        self.assertEqual(self.patch(opening_type='right').status_code, 400)
+
+    def test_old_sliding_with_swing_opening_still_editable(self):
+        MeasurementOpening.objects.filter(pk=self.opening.pk).update(opening_type='A')
+        response = self.patch(opening_type='A', room_name='Гардеробная')
+        self.assertEqual(response.status_code, 200, response.data)
+
+
+class FrameAndSlopesTypeTest(SimpleTestCase):
+    """Обрамление проёма и откосы на входную дверь: без авторекомендаций, как «Другое»."""
+
+    def test_no_auto_recommendations(self):
+        from orders.recommendations import build_recommendation_text, calculate_door_recommendation
+        # Контроль: у межкомнатной с тем же проёмом рекомендации есть
+        self.assertEqual(calculate_door_recommendation(2100, 900, 'interior'), (2030, 800))
+        self.assertTrue(build_recommendation_text(2100, 900, 2000, 800, 'interior'))
+        for door_type in ('opening_frame', 'entrance_slopes'):
+            self.assertEqual(calculate_door_recommendation(2100, 900, door_type), (None, None))
+            self.assertEqual(build_recommendation_text(2100, 900, 2000, 800, door_type), '')
+
+
 class BlankSizeBreaksTest(SimpleTestCase):
     """Размеры в бланке переносятся только после «×» и «+», числа целиком."""
 

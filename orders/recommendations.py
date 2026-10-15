@@ -24,7 +24,7 @@ from typing import Optional, Tuple, List, Dict, Any
 
 
 # Типы дверей, для которых рекомендации не считаются автоматически
-NO_AUTO_RECOMMENDATION_TYPES = {'sliding', 'other'}
+NO_AUTO_RECOMMENDATION_TYPES = {'sliding', 'opening_frame', 'entrance_slopes', 'other'}
 # Тип двери с двумя полотнами: ширина задаётся суммой
 DOUBLE_DOOR_TYPE = 'double'
 

@@ -399,6 +399,8 @@ class DoorType(models.TextChoices):
     INTERIOR = 'interior', 'Межкомнатная'
     SLIDING = 'sliding', 'Сдвижная'
     DOUBLE = 'double', 'Двустворчатая'
+    OPENING_FRAME = 'opening_frame', 'Обрамление проёма'
+    ENTRANCE_SLOPES = 'entrance_slopes', 'Откосы на входную дверь'
     OTHER = 'other', 'Другое'
 
 
@@ -413,10 +415,15 @@ class OpeningType(models.TextChoices):
     A_C = 'A_C', 'A+C'
     B_D = 'B_D', 'B+D'
     B_D_INVERSO = 'B_D_INVERSO', 'B+D Inverso'
+    # Только для сдвижных дверей
+    RIGHT = 'right', 'Вправо'
+    LEFT = 'left', 'Влево'
 
 
-# Двустворчатой двери доступны только эти открывания, остальным дверям — только одиночные
+# Двустворчатой двери доступны только эти открывания, сдвижной — только вправо/влево,
+# остальным дверям — только одиночные
 DOUBLE_OPENING_TYPES = frozenset({OpeningType.A_C, OpeningType.B_D, OpeningType.B_D_INVERSO})
+SLIDING_OPENING_TYPES = frozenset({OpeningType.RIGHT, OpeningType.LEFT})
 
 
 class WorkingLeaf(models.TextChoices):
