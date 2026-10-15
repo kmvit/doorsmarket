@@ -5,6 +5,7 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 from maxbot.sending import send_client_message
+from projects.audit import as_system, current_actor
 from users.push_utils import send_sms_notification
 
 logger = logging.getLogger(__name__)
@@ -321,6 +322,13 @@ class Complaint(models.Model):
                 added += 1
         return result
     
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # Статус как в базе — чтобы save() видел смену и писал её в журнал
+        instance._saved_status = instance.__dict__.get('status')
+        return instance
+
     def save(self, *args, **kwargs):
         """Автоматическая установка получателя и статуса"""
         is_new = self.pk is None
@@ -354,9 +362,22 @@ class Complaint(models.Model):
             self.status = ComplaintStatus.NEW
             
         super().save(*args, **kwargs)
+        self._log_status_change(is_new, kwargs.get('update_fields'))
 
         if is_new:
             self._notify_recipient_on_creation()
+
+    def _log_status_change(self, is_new, update_fields):
+        """Смена статуса — событие в журнал рекламации (с автором)."""
+        old_status = getattr(self, '_saved_status', None)
+        if update_fields is not None and 'status' not in update_fields:
+            return
+        self._saved_status = self.status
+        if is_new or old_status is None or old_status == self.status:
+            return
+        ComplaintEvent.objects.create(
+            complaint=self, old_status=old_status, new_status=self.status, actor=current_actor(),
+        )
     
     def set_type_installer(self, installer=None):
         """СМ выбирает тип 'Монтажник'"""
@@ -1003,6 +1024,7 @@ class Complaint(models.Model):
                 message=f'Рекламация #{self.id} требует перезаказа — обработайте заново.'
             )
 
+    @as_system
     def check_installer_overdue(self, notify=True):
         """
         Проверяет просрочку монтажа.
@@ -1309,6 +1331,7 @@ class Complaint(models.Model):
                         message=f'По рекламации #{self.id} (заказ {self.order_number}) оформлена сервисная заявка Москва. Срок решения: {deadline_str}. Производство и отгрузка не требуются.'
                     )
 
+    @as_system
     def check_moscow_service_overdue(self):
         """Проверка просрочки сервисной заявки Москва (вызывается из API и cron)"""
         if not self.moscow_service_deadline:
@@ -1903,6 +1926,34 @@ class ReturnRegistry(models.Model):
 
     def __str__(self):
         return f"Возврат {self.order_number} - {self.product_name}"
+
+
+class ComplaintEvent(models.Model):
+    """
+    Журнал рекламации: смена статуса и кто её сделал.
+
+    Раньше история собиралась только из комментариев и текущих полей, и
+    промежуточные шаги (ответ фабрики, «Товар на складе») в ней терялись.
+    """
+    complaint = models.ForeignKey(
+        Complaint, on_delete=models.CASCADE, related_name='events', verbose_name='Рекламация',
+    )
+    old_status = models.CharField(max_length=50, choices=ComplaintStatus.choices, verbose_name='Был статус')
+    new_status = models.CharField(max_length=50, choices=ComplaintStatus.choices, verbose_name='Стал статус')
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='complaint_events', verbose_name='Кто изменил',
+        help_text='Пусто — система (просрочки, ночные проверки).',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Когда')
+
+    class Meta:
+        verbose_name = 'Событие рекламации'
+        verbose_name_plural = 'События рекламаций'
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f'#{self.complaint_id}: {self.get_old_status_display()} → {self.get_new_status_display()}'
 
 
 class Notification(models.Model):

@@ -76,6 +76,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'marketingdoors.middleware.APIAuthenticationMiddleware',  # Перехватывает редиректы для API
+    'projects.audit.CurrentRequestMiddleware',  # Автор изменений для журнала рекламаций
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -226,13 +227,13 @@ SMS_RU_API_ID = os.getenv('SMS_RU_API_ID', '')
 # Рекламаций не касается. Выключить: ORDERS_SMS_ENABLED=False в .env, затем рестарт.
 ORDERS_SMS_ENABLED = os.getenv('ORDERS_SMS_ENABLED', 'True').strip().lower() in ('1', 'true', 'yes', 'on')
 
-# Frontend URL for generating links in notifications
 # Бот MAX: уведомления клиенту уходят в MAX, если клиент подключил бота, иначе SMS.
 # Пустой токен — бот выключен, всё идёт по SMS. Вебхук: manage.py max_webhook subscribe
 MAX_BOT_TOKEN = os.getenv('MAX_BOT_TOKEN', '')
 MAX_BOT_NAME = os.getenv('MAX_BOT_NAME', '')  # имя бота из ссылки max.ru/<имя>
 MAX_WEBHOOK_SECRET = os.getenv('MAX_WEBHOOK_SECRET', '')
 
+# Frontend URL for generating links in notifications
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://16c90da0e1be.vps.myjino.ru')
 
 # Email Settings
