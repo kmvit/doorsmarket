@@ -710,7 +710,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            installer = User.objects.get(id=installer_id, role='installer')
+            installer = User.objects.get(id=installer_id, role='installer', is_active=True)
         except User.DoesNotExist:
             return Response(
                 {'error': 'Монтажник не найден'},
@@ -1095,7 +1095,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         try:
             old_installer = complaint.installer_assigned
-            new_installer = User.objects.get(id=new_installer_id, role='installer')
+            new_installer = User.objects.get(id=new_installer_id, role='installer', is_active=True)
             
             complaint.installer_assigned = new_installer
             complaint.save()

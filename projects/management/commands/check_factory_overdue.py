@@ -87,7 +87,7 @@ class Command(BaseCommand):
         )
         
         # Уведомления всем ОР в личный кабинет
-        or_users = User.objects.filter(role='complaint_department')
+        or_users = User.objects.filter(role='complaint_department', is_active=True)
         for or_user in or_users:
             complaint._create_notification(
                 recipient=or_user,
@@ -107,7 +107,7 @@ class Command(BaseCommand):
         )
         
         # Уведомления всем ОР в личный кабинет
-        or_users = User.objects.filter(role='complaint_department')
+        or_users = User.objects.filter(role='complaint_department', is_active=True)
         for or_user in or_users:
             complaint._create_notification(
                 recipient=or_user,

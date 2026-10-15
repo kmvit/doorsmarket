@@ -55,7 +55,7 @@ class Command(BaseCommand):
 
     def send_daily_reminder(self, complaint, days_overdue):
         """Ежедневные напоминания о просроченных сервисных заявках"""
-        or_users = User.objects.filter(role='complaint_department')
+        or_users = User.objects.filter(role='complaint_department', is_active=True)
         for or_user in or_users:
             complaint._create_notification(
                 recipient=or_user,

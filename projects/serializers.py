@@ -19,6 +19,16 @@ from orders.models import Order
 User = get_user_model()
 
 
+def keep_or_active(serializer, user, attr):
+    """
+    Отключённого (уволенного) сотрудника можно оставить в записи, как был,
+    но нельзя выбрать заново.
+    """
+    if user is not None and not user.is_active and getattr(serializer.instance, f'{attr}_id', None) != user.pk:
+        raise serializers.ValidationError('Сотрудник отключён — выберите другого.')
+    return user
+
+
 class ProductionSiteSerializer(serializers.ModelSerializer):
     """Сериализатор для производственных площадок"""
     
@@ -193,7 +203,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         required=False
     )
     recipient_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(is_active=True),
+        queryset=User.objects.all(),
         source='recipient',
         write_only=True,
         required=False
@@ -223,6 +233,15 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+
+    def validate_recipient_id(self, user):
+        return keep_or_active(self, user, 'recipient')
+
+    def validate_manager_id(self, user):
+        return keep_or_active(self, user, 'manager')
+
+    def validate_installer_assigned_id(self, user):
+        return keep_or_active(self, user, 'installer_assigned')
     
     # Display fields
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -331,7 +350,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         required=False
     )
     recipient_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(is_active=True),
+        queryset=User.objects.all(),
         source='recipient',
         write_only=True,
         required=False
@@ -348,6 +367,15 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+
+    def validate_recipient_id(self, user):
+        return keep_or_active(self, user, 'recipient')
+
+    def validate_manager_id(self, user):
+        return keep_or_active(self, user, 'manager')
+
+    def validate_installer_assigned_id(self, user):
+        return keep_or_active(self, user, 'installer_assigned')
     production_site_id = serializers.PrimaryKeyRelatedField(
         queryset=ProductionSite.objects.all(),
         source='production_site',
@@ -432,7 +460,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                             })
                     elif complaint_type == 'factory':
                         # Получатель - первый ОР
-                        complaint_dept = User.objects.filter(role='complaint_department').first()
+                        complaint_dept = User.objects.filter(role='complaint_department', is_active=True).first()
                         if complaint_dept:
                             validated_data['recipient'] = complaint_dept
                         else:
@@ -445,9 +473,9 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                     user_city = getattr(request.user, 'city', None)
                     service_manager = None
                     if user_city:
-                        service_manager = User.objects.filter(role='service_manager', city=user_city).first()
+                        service_manager = User.objects.filter(role='service_manager', is_active=True, city=user_city).first()
                     if not service_manager:
-                        service_manager = User.objects.filter(role='service_manager').first()
+                        service_manager = User.objects.filter(role='service_manager', is_active=True).first()
                     if service_manager:
                         validated_data['recipient'] = service_manager
                     else:
@@ -456,7 +484,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                         })
                 # admin/leader создают с типом "Фабрика" — получатель ОР
                 elif complaint_type == 'factory' and request.user.role in ['admin', 'leader', 'group_leader']:
-                    complaint_dept = User.objects.filter(role='complaint_department').first()
+                    complaint_dept = User.objects.filter(role='complaint_department', is_active=True).first()
                     if complaint_dept:
                         validated_data['recipient'] = complaint_dept
                     else:
@@ -500,6 +528,9 @@ class ShippingRegistrySerializer(serializers.ModelSerializer):
         source='manager',
         write_only=True
     )
+
+    def validate_manager_id(self, user):
+        return keep_or_active(self, user, 'manager')
     
     lift_type_display = serializers.CharField(source='get_lift_type_display', read_only=True)
     lift_method_display = serializers.CharField(source='get_lift_method_display', read_only=True)

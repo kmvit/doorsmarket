@@ -59,7 +59,7 @@ class Command(BaseCommand):
 
     def _notify_service_managers(self, order):
         city = order.salon.city if order.salon_id else None
-        sms = User.objects.filter(role=Role.SERVICE_MANAGER)
+        sms = User.objects.filter(role=Role.SERVICE_MANAGER, is_active=True)
         if city:
             sms = sms.filter(city=city)
         for sm in sms:

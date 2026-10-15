@@ -38,6 +38,10 @@ def send_push_notification(
     Returns:
         True если уведомление успешно отправлено хотя бы на одно устройство
     """
+    if not user.is_active:
+        logger.debug('Пользователь %s отключён, push не отправляем', user.username)
+        return False
+
     if not settings.VAPID_PUBLIC_KEY or not settings.VAPID_PRIVATE_KEY:
         logger.warning('VAPID ключи не настроены, push-уведомления недоступны')
         return False
@@ -204,6 +208,10 @@ def send_sms_notification(
     Returns:
         True если SMS успешно отправлено
     """
+    if not user.is_active:
+        logger.debug('Пользователь %s отключён, SMS не отправляем', user.username)
+        return False
+
     if not settings.SMS_RU_API_ID:
         logger.warning('SMS_RU_API_ID не настроен, SMS-уведомления недоступны')
         return False

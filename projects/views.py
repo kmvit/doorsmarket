@@ -382,7 +382,7 @@ def complaint_detail(request, pk):
     context = {
         'complaint': complaint,
         'today': date.today().isoformat(),
-        'available_installers': User.objects.filter(role='installer'),
+        'available_installers': User.objects.filter(role='installer', is_active=True),
         'closure_reason': closure_reason,
         'can_do_manager_actions': can_do_manager_actions,
     }
@@ -486,7 +486,7 @@ def complaint_create(request):
     
     if request.method == 'POST':
         def get_service_manager_for_city(city):
-            qs = User.objects.filter(role='service_manager')
+            qs = User.objects.filter(role='service_manager', is_active=True)
             if city:
                 sm = qs.filter(city=city).first()
                 if sm:
@@ -538,7 +538,7 @@ def complaint_create(request):
                         recipient = User.objects.get(id=installer_id)
                     elif complaint_type == 'factory':
                         # Получатель - первый ОР
-                        recipient = User.objects.filter(role='complaint_department').first()
+                        recipient = User.objects.filter(role='complaint_department', is_active=True).first()
                         if not recipient:
                             messages.error(request, 'Не найден отдел рекламаций')
                             raise ValueError('No complaint department found')
@@ -652,9 +652,11 @@ def complaint_create(request):
     context = {
         'reasons': ComplaintReason.objects.filter(is_active=True),
         'production_sites': ProductionSite.objects.filter(is_active=True),
-        'managers': User.objects.filter(role='manager'),
-        'installers': User.objects.filter(role='installer'),
-        'recipients': User.objects.filter(role__in=['service_manager', 'complaint_department', 'leader']),
+        'managers': User.objects.filter(role='manager', is_active=True),
+        'installers': User.objects.filter(role='installer', is_active=True),
+        'recipients': User.objects.filter(
+            role__in=['service_manager', 'complaint_department', 'leader'], is_active=True,
+        ),
         'show_recipient': request.user.role not in ['manager', 'installer', 'service_manager'],
     }
     
@@ -991,8 +993,8 @@ def complaint_process(request, pk):
         return redirect('projects:complaint_detail', pk=complaint.id)
     
     # Получаем монтажников и менеджеров для планирования
-    installers = User.objects.filter(role='installer').order_by('first_name', 'last_name')
-    managers = User.objects.filter(role='manager').order_by('first_name', 'last_name')
+    installers = User.objects.filter(role='installer', is_active=True).order_by('first_name', 'last_name')
+    managers = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
     
     context = {
         'complaint': complaint,
