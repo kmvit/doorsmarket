@@ -12,6 +12,25 @@ SECRET = 'test_secret_123'
 URL = '/api/v1/max/webhook/'
 
 
+class CaBundleTest(TestCase):
+    def test_bundle_has_certifi_and_russian_root(self):
+        import certifi
+        with open(api._ca_bundle_path()) as bundle:
+            content = bundle.read()
+        with open(api.RUSSIAN_ROOT_CA) as root:
+            self.assertIn(root.read().strip(), content)
+        with open(certifi.where()) as base:
+            self.assertIn(base.read().strip()[:200], content)
+
+    @override_settings(MAX_BOT_TOKEN='token')
+    @patch('maxbot.api.requests.request')
+    def test_requests_verify_with_bundle(self, request):
+        request.return_value.status_code = 200
+        request.return_value.json.return_value = {}
+        api.get_me()
+        self.assertEqual(request.call_args.kwargs['verify'], api._ca_bundle_path())
+
+
 class LinksTest(TestCase):
     def test_payload_roundtrip(self):
         payload = start_payload('8 (916) 123-45-67')

@@ -5,7 +5,10 @@
 `is_enabled()` вернёт False, и уведомления идут по SMS, как раньше.
 """
 import logging
+import os
+import tempfile
 
+import certifi
 import requests
 from django.conf import settings
 
@@ -13,6 +16,24 @@ logger = logging.getLogger(__name__)
 
 API_URL = 'https://platform-api2.max.ru'
 TIMEOUT = 10
+
+# Сертификат MAX выдан УЦ Минцифры (Russian Trusted Root CA) — его нет ни в
+# certifi, ни в системном хранилище сервера. Проверяем по certifi + этому корню;
+# срок корня — до 2032 года. Остальные запросы проекта (sms.ru и т. п.) не трогаем.
+RUSSIAN_ROOT_CA = os.path.join(os.path.dirname(__file__), 'certs', 'russian_trusted_root_ca.crt')
+_ca_bundle = None
+
+
+def _ca_bundle_path():
+    global _ca_bundle
+    if _ca_bundle is None or not os.path.exists(_ca_bundle):
+        with open(certifi.where()) as base, open(RUSSIAN_ROOT_CA) as extra:
+            content = base.read() + '\n' + extra.read()
+        fd, path = tempfile.mkstemp(prefix='maxbot-ca-', suffix='.pem')
+        with os.fdopen(fd, 'w') as bundle:
+            bundle.write(content)
+        _ca_bundle = path
+    return _ca_bundle
 
 
 class MaxApiError(Exception):
@@ -33,6 +54,7 @@ def _request(method, path, *, params=None, json=None):
             params=params, json=json,
             headers={'Authorization': settings.MAX_BOT_TOKEN},
             timeout=TIMEOUT,
+            verify=_ca_bundle_path(),
         )
     except requests.exceptions.RequestException as exc:
         raise MaxApiError(0, 'network', str(exc)) from exc
