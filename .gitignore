@@ -169,3 +169,6 @@ documentanions/
 
 # Claude Code worktrees (временные рабочие папки агентов)
 .claude/worktrees/
+
+# Ночные дампы базы на сервере (scripts/dump_db.sh)
+/dump/
