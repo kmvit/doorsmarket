@@ -164,6 +164,8 @@ MEDIA_ROOT = BASE_DIR / 'media'
 S3_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID', '')
 S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY', '')
 S3_BUCKET = os.getenv('S3_BUCKET', '')
+# Папка внутри бакета: локальные проверки пишут в свою (например local-test), прод — в корень
+S3_LOCATION = os.getenv('S3_LOCATION', '')
 USE_S3_MEDIA = os.getenv('USE_S3_MEDIA', 'False').strip().lower() in ('1', 'true', 'yes', 'on')
 if USE_S3_MEDIA:
     STORAGES = {

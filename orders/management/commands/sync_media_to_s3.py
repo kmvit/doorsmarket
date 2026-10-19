@@ -30,11 +30,12 @@ class Command(BaseCommand):
         storage = MediaS3Storage()
         client = storage.connection.meta.client
         bucket = settings.S3_BUCKET
+        prefix = f'{storage.location}/' if storage.location else ''
 
         remote = {}
-        for page in client.get_paginator('list_objects_v2').paginate(Bucket=bucket):
+        for page in client.get_paginator('list_objects_v2').paginate(Bucket=bucket, Prefix=prefix):
             for obj in page.get('Contents', []):
-                remote[obj['Key']] = obj['Size']
+                remote[obj['Key'][len(prefix):]] = obj['Size']
         self.stdout.write(f'В бакете {bucket}: {len(remote)} файлов')
 
         root = str(settings.MEDIA_ROOT)
@@ -68,7 +69,7 @@ class Command(BaseCommand):
         done_bytes = 0
         for i, (path, key, size) in enumerate(todo, 1):
             content_type = mimetypes.guess_type(key)[0] or 'application/octet-stream'
-            client.upload_file(path, bucket, key, ExtraArgs={'ContentType': content_type})
+            client.upload_file(path, bucket, prefix + key, ExtraArgs={'ContentType': content_type})
             done_bytes += size
             if i % 200 == 0 or i == len(todo):
                 self.stdout.write(f'{i}/{len(todo)} ({done_bytes / 1024 ** 3:.2f} ГБ)')

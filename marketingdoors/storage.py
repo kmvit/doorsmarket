@@ -34,6 +34,7 @@ class MediaS3Storage(S3Storage):
 
     def __init__(self, **kwargs):
         kwargs.setdefault('bucket_name', settings.S3_BUCKET)
+        kwargs.setdefault('location', getattr(settings, 'S3_LOCATION', ''))
         kwargs.setdefault('access_key', settings.S3_ACCESS_KEY_ID)
         kwargs.setdefault('secret_key', settings.S3_SECRET_ACCESS_KEY)
         kwargs.setdefault('endpoint_url', S3_ENDPOINT)
