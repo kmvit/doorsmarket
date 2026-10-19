@@ -10,6 +10,7 @@
 """
 import mimetypes
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -23,8 +24,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true')
         parser.add_argument('--verify', action='store_true', help='только сверить, ничего не загружать')
+        parser.add_argument('--workers', type=int, default=8, help='параллельных загрузок (мелких файлов много)')
 
-    def handle(self, *args, dry_run, verify, **options):
+    def handle(self, *args, dry_run, verify, workers, **options):
         if not (settings.S3_BUCKET and settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY):
             raise CommandError('Не заданы S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY в .env')
         storage = MediaS3Storage()
@@ -66,11 +68,26 @@ class Command(BaseCommand):
                 self.stdout.write(f'  {key}')
             return
 
-        done_bytes = 0
-        for i, (path, key, size) in enumerate(todo, 1):
+        def upload(item):
+            path, key, size = item
             content_type = mimetypes.guess_type(key)[0] or 'application/octet-stream'
             client.upload_file(path, bucket, prefix + key, ExtraArgs={'ContentType': content_type})
-            done_bytes += size
-            if i % 200 == 0 or i == len(todo):
-                self.stdout.write(f'{i}/{len(todo)} ({done_bytes / 1024 ** 3:.2f} ГБ)')
+            return size
+
+        done, done_bytes, failed = 0, 0, []
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            futures = {pool.submit(upload, item): item for item in todo}
+            for future in as_completed(futures):
+                done += 1
+                try:
+                    done_bytes += future.result()
+                except Exception as exc:  # noqa: BLE001 — докачается повторным запуском
+                    failed.append((futures[future][1], exc))
+                if done % 500 == 0 or done == len(todo):
+                    self.stdout.write(f'{done}/{len(todo)} ({done_bytes / 1024 ** 3:.2f} ГБ)', ending='\n')
+                    self.stdout.flush()
+        for key, exc in failed[:20]:
+            self.stdout.write(self.style.ERROR(f'  не загружен: {key}: {exc}'))
+        if failed:
+            raise CommandError(f'Не загружено: {len(failed)} — запустите команду ещё раз')
         self.stdout.write(self.style.SUCCESS(f'Загружено файлов: {len(todo)}'))
