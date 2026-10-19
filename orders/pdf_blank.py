@@ -5,8 +5,6 @@ WeasyPrint импортируется лениво (внутри функции)
 библиотека подтягивает системные cairo/pango — это медленно и не нужно, пока
 PDF реально не запросили. Путь к libs на macOS уже выставлен в settings.py.
 """
-import os
-
 from django.conf import settings
 from django.template.loader import render_to_string
 
@@ -23,12 +21,9 @@ def _is_image(name: str) -> bool:
 
 
 def _abs_path(filefield):
-    """Абсолютный путь к существующему файлу либо None."""
-    try:
-        path = filefield.path
-    except (ValueError, NotImplementedError):
-        return None
-    return path if path and os.path.exists(path) else None
+    """Путь к файлу на диске (из S3 — скачанный в кеш) либо None."""
+    from marketingdoors.storage import local_path
+    return local_path(filefield)
 
 
 def render_measurement_blank(measurement) -> bytes:

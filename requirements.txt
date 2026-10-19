@@ -19,3 +19,5 @@ weasyprint>=66.0
 Pillow>=10.0.0
 # Выгрузка отчёта по замерам в Excel
 openpyxl>=3.1
+# Файлы в Yandex Object Storage (marketingdoors/storage.py)
+django-storages[s3]>=1.14

@@ -158,6 +158,19 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Файлы в Yandex Object Storage (см. marketingdoors/storage.py). Включается
+# USE_S3_MEDIA=True — до этого файлы на диске. Перед включением перенести
+# старые файлы: manage.py sync_media_to_s3
+S3_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID', '')
+S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY', '')
+S3_BUCKET = os.getenv('S3_BUCKET', '')
+USE_S3_MEDIA = os.getenv('USE_S3_MEDIA', 'False').strip().lower() in ('1', 'true', 'yes', 'on')
+if USE_S3_MEDIA:
+    STORAGES = {
+        'default': {'BACKEND': 'marketingdoors.storage.MediaS3Storage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

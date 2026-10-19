@@ -17,14 +17,15 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
-from django.conf import settings
-from django.conf.urls.static import static
 from orders.api_views import ShortMeasurementRedirectView
+from marketingdoors.storage import media_view
 
 urlpatterns = [
     path('', RedirectView.as_view(pattern_name='users:web_login', permanent=False)),
     # Короткая ссылка для SMS: /z/{код} → PDF-бланк замера
     path('z/<str:code>/', ShortMeasurementRedirectView.as_view(), name='short-measurement-pdf'),
+    # Файлы: с диска (локально) или из S3 через nginx — адреса /media/ не меняются
+    path('media/<path:path>', media_view, name='media'),
     path('admin/', admin.site.urls),
     path('api/v1/', include('users.urls')),
     path('api/v1/', include('projects.api_urls')),
@@ -33,7 +34,3 @@ urlpatterns = [
     path('api/v1/', include('maxbot.urls')),
     path('', include('projects.urls')),
 ]
-
-# Медиа файлы в режиме разработки
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

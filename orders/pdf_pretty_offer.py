@@ -41,14 +41,9 @@ FOUNDED_YEAR = 1989
 
 
 def _abs_path(filefield):
-    """Абсолютный путь к существующему файлу либо None."""
-    if not filefield:
-        return None
-    try:
-        path = filefield.path
-    except (ValueError, NotImplementedError):
-        return None
-    return path if path and os.path.exists(path) else None
+    """Путь к файлу на диске (из S3 — скачанный в кеш) либо None."""
+    from marketingdoors.storage import local_path
+    return local_path(filefield)
 
 
 def _side_image_path(custom_field, catalog_image):
