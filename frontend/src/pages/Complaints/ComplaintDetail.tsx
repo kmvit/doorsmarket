@@ -45,6 +45,7 @@ const ComplaintDetail = () => {
     requestReturn?: boolean
     moscowService?: boolean
     moscowServiceReschedule?: boolean
+    productionReview?: boolean
   }>({})
   const [formData, setFormData] = useState<{
     installerId?: string
@@ -55,6 +56,7 @@ const ComplaintDetail = () => {
     disputeArguments?: string
     rejectReason?: string
     approveComment?: string
+    productionReviewDeadline?: string
     reorderComment?: string
     returnProductName?: string
     returnDate?: string
@@ -109,6 +111,8 @@ const ComplaintDetail = () => {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-purple-100 text-purple-800'
     } else if (['factory_response_overdue', 'sm_response_overdue', 'shipping_overdue', 'moscow_service_overdue'].includes(status)) {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-red-100 text-red-800'
+    } else if (status === 'production_review') {
+      return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-amber-100 text-amber-800'
     } else if (status === 'moscow_service') {
       return 'px-4 py-2 inline-flex text-sm font-semibold rounded-xl bg-blue-100 text-blue-800'
     } else {
@@ -342,6 +346,15 @@ const ComplaintDetail = () => {
           }
           await complaintsAPI.planShipping(Number(id), formData.shippingDate)
           setFormData({ ...formData, shippingDate: '' })
+          break
+        case 'production_review':
+          if (!formData.productionReviewDeadline) {
+            alert('Укажите срок ответа производства')
+            return
+          }
+          await complaintsAPI.productionReview(Number(id), formData.productionReviewDeadline)
+          setShowForms({ ...showForms, productionReview: false })
+          setFormData({ ...formData, productionReviewDeadline: '' })
           break
         case 'factory_approve':
           if (!confirm('Вы одобряете рекламацию? Статус станет «Ответ получен», а СМ получит задачу озвучить решение клиенту и назначить дату готовности.')) return
@@ -1260,7 +1273,7 @@ const ComplaintDetail = () => {
                 {(user?.role === 'complaint_department' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
                   <>
                     {currentComplaint.complaint_type === 'factory' && 
-                     ['sent', 'factory_response_overdue', 'factory_dispute'].includes(currentComplaint.status) && (
+                     ['sent', 'factory_response_overdue', 'factory_dispute', 'production_review'].includes(currentComplaint.status) && (
                       <div className="p-4 border-2 border-orange-300 rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 mb-3">
                         <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center">
                           <svg className="h-5 w-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1268,9 +1281,67 @@ const ComplaintDetail = () => {
                           </svg>
                           Решение отдела рекламаций
                         </h4>
-                        <p className="text-xs text-gray-700 mb-3">
-                          Рассмотрите рекламацию и примите решение в течение 2 рабочих дней
-                        </p>
+                        {currentComplaint.status === 'production_review' ? (
+                          <p className={`text-xs mb-3 ${
+                            currentComplaint.production_review_deadline &&
+                            currentComplaint.production_review_deadline < new Date().toISOString().slice(0, 10)
+                              ? 'text-red-700 font-semibold' : 'text-gray-700'
+                          }`}>
+                            На рассмотрении у производства. Срок ответа:{' '}
+                            {currentComplaint.production_review_deadline
+                              ? new Date(currentComplaint.production_review_deadline).toLocaleDateString('ru-RU')
+                              : '—'}
+                            . Когда производство ответит — дайте решение по рекламации.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-700 mb-3">
+                            Рассмотрите рекламацию и примите решение в течение 2 рабочих дней
+                          </p>
+                        )}
+
+                        {user?.role === 'complaint_department' && (
+                          !showForms.productionReview ? (
+                            <Button
+                              onClick={() => setShowForms({ ...showForms, productionReview: true })}
+                              disabled={isProcessing}
+                              variant="outline"
+                              className="w-full mb-2 border-amber-400 text-amber-800 hover:bg-amber-50"
+                            >
+                              {currentComplaint.status === 'production_review'
+                                ? 'Перенести срок ответа производства'
+                                : 'На рассмотрении у производства'}
+                            </Button>
+                          ) : (
+                            <div className="mb-2 p-3 bg-white border-2 border-amber-200 rounded-xl">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Срок ответа производства <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                min={new Date().toISOString().slice(0, 10)}
+                                value={formData.productionReviewDeadline || ''}
+                                onChange={(e) => setFormData({ ...formData, productionReviewDeadline: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                              />
+                              <div className="flex space-x-2">
+                                <Button
+                                  onClick={() => handleAction('production_review')}
+                                  disabled={isProcessing}
+                                  className="flex-1 bg-amber-500 text-white hover:bg-amber-600"
+                                >
+                                  Сохранить
+                                </Button>
+                                <Button
+                                  onClick={() => setShowForms({ ...showForms, productionReview: false })}
+                                  variant="outline"
+                                  className="flex-1"
+                                >
+                                  Отмена
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        )}
                         
                         {!showForms.approve ? (
                           <Button

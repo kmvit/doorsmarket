@@ -98,6 +98,7 @@ const ComplaintFilters = ({ onApply }: ComplaintFiltersProps) => {
                 <option value="installer_overdue">Просрочена монтажником</option>
                 <option value="both_planned">Отгрузка и монтаж запланированы</option>
                 <option value="factory_response_overdue">Ответ фабрики просрочен</option>
+                <option value="production_review">На рассмотрении у производства</option>
                 <option value="sm_response_overdue">СМ просрочил ответ</option>
                 <option value="under_sm_review">На проверке у СМ</option>
                 <option value="completed">Выполнена</option>

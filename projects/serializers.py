@@ -181,6 +181,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
             'planned_shipping_date',
             'production_deadline',
             'moscow_service_deadline',
+            'production_review_deadline',
         ]
 
 
@@ -324,6 +325,9 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'moscow_service_at',
             'moscow_service_deadline',
 
+            # На рассмотрении у производства
+            'production_review_deadline',
+
             # Вложенные объекты
             'defective_products',
             'attachments',
@@ -332,7 +336,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'created_at', 'updated_at',
             'return_required', 'return_product_name', 'return_requested_at', 'return_planned_date',
-            'moscow_service_at', 'moscow_service_deadline',
+            'moscow_service_at', 'moscow_service_deadline', 'production_review_deadline',
         ]
     
     def get_commercial_offer_url(self, obj):

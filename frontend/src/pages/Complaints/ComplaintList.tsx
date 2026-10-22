@@ -24,6 +24,7 @@ const COMPLAINT_STATUS_OPTIONS: { value: ComplaintStatus; label: string }[] = [
   { value: 'installer_overdue', label: 'Просрочена монтажником' },
   { value: 'both_planned', label: 'Отгрузка и монтаж запланированы' },
   { value: 'factory_response_overdue', label: 'Ответ фабрики просрочен' },
+  { value: 'production_review', label: 'На рассмотрении у производства' },
   { value: 'sm_response_overdue', label: 'СМ просрочил ответ' },
   { value: 'moscow_service', label: 'Сервисная заявка Москва' },
   { value: 'moscow_service_overdue', label: 'Просрочка сервиса Москва' },
@@ -284,6 +285,7 @@ const ComplaintList = () => {
       resolved: 'bg-purple-100 text-purple-800',
       closed: 'bg-gray-100 text-gray-800',
       factory_response_overdue: 'bg-red-100 text-red-800',
+      production_review: 'bg-amber-100 text-amber-800',
       sm_response_overdue: 'bg-red-100 text-red-800',
       shipping_overdue: 'bg-red-100 text-red-800',
     }

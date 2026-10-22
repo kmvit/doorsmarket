@@ -10,7 +10,7 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from django.db import transaction
 from django.urls import reverse
-from datetime import datetime
+from datetime import date, datetime
 
 from .models import (
     Complaint,
@@ -268,6 +268,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'in_work': Q(complaint_type='factory', status__in=active_statuses),
                     'pending': Q(complaint_type='factory', status='sent'),
                     'overdue': Q(complaint_type='factory', status='factory_response_overdue'),
+                    'production_review': Q(complaint_type='factory', status='production_review'),
+                    'production_overdue': Q(
+                        complaint_type='factory', status='production_review',
+                        production_review_deadline__lt=timezone.localdate(),
+                    ),
                     'moscow_service_overdue': Q(complaint_type='factory') & (
                         Q(status='moscow_service_overdue') |
                         Q(status='moscow_service', moscow_service_deadline__lt=timezone.now())
@@ -914,6 +919,31 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'])
+    def production_review(self, request, pk=None):
+        """ОР: «На рассмотрении у производства» со сроком ответа (deadline: YYYY-MM-DD)."""
+        complaint = self.get_object()
+        if request.user.role != 'complaint_department':
+            return Response(
+                {'error': 'Передать на рассмотрение производству может только отдел рекламаций'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if complaint.complaint_type != 'factory' or complaint.status not in (
+            'sent', 'factory_response_overdue', 'factory_dispute', 'production_review',
+        ):
+            return Response(
+                {'error': 'Передать производству можно фабричную рекламацию, ожидающую ответа ОР'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            deadline = date.fromisoformat(str(request.data.get('deadline') or ''))
+        except ValueError:
+            return Response({'error': 'Укажите срок ответа производства'}, status=status.HTTP_400_BAD_REQUEST)
+        if deadline < timezone.localdate():
+            return Response({'error': 'Срок ответа не может быть в прошлом'}, status=status.HTTP_400_BAD_REQUEST)
+        complaint.send_to_production_review(deadline, request.user)
+        return Response(self.get_serializer(complaint).data)
+
     @action(detail=True, methods=['post'])
     def factory_approve(self, request, pk=None):
         """ОР одобряет рекламацию"""
@@ -2087,6 +2117,17 @@ class DashboardStatsView(APIView):
                 'overdue',
                 'Просрочен ответ',
                 Q(complaint_type='factory', status='factory_response_overdue')
+            )
+            add_stat(
+                'production_review',
+                'На рассмотрении у производства',
+                Q(complaint_type='factory', status='production_review')
+            )
+            add_stat(
+                'production_overdue',
+                'Просроченные рекламации',
+                Q(complaint_type='factory', status='production_review',
+                  production_review_deadline__lt=timezone.localdate())
             )
             add_stat(
                 'moscow_service_overdue',

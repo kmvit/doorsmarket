@@ -326,6 +326,12 @@ export const complaintsAPI = {
     return response.data
   },
 
+  // ОР: «На рассмотрении у производства» со сроком ответа (YYYY-MM-DD); повтор — перенос срока
+  productionReview: async (id: number, deadline: string): Promise<Complaint> => {
+    const response = await apiClient.post(`/complaints/${id}/production_review/`, { deadline })
+    return response.data
+  },
+
   factoryApprove: async (id: number, approveComment?: string): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/factory_approve/`, {
       approve_comment: approveComment || '',

@@ -79,6 +79,7 @@ export type ComplaintStatus =
   | 'shipping_overdue'
   | 'factory_dispute'
   | 'factory_response_overdue'
+  | 'production_review'
   | 'factory_approved'
   | 'factory_rejected'
   | 'sm_response_overdue'
@@ -143,6 +144,7 @@ export interface Complaint {
   added_to_shipping_registry_at: string | null
   moscow_service_at: string | null
   moscow_service_deadline: string | null
+  production_review_deadline?: string | null
   return_required: boolean
   return_product_name: string
   return_requested_at: string | null
@@ -176,6 +178,7 @@ export interface ComplaintListItem {
   planned_shipping_date: string | null
   production_deadline?: string | null
   moscow_service_deadline?: string | null
+  production_review_deadline?: string | null
 }
 
 export interface ComplaintCreateData {

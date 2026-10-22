@@ -13,6 +13,7 @@ const ComplaintCard = ({ complaint }: ComplaintCardProps) => {
       completed: 'bg-green-100 text-green-800',
       closed: 'bg-gray-100 text-gray-800',
       factory_response_overdue: 'bg-red-100 text-red-800',
+      production_review: 'bg-amber-100 text-amber-800',
       sm_response_overdue: 'bg-red-100 text-red-800',
       shipping_overdue: 'bg-red-100 text-red-800',
       installer_overdue: 'bg-red-600 text-white border-2 border-red-800',

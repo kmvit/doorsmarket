@@ -57,6 +57,7 @@ class ComplaintStatus(models.TextChoices):
     FACTORY_RESPONSE_OVERDUE = 'factory_response_overdue', 'Ответ фабрики просрочен'
     FACTORY_APPROVED = 'factory_approved', 'Ответ получен'
     FACTORY_REJECTED = 'factory_rejected', 'Отказ'
+    PRODUCTION_REVIEW = 'production_review', 'На рассмотрении у производства'
     SM_RESPONSE_OVERDUE = 'sm_response_overdue', 'СМ просрочил ответ'
     UNDER_SM_REVIEW = 'under_sm_review', 'На проверке у СМ'
     MOSCOW_SERVICE = 'moscow_service', 'Сервисная заявка Москва'
@@ -293,6 +294,14 @@ class Complaint(models.Model):
         blank=True,
         null=True,
         verbose_name='Срок решения по сервисной заявке Москва'
+    )
+
+    # ОР передал фабричную рекламацию на рассмотрение производству и сам задал срок
+    # ответа. После срока без решения ОР — папка «Просроченные рекламации».
+    production_review_deadline = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='Срок ответа производства'
     )
 
     # Возврат товара на фабрику
@@ -813,6 +822,27 @@ class Complaint(models.Model):
                 exc,
                 exc_info=True,
             )
+
+    @property
+    def production_review_overdue(self) -> bool:
+        return (
+            self.status == ComplaintStatus.PRODUCTION_REVIEW
+            and bool(self.production_review_deadline)
+            and self.production_review_deadline < timezone.localdate()
+        )
+
+    def send_to_production_review(self, deadline, author):
+        """ОР: «На рассмотрении у производства» до срока ответа (повтор — перенос срока)."""
+        moved = self.status == ComplaintStatus.PRODUCTION_REVIEW
+        self.status = ComplaintStatus.PRODUCTION_REVIEW
+        self.production_review_deadline = deadline
+        self.save()
+        ComplaintComment.objects.create(
+            complaint=self,
+            author=author,
+            text=(f'Срок ответа производства перенесён на {deadline:%d.%m.%Y}' if moved
+                  else f'Рекламация на рассмотрении у производства. Срок ответа: {deadline:%d.%m.%Y}'),
+        )
 
     def factory_approve(self, approve_comment=None):
         """ОР одобряет рекламацию - ответ получен"""
