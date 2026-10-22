@@ -254,7 +254,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     'new': Q(status='new'),
                     'in_progress': Q(manager=user, status='in_progress'),
                     'on_warehouse': Q(manager=user, status='on_warehouse'),
-                    'shipping_overdue': Q(status='shipping_overdue'),
+                    # Только свои рекламации, как остальные папки менеджера (раньше — весь город)
+                    'shipping_overdue': Q(manager=user, status='shipping_overdue'),
                     'return_required': Q(manager=user, return_required=True, return_planned_date__isnull=True),
                 },
                 'service_manager': {
@@ -2057,7 +2058,7 @@ class DashboardStatsView(APIView):
             add_stat(
                 'shipping_overdue',
                 'Отгрузка просрочена',
-                Q(status='shipping_overdue') & city_filter
+                Q(manager=user, status='shipping_overdue') & city_filter
             )
             add_stat(
                 'return_required',
