@@ -131,8 +131,13 @@ class MeasurementBlankSignatureTest(TestCase):
 
     def test_footer_warnings_are_still_there(self):
         html = self._render()
-        self.assertIn('ЧИСТОГО» ПОЛА', html)
+        self.assertIn('«ЧИСТОВОГО» ПОЛА', html)
         self.assertIn('ответственность за любые изменения размеров', html)
+
+    def test_signing_text_as_in_recommendations(self):
+        html = self._render()
+        self.assertIn('Своей подписью Покупатель подтверждает, что нижеследующие пункты ему разъяснены', html)
+        self.assertNotIn('Условия подписания', html)
 
 
 class MeasurementBlankSizesTest(TestCase):
