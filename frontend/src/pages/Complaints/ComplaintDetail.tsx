@@ -11,6 +11,11 @@ import AttachmentUpload from '../../components/complaints/AttachmentUpload'
 import FileViewer from '../../components/common/FileViewer'
 import { downloadFile } from '../../utils/download'
 import PhoneLink from '../../components/common/PhoneLink'
+import InstallationWindowInput from '../../components/complaints/InstallationWindowInput'
+import {
+  emptyInstallationWindow, formatInstallationTime, formatInstallationWindow,
+  installationWindowFromDates, installationWindowToApi, validateInstallationWindow,
+} from '../../utils/installationWindow'
 
 const ComplaintDetail = () => {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +23,8 @@ const ComplaintDetail = () => {
   const { currentComplaint, fetchComplaint, isLoading, error } = useComplaintsStore()
   const { user } = useAuthStore()
   const [isProcessing, setIsProcessing] = useState(false)
+  // Интервал монтажа «дата, с … до …» — общий для всех трёх форм (одновременно открыта одна)
+  const [installationWindow, setInstallationWindow] = useState(emptyInstallationWindow)
   const [showEditContactForm, setShowEditContactForm] = useState(false)
   const [contactFormData, setContactFormData] = useState({
     contact_person: '',
@@ -40,7 +47,6 @@ const ComplaintDetail = () => {
     moscowServiceReschedule?: boolean
   }>({})
   const [formData, setFormData] = useState<{
-    installationDate?: string
     installerId?: string
     dateByInstaller?: boolean
     newInstallerId?: string
@@ -127,14 +133,6 @@ const ComplaintDetail = () => {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
-    })
-  }
-
-  const formatTimeOnly = (dateString: string | null) => {
-    if (!dateString) return null
-    return new Date(dateString).toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit'
     })
   }
 
@@ -251,30 +249,40 @@ const ComplaintDetail = () => {
               return
             }
             // Дата нужна, только если её НЕ оставляют на монтажника
-            if (!formData.dateByInstaller && !formData.installationDate) {
-              alert('Укажите дату монтажа или отметьте «Дату запланирует монтажник»')
-              return
+            if (!formData.dateByInstaller) {
+              const windowError = validateInstallationWindow(installationWindow)
+              if (windowError) {
+                alert(`${windowError} или отметьте «Дату запланирует монтажник»`)
+                return
+              }
             }
+            const smWindow = installationWindowToApi(installationWindow)
             await complaintsAPI.planInstallation(
               Number(id),
               Number(formData.installerId),
-              formData.installationDate || '',
+              smWindow.start,
               !!formData.dateByInstaller,
+              smWindow.end,
             )
             setShowForms({ ...showForms, planInstallation: false })
-            setFormData({ ...formData, installationDate: '', installerId: '', dateByInstaller: false })
+            setFormData({ ...formData, installerId: '', dateByInstaller: false })
+            setInstallationWindow(emptyInstallationWindow)
           } else if (user?.role === 'installer') {
             // Монтажник планирует сам
-            if (!formData.installationDate) {
-              alert('Укажите дату монтажа')
+            const windowError = validateInstallationWindow(installationWindow)
+            if (windowError) {
+              alert(windowError)
               return
             }
+            const installerWindow = installationWindowToApi(installationWindow)
             await complaintsAPI.planInstallation(
               Number(id),
               user.id,
-              formData.installationDate
+              installerWindow.start,
+              false,
+              installerWindow.end,
             )
-            setFormData({ ...formData, installationDate: '' })
+            setInstallationWindow(emptyInstallationWindow)
           }
           break
         case 'change_installer':
@@ -287,13 +295,17 @@ const ComplaintDetail = () => {
           setFormData({ ...formData, newInstallerId: '' })
           break
         case 'reschedule_installation':
-          if (!formData.installationDate) {
-            alert('Укажите новую дату монтажа')
-            return
+          {
+            const windowError = validateInstallationWindow(installationWindow)
+            if (windowError) {
+              alert(windowError)
+              return
+            }
+            const newWindow = installationWindowToApi(installationWindow)
+            await complaintsAPI.rescheduleInstallation(Number(id), newWindow.start, newWindow.end)
           }
-          await complaintsAPI.rescheduleInstallation(Number(id), formData.installationDate)
           setShowForms({ ...showForms, reschedule: false })
-          setFormData({ ...formData, installationDate: '' })
+          setInstallationWindow(emptyInstallationWindow)
           break
         case 'complete':
           await complaintsAPI.complete(Number(id))
@@ -830,7 +842,7 @@ const ComplaintDetail = () => {
                   <div className="ml-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-1">Монтаж запланирован</h3>
                     <p className="text-lg font-bold text-gray-900">{formatDateOnly(currentComplaint.planned_installation_date)}</p>
-                    <p className="text-sm text-gray-600">{formatTimeOnly(currentComplaint.planned_installation_date)}</p>
+                    <p className="text-sm text-gray-600">{formatInstallationTime(currentComplaint.planned_installation_date, currentComplaint.planned_installation_end)}</p>
                     {currentComplaint.installer_assigned && (
                       <p className="text-xs text-gray-500 mt-2">
                         {currentComplaint.installer_assigned.first_name && currentComplaint.installer_assigned.last_name
@@ -949,16 +961,7 @@ const ComplaintDetail = () => {
                                 Дату и время запланирует монтажник
                               </label>
                               {!formData.dateByInstaller && (
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа <span className="text-red-500">*</span></label>
-                                  <input
-                                    type="datetime-local"
-                                    value={formData.installationDate || ''}
-                                    onChange={(e) => setFormData({ ...formData, installationDate: e.target.value })}
-                                    required
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                  />
-                                </div>
+                                <InstallationWindowInput value={installationWindow} onChange={setInstallationWindow} />
                               )}
                               {formData.dateByInstaller && (
                                 <p className="text-xs text-gray-600">
@@ -1555,13 +1558,10 @@ const ComplaintDetail = () => {
                       <div className="p-4 border-2 border-orange-200 rounded-xl bg-orange-50">
                         <h4 className="text-sm font-semibold text-gray-900 mb-3">Назначить дату монтажа</h4>
                         <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Дата и время монтажа</label>
-                          <input
-                            type="datetime-local"
-                            value={formData.installationDate || ''}
-                            onChange={(e) => setFormData({ ...formData, installationDate: e.target.value })}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          <InstallationWindowInput
+                            value={installationWindow}
+                            onChange={setInstallationWindow}
+                            focusClass="focus:ring-primary-500"
                           />
                         </div>
                         <Button
@@ -1585,13 +1585,10 @@ const ComplaintDetail = () => {
                           <Button
                             onClick={() => {
                               setShowForms({ ...showForms, reschedule: true })
-                              if (currentComplaint.planned_installation_date) {
-                                const date = new Date(currentComplaint.planned_installation_date)
-                                const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-                                  .toISOString()
-                                  .slice(0, 16)
-                                setFormData({ ...formData, installationDate: localDateTime })
-                              }
+                              setInstallationWindow(installationWindowFromDates(
+                                currentComplaint.planned_installation_date,
+                                currentComplaint.planned_installation_end,
+                              ))
                             }}
                             className="w-full bg-yellow-600 text-white hover:bg-yellow-700"
                           >
@@ -1609,16 +1606,14 @@ const ComplaintDetail = () => {
                               Перенести дату монтажа
                             </h4>
                             <p className="text-xs text-gray-600 mb-3">
-                              Текущая дата: <strong>{formatDate(currentComplaint.planned_installation_date)}</strong>
+                              Текущая дата: <strong>{formatInstallationWindow(currentComplaint.planned_installation_date, currentComplaint.planned_installation_end)}</strong>
                             </p>
                             <div className="mb-3">
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Новая дата и время</label>
-                              <input
-                                type="datetime-local"
-                                value={formData.installationDate || ''}
-                                onChange={(e) => setFormData({ ...formData, installationDate: e.target.value })}
-                                required
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                              <InstallationWindowInput
+                                value={installationWindow}
+                                onChange={setInstallationWindow}
+                                label="Новая дата и время"
+                                focusClass="focus:ring-yellow-500"
                               />
                             </div>
                             <div className="flex space-x-2">

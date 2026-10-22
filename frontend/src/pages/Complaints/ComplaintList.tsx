@@ -10,6 +10,7 @@ import apiClient from '../../api/client'
 import Button from '../../components/common/Button'
 import PhoneLink from '../../components/common/PhoneLink'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
+import { formatInstallationWindow } from '../../utils/installationWindow'
 
 const COMPLAINT_STATUS_OPTIONS: { value: ComplaintStatus; label: string }[] = [
   { value: 'new', label: 'Новая' },
@@ -225,7 +226,7 @@ const ComplaintList = () => {
         <div className="text-xs">
           <div className="font-semibold text-gray-800">
             Отгрузка {complaint.planned_shipping_date ? new Date(complaint.planned_shipping_date).toLocaleDateString('ru-RU') : '—'}, 
-            монтаж {complaint.planned_installation_date ? new Date(complaint.planned_installation_date).toLocaleDateString('ru-RU') : '—'}
+            монтаж {complaint.planned_installation_date ? formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end) : '—'}
             {complaint.installer_assigned && `, монтажник ${complaint.installer_assigned.first_name || complaint.installer_assigned.username}`}
           </div>
         </div>
@@ -236,7 +237,7 @@ const ComplaintList = () => {
     if (status === 'installation_planned') {
       return (
         <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-          Монтаж запланирован на {complaint.planned_installation_date ? new Date(complaint.planned_installation_date).toLocaleDateString('ru-RU') : '—'}
+          Монтаж запланирован на {complaint.planned_installation_date ? formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end) : '—'}
           {complaint.installer_assigned && `, монтажник ${complaint.installer_assigned.first_name || complaint.installer_assigned.username}`}
         </span>
       )

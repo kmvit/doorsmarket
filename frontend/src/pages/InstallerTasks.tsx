@@ -4,6 +4,7 @@ import { useComplaintsStore } from '../store/complaintsStore'
 import { ComplaintFilters } from '../types/complaints'
 import Button from '../components/common/Button'
 import PhoneLink from '../components/common/PhoneLink'
+import { formatInstallationTime } from '../utils/installationWindow'
 
 const InstallerTasks = () => {
   const navigate = useNavigate()
@@ -285,10 +286,7 @@ const InstallerTasks = () => {
                               {new Date(complaint.planned_installation_date).toLocaleDateString('ru-RU')}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {new Date(complaint.planned_installation_date).toLocaleTimeString('ru-RU', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
+                              {formatInstallationTime(complaint.planned_installation_date, complaint.planned_installation_end)}
                             </div>
                           </>
                         ) : (

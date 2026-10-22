@@ -1064,6 +1064,7 @@ def installer_planning(request):
                     # Перенос даты монтажа
                     old_date = complaint.planned_installation_date
                     complaint.planned_installation_date = new_installation_date
+                    complaint.planned_installation_end = None  # веб-форма задаёт только время начала
                     complaint.save()
                     
                     # Создаем комментарий о переносе

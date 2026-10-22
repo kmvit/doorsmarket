@@ -103,6 +103,7 @@ class ComplaintAdmin(admin.ModelAdmin):
         ('Планирование', {
             'fields': (
                 'planned_installation_date',
+                'planned_installation_end',
                 'planned_shipping_date',
                 'production_deadline',
                 'installer_assigned',

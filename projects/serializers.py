@@ -177,6 +177,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
             'planned_installation_date',
             'planned_shipping_date',
             'production_deadline',
+            'planned_installation_end',
             'moscow_service_deadline',
         ]
 
@@ -298,6 +299,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'planned_installation_date',
             'planned_shipping_date',
             'production_deadline',
+            'planned_installation_end',
             
             # Фабрика
             'factory_response_date',

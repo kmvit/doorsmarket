@@ -97,6 +97,30 @@ def _requested(request, field):
     return values
 
 
+def _parse_installation_window(request):
+    """
+    Интервал монтажа из запроса: installation_date — начало, installation_end —
+    конец (необязателен для старых клиентов). Возвращает (начало, конец, ошибка).
+    """
+    def parse(value):
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt if timezone.is_aware(dt) else timezone.make_aware(dt)
+
+    raw_start = request.data.get('installation_date')
+    raw_end = request.data.get('installation_end')
+    try:
+        start = parse(raw_start) if raw_start else None
+        end = parse(raw_end) if raw_end else None
+    except (ValueError, AttributeError):
+        return None, None, 'Неверный формат даты'
+    if start and end:
+        if timezone.localtime(end).date() != timezone.localtime(start).date():
+            return None, None, 'Интервал монтажа должен быть в пределах одного дня'
+        if end <= start:
+            return None, None, 'Время «до» должно быть позже времени «с»'
+    return start, end, None
+
+
 class ComplaintViewSet(viewsets.ModelViewSet):
     """
     ViewSet для работы с рекламациями
@@ -700,7 +724,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         user = request.user
         
         installer_id = request.data.get('installer_id')
-        installation_date = request.data.get('installation_date')
         date_by_installer = str(request.data.get('date_by_installer', '')).lower() in ('true', '1', 'yes', 'on')
 
         if not installer_id:
@@ -724,26 +747,21 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         # Иначе дата обязательна.
+        installation_date, installation_end, error = _parse_installation_window(request)
+        if error:
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
         if not installation_date:
             return Response(
                 {'error': 'Необходимо указать дату монтажа'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        try:
-            installation_date = datetime.fromisoformat(installation_date.replace('Z', '+00:00'))
-            installation_date = timezone.make_aware(installation_date)
-        except (ValueError, AttributeError):
-            return Response(
-                {'error': 'Неверный формат даты'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
         if user.role == 'installer':
             # Монтажник планирует сам
-            complaint.plan_installation(installer, installation_date)
+            complaint.plan_installation(installer, installation_date, installation_end)
         elif user.role in ['service_manager', 'admin']:
             # СМ планирует для монтажника
-            complaint.plan_installation_by_sm(installer, installation_date)
+            complaint.plan_installation_by_sm(installer, installation_date, installation_end)
         else:
             return Response(
                 {'error': 'У вас нет прав для планирования монтажа'},
@@ -1162,19 +1180,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        installation_date_str = request.data.get('installation_date')
-        if not installation_date_str:
+ 
+        installation_date, installation_end, error = _parse_installation_window(request)
+        if error:
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+        if not installation_date:
             return Response(
                 {'error': 'Необходимо указать installation_date'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            installation_date = datetime.fromisoformat(installation_date_str.replace('Z', '+00:00'))
-            installation_date = timezone.make_aware(installation_date)
-        except (ValueError, AttributeError):
-            return Response(
-                {'error': 'Неверный формат даты'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -1184,9 +1196,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        old_date = complaint.planned_installation_date
+        old_window = complaint.installation_window_text
         complaint.planned_installation_date = installation_date
+        complaint.planned_installation_end = installation_end
         complaint.save()
+        new_window = complaint.installation_window_text
 
         # Сразу пересчитываем просрочку: если новая дата в будущем — снимаем
         # статус «Просрочена монтажником», не дожидаясь следующего открытия списка.
@@ -1197,7 +1211,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         ComplaintComment.objects.create(
             complaint=complaint,
             author=user,
-            text=f'Дата монтажа перенесена: {old_date.strftime("%d.%m.%Y %H:%M")} → {installation_date.strftime("%d.%m.%Y %H:%M")}'
+            text=f'Дата монтажа перенесена: {old_window} → {new_window}'
         )
         
         # Уведомляем СМ
@@ -1205,7 +1219,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             recipient=complaint.recipient,
             notification_type='push',
             title='Монтаж перенесен',
-            message=f'Монтажник перенес дату монтажа по рекламации #{complaint.id} на {installation_date.strftime("%d.%m.%Y %H:%M")}'
+            message=f'Монтажник перенес дату монтажа по рекламации #{complaint.id} на {new_window}'
         )
 
         # Уведомляем менеджера
@@ -1214,7 +1228,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 recipient=complaint.manager,
                 notification_type='push',
                 title='Монтаж перенесен',
-                message=f'Дата монтажа по рекламации #{complaint.id} перенесена на {installation_date.strftime("%d.%m.%Y %H:%M")}'
+                message=f'Дата монтажа по рекламации #{complaint.id} перенесена на {new_window}'
             )
 
         serializer = self.get_serializer(complaint)

@@ -131,6 +131,7 @@ export interface Complaint {
   commercial_offer_url: string | null
   commercial_offer_text: string
   planned_installation_date: string | null
+  planned_installation_end?: string | null
   planned_shipping_date: string | null
   production_deadline: string | null
   factory_response_date: string | null
@@ -171,6 +172,7 @@ export interface ComplaintListItem {
   created_at: string
   updated_at: string
   planned_installation_date: string | null
+  planned_installation_end?: string | null
   planned_shipping_date: string | null
   production_deadline?: string | null
   moscow_service_deadline?: string | null

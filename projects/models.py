@@ -97,6 +97,17 @@ class ComplaintType(models.TextChoices):
     FACTORY = 'factory', 'Фабрика'
 
 
+def format_installation_window(start, end=None) -> str:
+    """«22.10.2026 с 10:00 до 12:00» или «22.10.2026 10:00», если конца нет."""
+    if not start:
+        return ''
+    start = timezone.localtime(start) if timezone.is_aware(start) else start
+    if end:
+        end = timezone.localtime(end) if timezone.is_aware(end) else end
+        return f'{start:%d.%m.%Y} с {start:%H:%M} до {end:%H:%M}'
+    return f'{start:%d.%m.%Y %H:%M}'
+
+
 class Complaint(models.Model):
     """Рекламация (заявка)"""
     
@@ -198,6 +209,13 @@ class Complaint(models.Model):
         blank=True,
         null=True,
         verbose_name='Запланированная дата монтажа'
+    )
+    # Монтаж назначают интервалом «с … до …»: planned_installation_date — начало,
+    # это поле — конец (тот же день). У старых рекламаций пусто — только время начала.
+    planned_installation_end = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Монтаж до'
     )
     planned_shipping_date = models.DateTimeField(
         blank=True,
@@ -925,12 +943,17 @@ class Complaint(models.Model):
             import logging
             logging.getLogger(__name__).exception('Ошибка отправки email в ОР при оспаривании СМ: %s', e)
 
-    def plan_installation(self, installer, installation_date):
-        """Монтажник планирует дату монтажа"""
+    @property
+    def installation_window_text(self) -> str:
+        return format_installation_window(self.planned_installation_date, self.planned_installation_end)
+
+    def plan_installation(self, installer, installation_date, installation_end=None):
+        """Монтажник планирует дату монтажа (интервал: начало и конец)"""
         self.installer_assigned = installer
         if not self.installer_assigned_at:
             self.installer_assigned_at = timezone.now()
         self.planned_installation_date = installation_date
+        self.planned_installation_end = installation_end
         self.status = ComplaintStatus.INSTALLATION_PLANNED
         self.save()
         
@@ -941,21 +964,19 @@ class Complaint(models.Model):
                 recipient=sm_recipient,
                 notification_type='push',
                 title='Монтаж запланирован',
-                message=f'Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y")}'
+                message=f'Монтажник {installer.get_full_name()} запланировал монтаж на {self.installation_window_text}'
             )
             self._create_notification(
                 recipient=sm_recipient,
                 notification_type='pc',
                 title='Монтаж запланирован',
-                message=f'Рекламация #{self.id} (заказ {self.order_number}): Монтажник {installer.get_full_name()} запланировал монтаж на {installation_date.strftime("%d.%m.%Y %H:%M")}. Клиент: {self.client_name}'
+                message=f'Рекламация #{self.id} (заказ {self.order_number}): Монтажник {installer.get_full_name()} запланировал монтаж на {self.installation_window_text}. Клиент: {self.client_name}'
             )
         
         # Отправка SMS клиенту
         if self.contact_phone:
             try:
-                # Формируем текст SMS с датой монтажа
-                installation_date_str = installation_date.strftime("%d.%m.%Y %H:%M")
-                sms_text = f"По Вашей рекламации запланирован монтаж на {installation_date_str}."
+                sms_text = f"По Вашей рекламации запланирован монтаж {self.installation_window_text}."
                 
                 channel = send_client_message(self.contact_phone, sms_text)
                 if channel:
@@ -1064,14 +1085,16 @@ class Complaint(models.Model):
         # Если дата монтажа назначена и ещё не наступила — НЕ просрочка.
         # Если при этом флаг просрочки оставался (монтажник перенёс дату вперёд),
         # снимаем его и возвращаем рекламацию в нормальный статус планирования.
-        if self.planned_installation_date and self.planned_installation_date > now:
+        # Монтаж назначен интервалом — просрочка после его конца, а не начала
+        installation_deadline = self.planned_installation_end or self.planned_installation_date
+        if installation_deadline and installation_deadline > now:
             self._restore_status_from_overdue()
             return False
 
         # Определяем факт просрочки
-        if self.planned_installation_date:
+        if installation_deadline:
             # Дата монтажа назначена и уже прошла
-            is_overdue = self.planned_installation_date <= now
+            is_overdue = installation_deadline <= now
         else:
             # Дата ещё не назначена — старое правило: > 30 дней с момента назначения
             is_overdue = bool(self.installer_assigned_at) and (
@@ -1441,10 +1464,11 @@ class Complaint(models.Model):
             planned_return_date=self.return_planned_date,
         )
 
-    def plan_installation_by_sm(self, installer, installation_date):
-        """СМ планирует монтаж"""
+    def plan_installation_by_sm(self, installer, installation_date, installation_end=None):
+        """СМ планирует монтаж (интервал: начало и конец)"""
         self.installer_assigned = installer
         self.planned_installation_date = installation_date
+        self.planned_installation_end = installation_end
         if self.planned_shipping_date:
             self.status = ComplaintStatus.BOTH_PLANNED
         else:
@@ -1456,15 +1480,13 @@ class Complaint(models.Model):
             recipient=installer,
             notification_type='pc',
             title='Назначен монтаж',
-            message=f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). Дата: {installation_date.strftime("%d.%m.%Y %H:%M")}. Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}'
+            message=f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). Дата: {self.installation_window_text}. Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}'
         )
         
         # Отправка SMS клиенту
         if self.contact_phone:
             try:
-                # Формируем текст SMS с датой монтажа
-                installation_date_str = installation_date.strftime("%d.%m.%Y %H:%M")
-                sms_text = f"По Вашей рекламации запланирован монтаж на {installation_date_str}."
+                sms_text = f"По Вашей рекламации запланирован монтаж {self.installation_window_text}."
                 
                 channel = send_client_message(self.contact_phone, sms_text)
                 if channel:
@@ -1488,6 +1510,7 @@ class Complaint(models.Model):
         if not self.installer_assigned_at:
             self.installer_assigned_at = timezone.now()
         self.planned_installation_date = None
+        self.planned_installation_end = None
         self.status = ComplaintStatus.WAITING_INSTALLER_DATE
         self.save()
 

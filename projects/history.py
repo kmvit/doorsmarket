@@ -94,7 +94,7 @@ def complaint_history_events(complaint):
     if complaint.planned_installation_date:
         events.append(_event(
             'installation_planned', complaint.planned_installation_date, complaint.installer_assigned,
-            'Монтаж запланирован', f"Дата: {complaint.planned_installation_date.strftime('%d.%m.%Y')}",
+            'Монтаж запланирован', f'Дата: {complaint.installation_window_text}',
             'calendar', 'indigo',
         ))
 

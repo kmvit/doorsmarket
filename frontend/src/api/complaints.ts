@@ -282,10 +282,12 @@ export const complaintsAPI = {
     installerId: number,
     installationDate: string,
     dateByInstaller = false,
+    installationEnd?: string,
   ): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/plan_installation/`, {
       installer_id: installerId,
       installation_date: dateByInstaller ? null : installationDate,
+      installation_end: dateByInstaller ? null : (installationEnd || null),
       date_by_installer: dateByInstaller,
     })
     return response.data
@@ -368,9 +370,10 @@ export const complaintsAPI = {
   },
 
   // Монтажник переносит дату монтажа
-  rescheduleInstallation: async (id: number, installationDate: string): Promise<Complaint> => {
+  rescheduleInstallation: async (id: number, installationDate: string, installationEnd?: string): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/reschedule_installation/`, {
       installation_date: installationDate,
+      installation_end: installationEnd || null,
     })
     return response.data
   },
