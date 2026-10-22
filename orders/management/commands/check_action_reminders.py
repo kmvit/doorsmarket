@@ -7,7 +7,7 @@ Cron-команда: проверяет наступившие сроки нап
 """
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from orders.models import OrderActionReminder
+from orders.models import CLOSED_ORDER_STATUSES, OrderActionReminder
 from users.push_utils import send_push_notification
 
 
@@ -20,6 +20,8 @@ class Command(BaseCommand):
             done=False,
             notified=False,
             due_at__lte=now,
+        ).exclude(
+            order__status__in=CLOSED_ORDER_STATUSES,  # заказ выполнен / не актуален
         ).select_related('order', 'order__manager')
 
         sent = 0

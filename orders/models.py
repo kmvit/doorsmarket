@@ -420,6 +420,10 @@ class OpeningType(models.TextChoices):
     LEFT = 'left', 'Влево'
 
 
+# Заказ закрыт: задачи («Следующее действие») по нему не ведутся и не напоминаются
+CLOSED_ORDER_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+
+
 # Двустворчатой двери доступны только эти открывания, сдвижной — только вправо/влево,
 # остальным дверям — только одиночные
 DOUBLE_OPENING_TYPES = frozenset({OpeningType.A_C, OpeningType.B_D, OpeningType.B_D_INVERSO})

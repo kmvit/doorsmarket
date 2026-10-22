@@ -765,7 +765,17 @@ const OrderDetail = () => {
             </dl>
           </div>
         )}
-        <NextActionBlock ref={nextActionRef} orderId={order.id} canEdit={canEdit} onStatusChanged={() => reloadOrder()} />
+        <NextActionBlock
+          ref={nextActionRef}
+          orderId={order.id}
+          canEdit={canEdit}
+          onStatusChanged={() => reloadOrder()}
+          inactiveReason={
+            order.status === 'completed' ? 'Заказ выполнен — задачи по нему больше не ведутся.'
+              : order.status === 'cancelled' ? 'Заказ не актуален — задачи по нему не ведутся.'
+              : null
+          }
+        />
       </div>
 
       {/* Замер */}

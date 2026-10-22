@@ -18,7 +18,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import (
-    DESIGNER_PAYOUT_STATUSES, DistancePayment, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
+    CLOSED_ORDER_STATUSES, DESIGNER_PAYOUT_STATUSES, DistancePayment, Designer, Salon, Order, OrderItem, OrderAddon, OrderAttachment,
     MeasurementRequest, OrderActionReminder, OrderStatus, ActivityKind,
     Measurement, MeasurementOpening, MeasurementAttachment, MeasurementSignature, OrderActivityLog,
     MeasurementRequestFile,
@@ -1399,6 +1399,9 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         )
         if self.request.query_params.get('mine') == 'true':
             qs = qs.filter(created_by=user)
+        # Списки «на сегодня / завтра / просрочено» — без закрытых заказов
+        if any(self.request.query_params.get(k) == 'true' for k in ('today', 'tomorrow', 'overdue')):
+            qs = qs.exclude(order__status__in=CLOSED_ORDER_STATUSES)
         if self.request.query_params.get('today') == 'true':
             today = timezone.localdate()
             qs = qs.filter(due_at__date=today, done=False)

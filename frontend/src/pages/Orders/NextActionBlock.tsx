@@ -6,6 +6,8 @@ interface Props {
   orderId: number
   canEdit: boolean
   onStatusChanged?: (newStatus: OrderStatus) => void
+  /** Заказ «Выполнен» или «Не актуален»: задачи только для просмотра, без действий */
+  inactiveReason?: string | null
 }
 
 // Императивный интерфейс: позволяет родителю открыть окно «Следующее действие»
@@ -32,7 +34,9 @@ const COMPLETE_ACTIONS: CompleteAction[] = [
   { label: 'Не актуален', status: 'cancelled', color: 'bg-red-600 hover:bg-red-700' },
 ]
 
-const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, canEdit, onStatusChanged }, ref) => {
+const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, canEdit: canEditProp, onStatusChanged, inactiveReason }, ref) => {
+  // Закрытый заказ: блок приглушён, добавить/закрыть/править задачи нельзя
+  const canEdit = canEditProp && !inactiveReason
   const [reminders, setReminders] = useState<OrderActionReminder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -63,6 +67,7 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
   // Открыть окно «Следующее действие» извне (после «Замер обработан» и т.п.)
   useImperativeHandle(ref, () => ({
     promptNextAction: (status?: OrderStatus) => {
+      if (inactiveReason) return
       setNextPrompt({ reminderId: null, status })
       setPromptText('')
       setPromptDueAt('')
@@ -192,7 +197,7 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
   const done = reminders.filter((r) => r.done)
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 ${inactiveReason ? 'opacity-60' : ''}`}>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Следующее действие</h2>
         {canEdit && !showForm && (
@@ -202,7 +207,11 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
         )}
       </div>
 
-      {showForm && (
+      {inactiveReason && (
+        <p className="mb-3 text-xs text-gray-500">{inactiveReason}</p>
+      )}
+
+      {showForm && canEdit && (
         <form onSubmit={handleAdd} className="mb-3 space-y-2 bg-gray-50 p-3 rounded-lg">
           {error && <div className="text-xs text-red-600">{error}</div>}
           <input
@@ -323,7 +332,7 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
       )}
 
       {/* Модалка «Следующее действие» после закрытия */}
-      {nextPrompt && (
+      {nextPrompt && !inactiveReason && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setNextPrompt(null)}>
           <form
             onSubmit={handlePromptSubmit}
