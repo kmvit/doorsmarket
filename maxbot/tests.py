@@ -172,3 +172,25 @@ class SendClientMessageTest(TestCase):
         sms.return_value = False
         self.assertIsNone(send_client_message('+79990000000', 'текст'))
         self.assertIsNone(send_client_message('', 'текст'))
+
+
+@override_settings(MAX_BOT_NAME='id5260488163_bot')
+class RequestCreatedSmsInviteTest(TestCase):
+    """SMS «Вам позвонит…» приглашает в бота MAX, если клиент ещё не подключён."""
+
+    def test_invite_with_short_link(self):
+        from orders.sms_templates import request_created
+        text = request_created('Иван Петров', '+79160000000', '8 927 123-45-67')
+        self.assertTrue(text.endswith(
+            'по замеру в течение 2 раб. дн. Уведомления о статусе заказа в MAX: https://max.ru/id5260488163_bot'
+        ))
+
+    def test_no_invite_when_already_linked(self):
+        from orders.sms_templates import request_created
+        MaxContact.objects.create(phone='+79271234567', chat_id=1, max_user_id=1)
+        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2 раб. дн.'))
+
+    @override_settings(MAX_BOT_NAME='')
+    def test_no_invite_without_bot(self):
+        from orders.sms_templates import request_created
+        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2 раб. дн.'))

@@ -41,12 +41,31 @@ def short_pdf_url(measurement) -> str:
     return f'{base}{path}' if base else path
 
 
-def request_created(sm_name: str, sm_phone: str) -> str:
+def max_invite(client_phone) -> str:
+    """
+    Приглашение в бота MAX. Ссылка короткая, без телефона в ней (так SMS дешевле):
+    после «Начать» бот сам попросит поделиться номером. Пусто, если бот не
+    настроен или клиент уже подключён.
+    """
+    from django.conf import settings
+    from maxbot.models import MaxContact
+    from orders.serializers import normalize_phone
+
+    bot_name = getattr(settings, 'MAX_BOT_NAME', '')
+    if not bot_name:
+        return ''
+    link = f'https://max.ru/{bot_name}'
+    if MaxContact.objects.filter(phone=normalize_phone(client_phone), is_active=True).exists():
+        return ''
+    return f' Уведомления о статусе заказа в MAX: {link}'
+
+
+def request_created(sm_name: str, sm_phone: str, client_phone: str = '') -> str:
     """При взятии заявки СМ: клиенту обещаем звонок СМ в течение 2 раб. дней."""
     name = (sm_name or 'сервис-менеджер').strip()
     phone = (sm_phone or '').strip()
     tail = f' {phone}' if phone else ''
-    return f'Вам позвонит {name}{tail} по замеру в течение 2 раб. дн.'
+    return f'Вам позвонит {name}{tail} по замеру в течение 2 раб. дн.{max_invite(client_phone)}'
 
 
 def measurement_scheduled(measurement_date) -> str:

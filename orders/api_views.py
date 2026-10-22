@@ -1828,7 +1828,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             phone = mr.contact_phone or mr.order.contact_phone
             send_client_sms(
                 mr.order, phone,
-                sms_templates.request_created(sm_name, sm_phone),
+                sms_templates.request_created(sm_name, sm_phone, phone),
                 actor=request.user,
             )
 
