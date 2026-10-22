@@ -61,7 +61,10 @@ export const useAuthStore = create<AuthStore>()(
           error: null,
         })
         
-        // НЕ подписываемся автоматически - пользователь должен сделать это вручную через кнопку
+        // Новых разрешений не просим (это — кнопка уведомлений), но если человек уже
+        // разрешал их в этом браузере, возвращаем подписку, удалённую при выходе
+        sessionStorage.removeItem('push_resubscribed')
+        void pushNotificationService.resubscribeIfAllowed()
         } catch (error: any) {
           console.error('[Auth] Ошибка входа:', error)
           set({
@@ -177,8 +180,9 @@ export const useAuthStore = create<AuthStore>()(
               isLoading: false,
             })
             
-            // НЕ подписываемся автоматически - пользователь должен сделать это вручную через кнопку
-            // Автоматическая подписка вызывала проблемы с 500 ошибками
+            // Разрешение уже выдано в этом браузере — тихо восстанавливаем подписку
+            // (раз за сессию; новых разрешений не просим)
+            void pushNotificationService.resubscribeIfAllowed()
         } catch (error: any) {
           console.error('[Auth] Ошибка проверки аутентификации:', error)
           // Очищаем только если это реальная ошибка авторизации

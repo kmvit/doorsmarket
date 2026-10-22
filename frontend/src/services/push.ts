@@ -89,6 +89,23 @@ class PushNotificationService {
     }
   }
 
+  // Тихо восстановить подписку, если пользователь уже разрешал уведомления в этом
+  // браузере. При выходе из приложения подписка удаляется, а после входа раньше не
+  // восстанавливалась — у большинства сотрудников push просто перестали приходить
+  // (например, «Замер выполнен» менеджеру). Окно с вопросом не показываем: только
+  // при уже выданном разрешении, раз за сессию, ошибки не мешают работе.
+  async resubscribeIfAllowed(): Promise<void> {
+    try {
+      if (typeof window === 'undefined' || !('Notification' in window) || !('PushManager' in window)) return
+      if (Notification.permission !== 'granted') return
+      if (sessionStorage.getItem('push_resubscribed') === '1') return
+      sessionStorage.setItem('push_resubscribed', '1')
+      await this.subscribe()
+    } catch (error) {
+      console.warn('[Push] Не удалось восстановить подписку:', error)
+    }
+  }
+
   // Запросить разрешение и подписаться
   async subscribe(): Promise<boolean> {
     console.log('[Push] Начинаем процесс подписки...')
