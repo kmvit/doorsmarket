@@ -80,14 +80,14 @@ const Dashboard = () => {
     const load = async () => {
       try {
         // Считаем ТЕМ ЖЕ запросом, каким строится страница «Наработки», куда ведут
-        // карточки (/workshop?reminder=...). Раньше счётчик брал напоминания,
-        // созданные лично пользователем (mine), а страница показывала ЗАКАЗЫ всего
-        // салона/города с активными напоминаниями — цифры расходились
-        // (на карточке 1, в списке 7).
+        // карточки. Менеджеру — только его заказы («Мои»), и карточки открывают
+        // «Наработки» с включённым «Мои»: раньше на карточке было «5 просрочено»
+        // по всему салону/городу, а в списке с «Мои» — одна. Руководителю — все.
+        const mine = isManager || undefined
         const [today, tomorrow, overdue] = await Promise.all([
-          workshopAPI.list({ with_reminder_today: true }).catch(() => []),
-          workshopAPI.list({ with_reminder_tomorrow: true }).catch(() => []),
-          workshopAPI.list({ with_overdue_reminder: true }).catch(() => []),
+          workshopAPI.list({ mine, with_reminder_today: true }).catch(() => []),
+          workshopAPI.list({ mine, with_reminder_tomorrow: true }).catch(() => []),
+          workshopAPI.list({ mine, with_overdue_reminder: true }).catch(() => []),
         ])
         setReminderTodayCount(today.length)
         setReminderTomorrowCount(tomorrow.length)
@@ -95,7 +95,7 @@ const Dashboard = () => {
       } catch {}
     }
     load()
-  }, [showWorkshopCard])
+  }, [showWorkshopCard, isManager])
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -187,7 +187,7 @@ const Dashboard = () => {
         {/* Карточка "Наработки" — только для менеджеров (у СМ свой раздел «Замеры») */}
         {showWorkshopCard && !isSM && (
           <Link
-            to="/workshop"
+            to={isManager ? '/workshop?mine=1' : '/workshop'}
             className="block mb-6 bg-gradient-to-r from-primary-600 to-cyan-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all"
           >
             <div className="flex items-center justify-between">
@@ -266,14 +266,14 @@ const Dashboard = () => {
         {(isManager || isLeader) && (
           <div className="grid grid-cols-2 gap-3 mb-6">
             <Link
-              to="/workshop?reminder=today"
+              to={`/workshop?reminder=today${isManager ? '&mine=1' : ''}`}
               className="rounded-2xl p-4 bg-gradient-to-br from-primary-600 to-cyan-600 text-white shadow-md hover:shadow-lg transition-all"
             >
               <p className="text-sm opacity-90">Задачи на сегодня</p>
               <p className="mt-1 text-3xl font-bold">{reminderTodayCount ?? '—'}</p>
             </Link>
             <Link
-              to="/workshop?reminder=tomorrow"
+              to={`/workshop?reminder=tomorrow${isManager ? '&mine=1' : ''}`}
               className="rounded-2xl p-4 bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all"
             >
               <p className="text-sm opacity-90">Задачи на завтра</p>

@@ -32,10 +32,11 @@ const Workshop = () => {
   // Город / салон / менеджер — для руководителя и админа
   const canFilterByManager = canFilterByPeople(user?.role)
   const [people, setPeople] = useState<PeopleFilterValue>(EMPTY_PEOPLE_FILTER)
-  const [mine, setMine] = useState(false)
+  // С главной менеджер приходит с ?mine=1 — список совпадает с цифрами на карточке
+  const [mine, setMine] = useState(searchParams.get('mine') === '1')
   const [withReminderToday, setWithReminderToday] = useState(reminderParam === 'today')
   const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
-  const [withOverdue, setWithOverdue] = useState(false)
+  const [withOverdue, setWithOverdue] = useState(reminderParam === 'overdue')
 
   const load = useCallback(async () => {
     setIsLoading(true)
