@@ -1260,8 +1260,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         complaint.mark_on_warehouse()
 
-        # Отправляем email уведомление, если у города ОР настроен адрес
-        city = getattr(user, 'city', None)
+        # Письмо на склад города РЕКЛАМАЦИИ (не города сотрудника ОР: ОР сидит в
+        # Москве, а товар — например, для Питера). Нет адреса у города — не шлём.
+        city = complaint.city
         city_email = getattr(city, 'warehouse_notification_email', None)
         if city_email:
             city_name = city.name

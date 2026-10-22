@@ -944,6 +944,15 @@ class Complaint(models.Model):
             logging.getLogger(__name__).exception('Ошибка отправки email в ОР при оспаривании СМ: %s', e)
 
     @property
+    def city(self):
+        """Город рекламации: город менеджера, а без менеджера — инициатора."""
+        for user in (self.manager, self.initiator):
+            city = getattr(user, 'city', None) if user else None
+            if city:
+                return city
+        return None
+
+    @property
     def installation_window_text(self) -> str:
         return format_installation_window(self.planned_installation_date, self.planned_installation_end)
 
