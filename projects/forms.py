@@ -81,7 +81,7 @@ class ComplaintEditForm(forms.ModelForm):
             manager_qs = manager_qs | User.objects.filter(pk=instance.manager_id)
         self.fields['manager'].queryset = manager_qs.distinct()
 
-        recipient_qs = User.objects.filter(role='service_manager', is_active=True).order_by('first_name', 'last_name')
+        recipient_qs = User.objects.filter(role='service_manager', is_active=True, measurements_only=False).order_by('first_name', 'last_name')
         if instance and instance.pk and instance.recipient_id:
             recipient_qs = recipient_qs | User.objects.filter(pk=instance.recipient_id)
         self.fields['recipient'].queryset = recipient_qs.distinct()

@@ -15,11 +15,11 @@ class CityAdmin(admin.ModelAdmin):
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'email', 'first_name', 'last_name', 'phone_number', 'role', 'city', 'is_staff')
-    list_filter = ('role', 'city', 'is_staff', 'is_superuser', 'is_active')
+    list_filter = ('role', 'measurements_only', 'city', 'is_staff', 'is_superuser', 'is_active')
     search_fields = ('username', 'email', 'first_name', 'last_name', 'phone_number')
     
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Дополнительная информация', {'fields': ('role', 'city', 'phone_number', 'salon')}),
+        ('Дополнительная информация', {'fields': ('role', 'measurements_only', 'city', 'phone_number', 'salon')}),
         ('Руководитель группы салонов', {
             'fields': ('managed_salons',),
             'description': 'Только для роли «Руководитель группы салонов»: какие салоны он видит.',

@@ -73,6 +73,14 @@ class User(AbstractUser):
         verbose_name='Салоны руководителя группы',
     )
 
+    # СМ, который только делает замеры (в Питере их два): роль та же, вся логика
+    # замеров для него работает, а рекламаций он не видит и не получает
+    measurements_only = models.BooleanField(
+        default=False,
+        verbose_name='Только замеры',
+        help_text='Для сервис-менеджера: только замеры, без доступа к рекламациям, отгрузке и возвратам.',
+    )
+
     @property
     def is_leader(self):
         return self.role in LEADER_ROLES

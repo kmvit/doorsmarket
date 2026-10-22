@@ -26,6 +26,8 @@ def keep_or_active(serializer, user, attr):
     """
     if user is not None and not user.is_active and getattr(serializer.instance, f'{attr}_id', None) != user.pk:
         raise serializers.ValidationError('Сотрудник отключён — выберите другого.')
+    if user is not None and getattr(user, 'measurements_only', False):
+        raise serializers.ValidationError('Этот сервис-менеджер работает только с замерами.')
     return user
 
 
@@ -175,9 +177,9 @@ class ComplaintListSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'planned_installation_date',
+            'planned_installation_end',
             'planned_shipping_date',
             'production_deadline',
-            'planned_installation_end',
             'moscow_service_deadline',
         ]
 
@@ -297,9 +299,9 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             
             # Планирование и даты
             'planned_installation_date',
+            'planned_installation_end',
             'planned_shipping_date',
             'production_deadline',
-            'planned_installation_end',
             
             # Фабрика
             'factory_response_date',
@@ -475,9 +477,9 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                     user_city = getattr(request.user, 'city', None)
                     service_manager = None
                     if user_city:
-                        service_manager = User.objects.filter(role='service_manager', is_active=True, city=user_city).first()
+                        service_manager = User.objects.filter(role='service_manager', is_active=True, measurements_only=False, city=user_city).first()
                     if not service_manager:
-                        service_manager = User.objects.filter(role='service_manager', is_active=True).first()
+                        service_manager = User.objects.filter(role='service_manager', is_active=True, measurements_only=False).first()
                     if service_manager:
                         validated_data['recipient'] = service_manager
                     else:

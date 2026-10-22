@@ -97,6 +97,14 @@ def _requested(request, field):
     return values
 
 
+class ComplaintsAccess(IsAuthenticated):
+    """Рекламации, отгрузка, возвраты — не для СМ «только замеры»."""
+    message = 'У вас доступ только к замерам.'
+
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and not getattr(request.user, 'measurements_only', False)
+
+
 def _parse_installation_window(request):
     """
     Интервал монтажа из запроса: installation_date — начало, installation_end —
@@ -131,7 +139,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     update: Обновление рекламации
     partial_update: Частичное обновление рекламации
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
     # id — номер рекламации, как он показан в списке («#189»); решётку срезает фильтр
     search_fields = ['id', 'order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
@@ -1591,7 +1599,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet для уведомлений"""
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['is_read', 'notification_type', 'complaint']
     ordering_fields = ['created_at']
@@ -1636,7 +1644,7 @@ class ShippingRegistryViewSet(viewsets.ModelViewSet):
     stats: Статистика по реестру
     """
     serializer_class = ShippingRegistrySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
     ordering_fields = ['created_at', 'planned_shipping_date', 'delivery_status']
@@ -1730,7 +1738,7 @@ class ReturnRegistryViewSet(viewsets.ModelViewSet):
     stats: Статистика по реестру
     """
     serializer_class = ReturnRegistrySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['order_number', 'client_name', 'product_name']
     ordering_fields = ['created_at', 'planned_return_date', 'return_status']
@@ -1833,7 +1841,7 @@ def _user_has_complaint_access(user, complaint):
 class DefectiveProductViewSet(viewsets.ModelViewSet):
     """ViewSet для бракованных изделий"""
     serializer_class = DefectiveProductSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     
     def get_queryset(self):
         """Фильтрация по рекламации"""
@@ -1868,7 +1876,7 @@ class DefectiveProductViewSet(viewsets.ModelViewSet):
 class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
     """ViewSet для вложений рекламаций"""
     serializer_class = ComplaintAttachmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     
     def get_queryset(self):
         """Фильтрация по рекламации"""
@@ -1890,7 +1898,7 @@ class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
 class ComplaintCommentViewSet(viewsets.ModelViewSet):
     """ViewSet для комментариев к рекламациям"""
     serializer_class = ComplaintCommentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     filter_backends = [OrderingFilter]
     ordering_fields = ['created_at']
     ordering = ['created_at']
@@ -1912,7 +1920,7 @@ class ComplaintCommentViewSet(viewsets.ModelViewSet):
 
 class DashboardStatsView(APIView):
     """API для получения статистики для дашборда"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ComplaintsAccess]
     
     def get(self, request):
         """Получение статистики по задачам для текущего пользователя"""

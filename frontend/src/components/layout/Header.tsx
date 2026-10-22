@@ -13,12 +13,15 @@ const Header = () => {
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
 
   const isOrdersModule = location.pathname.startsWith('/orders')
-  const showModuleSwitcher = user && ORDERS_ROLES.includes(user.role)
+  // СМ «только замеры» работает лишь в «Заказах и замерах»: без рекламаций,
+  // отгрузки, возвратов и уведомлений по рекламациям
+  const measurementsOnly = !!user?.measurements_only
+  const showModuleSwitcher = user && ORDERS_ROLES.includes(user.role) && !measurementsOnly
 
   // Загрузка количества непрочитанных уведомлений
   useEffect(() => {
     // Не делаем запрос, пока идет загрузка или пользователь не авторизован
-    if (isLoading || !isAuthenticated || !user) {
+    if (isLoading || !isAuthenticated || !user || user.measurements_only) {
       setUnreadNotificationsCount(0)
       return
     }
@@ -190,7 +193,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {(user.role === 'manager' || user.role === 'service_manager') && (
+              {(user.role === 'manager' || user.role === 'service_manager') && !measurementsOnly && (
                 <Link
                   to="/shipping-registry"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -206,7 +209,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && (
+              {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
                 <Link
                   to="/return-registry"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -350,6 +353,7 @@ const Header = () => {
             {/* Информация о пользователе (Desktop) */}
             <div className="hidden xl:flex items-center space-x-2">
               {/* Кнопка уведомлений */}
+              {!measurementsOnly && (
               <Link
                 to="/notifications"
                 className="relative inline-flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -362,6 +366,7 @@ const Header = () => {
                   <span className="absolute top-1 right-1 inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>
                 )}
               </Link>
+              )}
               {/* Имя и роль — на очень широком экране (от 1920 px); иначе подсказка на аватаре */}
               <div className="text-right hidden min-[1920px]:block">
                 <p className="text-sm font-medium text-gray-900 whitespace-nowrap">
@@ -389,6 +394,7 @@ const Header = () => {
 
             {/* Аватар (Mobile) */}
             <div className="xl:hidden flex items-center space-x-2">
+              {!measurementsOnly && (
               <Link
                 to="/notifications"
                 className="relative inline-flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -401,6 +407,7 @@ const Header = () => {
                   <span className="absolute top-1 right-1 inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>
                 )}
               </Link>
+              )}
               <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white font-bold">
                 {user.username.slice(0, 2).toUpperCase()}
               </div>
@@ -555,7 +562,7 @@ const Header = () => {
               </Link>
             )}
 
-            {(user.role === 'manager' || user.role === 'service_manager') && (
+            {(user.role === 'manager' || user.role === 'service_manager') && !measurementsOnly && (
               <Link
                 to="/shipping-registry"
                 onClick={() => setMobileMenuOpen(false)}
@@ -568,7 +575,7 @@ const Header = () => {
               </Link>
             )}
 
-            {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && (
+            {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
               <Link
                 to="/return-registry"
                 onClick={() => setMobileMenuOpen(false)}

@@ -5,6 +5,8 @@ export interface User {
   first_name: string
   last_name: string
   role: string
+  // СМ, который делает только замеры: без рекламаций, отгрузки и возвратов
+  measurements_only?: boolean
   city?: {
     id: number
     name: string

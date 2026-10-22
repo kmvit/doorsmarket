@@ -95,7 +95,9 @@ const ComplaintCreate = () => {
             referencesAPI.getUsersByRole('complaint_department').catch(() => []),
             referencesAPI.getUsersByRole('leader').catch(() => []),
           ])
-          setRecipients([...(smData || []), ...(cdData || []), ...(leaderData || [])])
+          // СМ «только замеры» рекламации не получает
+          const fullSms = (smData || []).filter((u: User) => !u.measurements_only)
+          setRecipients([...fullSms, ...(cdData || []), ...(leaderData || [])])
         } catch (error) {
           console.warn('Failed to load recipients:', error)
           setRecipients([])

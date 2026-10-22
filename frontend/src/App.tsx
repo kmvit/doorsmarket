@@ -35,6 +35,7 @@ import MeasurementList from './pages/Measurements/MeasurementList'
 import MeasurementForm from './pages/Measurements/MeasurementForm'
 import MeasurementBlankPrint from './pages/Measurements/MeasurementBlankPrint'
 import ProtectedRoute from './components/common/ProtectedRoute'
+import ComplaintsRoute from './components/common/ComplaintsRoute'
 import Layout from './components/layout/Layout'
 
 function App() {
@@ -75,9 +76,9 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Layout>
+              <ComplaintsRoute><Layout>
                 <Dashboard />
-              </Layout>
+              </Layout></ComplaintsRoute>
             </ProtectedRoute>
           }
         />
@@ -85,9 +86,9 @@ function App() {
           path="/complaints"
           element={
             <ProtectedRoute>
-              <Layout>
+              <ComplaintsRoute><Layout>
                 <ComplaintList />
-              </Layout>
+              </Layout></ComplaintsRoute>
             </ProtectedRoute>
           }
         />
@@ -95,9 +96,9 @@ function App() {
           path="/complaints/create"
           element={
             <ProtectedRoute>
-              <Layout>
+              <ComplaintsRoute><Layout>
                 <ComplaintCreate />
-              </Layout>
+              </Layout></ComplaintsRoute>
             </ProtectedRoute>
           }
         />
@@ -105,9 +106,9 @@ function App() {
                 path="/complaints/:id"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ComplaintDetail />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -115,9 +116,9 @@ function App() {
                 path="/complaints/:id/edit"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ComplaintEdit />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -125,9 +126,9 @@ function App() {
                 path="/complaints/:id/process"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ComplaintProcess />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -135,9 +136,9 @@ function App() {
                 path="/complaints/:id/history"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ComplaintHistory />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -145,9 +146,9 @@ function App() {
                 path="/installer/planning"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <InstallerTasks />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -155,9 +156,9 @@ function App() {
                 path="/shipping-registry"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ShippingRegistryPage />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -165,9 +166,9 @@ function App() {
                 path="/shipping-registry/:id"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ShippingRegistryDetail />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -175,9 +176,9 @@ function App() {
                 path="/return-registry"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ReturnRegistryPage />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -185,9 +186,9 @@ function App() {
                 path="/manager/production"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <ManagerProduction />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />
@@ -195,9 +196,9 @@ function App() {
                 path="/notifications"
                 element={
                   <ProtectedRoute>
-                    <Layout>
+                    <ComplaintsRoute><Layout>
                       <Notifications />
-                    </Layout>
+                    </Layout></ComplaintsRoute>
                   </ProtectedRoute>
                 }
               />

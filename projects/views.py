@@ -486,7 +486,7 @@ def complaint_create(request):
     
     if request.method == 'POST':
         def get_service_manager_for_city(city):
-            qs = User.objects.filter(role='service_manager', is_active=True)
+            qs = User.objects.filter(role='service_manager', is_active=True, measurements_only=False)
             if city:
                 sm = qs.filter(city=city).first()
                 if sm:

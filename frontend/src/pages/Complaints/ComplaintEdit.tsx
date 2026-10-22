@@ -70,7 +70,7 @@ const ComplaintEdit = () => {
         setProductionSites(results[0] as ProductionSite[])
         setReasons(results[1] as ComplaintReason[])
         if (user?.role === 'service_manager' && results.length >= 5) {
-          setServiceManagers(results[2] as User[])
+          setServiceManagers((results[2] as User[]).filter(u => !u.measurements_only))
           const allManagers = results[3] as User[]
           const allInstallers = results[4] as User[]
           if (user.city?.id) {

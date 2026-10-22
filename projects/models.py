@@ -371,7 +371,7 @@ class Complaint(models.Model):
             if self.initiator.role in ['manager', 'installer']:
                 from users.models import User
                 # Найти первого доступного сервис-менеджера
-                service_manager = User.objects.filter(role='service_manager', is_active=True).first()
+                service_manager = User.objects.filter(role='service_manager', is_active=True, measurements_only=False).first()
                 if service_manager:
                     self.recipient = service_manager
         
@@ -1554,18 +1554,19 @@ class Complaint(models.Model):
     def _get_service_manager(self):
         """Определяет СМ для этой рекламации"""
         # Если получатель - СМ, возвращаем его
-        if self.recipient and self.recipient.role == 'service_manager' and self.recipient.is_active:
+        if (self.recipient and self.recipient.role == 'service_manager' and self.recipient.is_active
+                and not self.recipient.measurements_only):
             return self.recipient
         
         # Ищем СМ по городу инициатора
         from users.models import User
         if self.initiator.city:
-            sm = User.objects.filter(role='service_manager', is_active=True, city=self.initiator.city).first()
+            sm = User.objects.filter(role='service_manager', is_active=True, measurements_only=False, city=self.initiator.city).first()
             if sm:
                 return sm
         
         # Если не нашли по городу, берем первого доступного СМ
-        return User.objects.filter(role='service_manager', is_active=True).first()
+        return User.objects.filter(role='service_manager', is_active=True, measurements_only=False).first()
     
     def _create_notification(self, recipient, notification_type, title, message):
         """Создание уведомления и отправка push"""
