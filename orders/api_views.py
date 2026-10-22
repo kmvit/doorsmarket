@@ -880,7 +880,11 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         # Редактировать заявку можно только пока замер не выполнен: после выполнения
         # данные заявки уже отражены в замере, менять их задним числом нельзя.
-        if instance is not None and getattr(instance, 'measurement', None) and instance.measurement.is_done:
+        # Исключение — заказ вернули из «Не актуален» в «Создан»: это новая подача,
+        # по ней будет новый замер (как повторный), прежний остаётся в истории.
+        restored = order.status in (OrderStatus.DRAFT, OrderStatus.ACTIVE)
+        if (instance is not None and not restored
+                and getattr(instance, 'measurement', None) and instance.measurement.is_done):
             return Response(
                 {'detail': 'Замер уже выполнен — заявку на замер изменить нельзя.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -933,10 +937,22 @@ class OrderViewSet(viewsets.ModelViewSet):
         if address_provided:
             order.address = (request.data.get('address') or '').strip()[:500]
         if is_resubmit:
-            _reset_measurement_for_resubmit(instance)
+            description = 'Заявка на замер подана повторно'
+            last = instance.measurement
+            if last is not None and last.is_done:
+                # Прежний замер выполнен — СМ получает новый (копию прежнего), как при
+                # «Повторном замере»; связка позиций снова по последнему замеру
+                instance.irrelevant_requested_at = None
+                instance.is_irrelevant = False
+                instance.save(update_fields=['irrelevant_requested_at', 'is_irrelevant'])
+                new = last.make_repeat(reason='Заявка подана повторно после возврата из «Не актуален»')
+                if order.link_measurement_id:
+                    order.link_measurement = None
+                description = f'{description}: новый замер №{new.id} (прежний №{last.id} выполнен)'
+            else:
+                _reset_measurement_for_resubmit(instance)
             order.log_activity(
-                ActivityKind.MEASUREMENT_REQUESTED, actor=request.user,
-                description='Заявка на замер подана повторно',
+                ActivityKind.MEASUREMENT_REQUESTED, actor=request.user, description=description,
             )
         if is_create or is_resubmit:
             order.status = OrderStatus.MEASUREMENT_REQUESTED
@@ -1584,6 +1600,18 @@ MEASUREMENT_FOLDERS = [
 ]
 
 
+def exclude_parked_measurements(qs):
+    """
+    Невыполненный замер заказа в «Создан» / «Не актуален» — не в работе: заказ
+    вернули из «Не актуален», а заявку менеджер ещё не подал заново (или заказ
+    отменили). В рабочие папки СМ такой замер не попадает; выполненные остаются.
+    """
+    return qs.exclude(
+        is_done=False,
+        request__order__status__in=[OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.CANCELLED],
+    )
+
+
 def apply_measurement_folder(qs, folder, user):
     """
     Фильтр папки замеров. Неизвестная папка → без изменений.
@@ -1593,7 +1621,7 @@ def apply_measurement_folder(qs, folder, user):
     """
     if folder == 'irrelevant':
         return qs.filter(request__is_irrelevant=True)
-    qs = qs.exclude(request__is_irrelevant=True)
+    qs = exclude_parked_measurements(qs.exclude(request__is_irrelevant=True))
     if folder == 'unscheduled':
         return qs.filter(measurement_date__isnull=True, is_done=False)
     if folder == 'scheduled':
@@ -1705,7 +1733,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         # убираем их здесь. В get_queryset этого делать нельзя — тогда
         # у карточки самого неактуального замера отвалится открытие.
         if folder != 'irrelevant':
-            qs = qs.exclude(request__is_irrelevant=True)
+            qs = exclude_parked_measurements(qs.exclude(request__is_irrelevant=True))
         ctx = self.get_serializer_context()
         rows = MeasurementListSerializer(qs, many=True, context=ctx).data
 

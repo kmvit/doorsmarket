@@ -408,8 +408,10 @@ const OrderDetail = () => {
               </svg>
               Добавить КП
             </Link>
-            {/* Заявку можно создавать/редактировать только пока замер не выполнен */}
-            {!measurement?.is_done && (
+            {/* Заявку можно создавать/редактировать только пока замер не выполнен.
+                Заказ вернули из «Не актуален» в «Создан» — заявку подают заново,
+                даже если прежний замер выполнен: по ней будет новый замер */}
+            {(!measurement?.is_done || ['draft', 'active'].includes(order.status)) && (
               <button
                 onClick={() => setShowMrModal(true)}
                 className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"

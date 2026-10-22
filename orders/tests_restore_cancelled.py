@@ -110,3 +110,68 @@ class RestoreCancelledOrderTest(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.MEASUREMENT_SCHEDULED)
+
+
+class RestoredOrderFullCycleTest(TestCase):
+    """
+    Вернули из «Не актуален» в «Создан» — дальше всё как у обычного заказа:
+    заявку подают заново даже после выполненного замера (будет новый замер),
+    а до повторной подачи старый замер не висит у СМ в работе.
+    """
+
+    _order = RestoreCancelledOrderTest._order
+    _restore = RestoreCancelledOrderTest._restore
+
+    def setUp(self):
+        RestoreCancelledOrderTest.setUp(self)
+        from orders.models import Measurement, MeasurementOpening
+        self.sm = User.objects.create_user(username='sm', password='x', role='service_manager', city=self.city)
+        self.order = self._order(OrderStatus.CANCELLED)
+        self.mr = MeasurementRequest.objects.create(
+            order=self.order, contact_name='Клиент', contact_phone='+700', created_by=self.manager,
+        )
+        self.Measurement = Measurement
+        self.old = Measurement.objects.create(request=self.mr, service_manager=self.sm, is_done=True)
+        MeasurementOpening.objects.create(measurement=self.old, opening_number=1, room_name='Кухня')
+
+    def _resubmit(self):
+        return self.client.post(
+            f'/api/v1/orders/{self.order.id}/measurement-request/',
+            {'contact_name': 'Клиент', 'contact_phone': '+79270000000'}, format='json',
+        )
+
+    def test_resubmit_after_done_measurement_creates_new_one(self):
+        self.assertEqual(self._restore(self.order).status_code, 200)
+        response = self._resubmit()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.MEASUREMENT_REQUESTED)
+        new = self.Measurement.objects.exclude(pk=self.old.pk).get(request=self.mr)
+        self.assertFalse(new.is_done)
+        self.assertEqual(new.previous_id, self.old.pk)
+        self.assertEqual(new.service_manager, self.sm)
+        self.assertEqual(new.openings.get().room_name, 'Кухня')
+        self.old.refresh_from_db()
+        self.assertTrue(self.old.is_done)
+
+    def test_done_measurement_still_blocks_normal_order(self):
+        self.order.status = OrderStatus.MEASUREMENT_DONE
+        self.order.save()
+        self.assertEqual(self._resubmit().status_code, 400)
+
+    def _sm_ids(self, folder=None):
+        self.client.force_authenticate(self.sm)
+        params = {'folder': folder} if folder else {}
+        data = self.client.get('/api/v1/measurements/', params).data
+        self.client.force_authenticate(self.manager)
+        rows = data['results'] if isinstance(data, dict) else data
+        return {r['id'] for r in rows if r.get('id')}
+
+    def test_restored_order_measurement_hidden_from_sm_until_resubmit(self):
+        pending = self.Measurement.objects.create(request=self.mr, service_manager=self.sm)
+        self._restore(self.order)
+        self.assertNotIn(pending.id, self._sm_ids())
+        self.assertNotIn(pending.id, self._sm_ids('unscheduled'))
+        self.assertIn(self.old.id, self._sm_ids())  # выполненный остаётся в истории
+        self._resubmit()
+        self.assertIn(pending.id, self._sm_ids('unscheduled'))
