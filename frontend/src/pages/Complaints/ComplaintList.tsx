@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore, stripFolderScope } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
@@ -8,6 +8,7 @@ import { ComplaintReason } from '../../types/complaints'
 import { City } from '../../types/auth'
 import apiClient from '../../api/client'
 import Button from '../../components/common/Button'
+import HScrollSync from '../../components/common/HScrollSync'
 import PhoneLink from '../../components/common/PhoneLink'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
 import { formatInstallationWindow } from '../../utils/installationWindow'
@@ -46,8 +47,6 @@ const ComplaintList = () => {
   const [cities, setCities] = useState<City[]>([])
   const [localFilters, setLocalFilters] = useState<ComplaintFilters>(filters)
   const [showFilters, setShowFilters] = useState(false)
-  const topScrollRef = useRef<HTMLDivElement>(null)
-  const tableScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // Проверяем наличие токена перед загрузкой данных
@@ -305,52 +304,19 @@ const ComplaintList = () => {
     return words.slice(0, maxWords).join(' ') + '...'
   }
 
-  const [topScrollWidth, setTopScrollWidth] = useState(0)
-
-  const updateTopScrollWidth = useCallback(() => {
-    if (tableScrollRef.current) {
-      const table = tableScrollRef.current.querySelector('table')
-      if (table) {
-        setTopScrollWidth(table.scrollWidth)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    updateTopScrollWidth()
-    window.addEventListener('resize', updateTopScrollWidth)
-    return () => window.removeEventListener('resize', updateTopScrollWidth)
-  }, [complaints, updateTopScrollWidth])
-
-  const syncingRef = useRef<'top' | 'bottom' | null>(null)
-
-  const syncScroll = (source: 'top' | 'bottom') => (e: React.UIEvent<HTMLDivElement>) => {
-    if (syncingRef.current && syncingRef.current !== source) {
-      syncingRef.current = null
-      return
-    }
-    syncingRef.current = source
-    const scrollLeft = (e.target as HTMLDivElement).scrollLeft
-    if (source === 'top' && tableScrollRef.current) {
-      tableScrollRef.current.scrollLeft = scrollLeft
-    } else if (source === 'bottom' && topScrollRef.current) {
-      topScrollRef.current.scrollLeft = scrollLeft
-    }
-    requestAnimationFrame(() => { syncingRef.current = null })
-  }
 
   const tableHeader = (
     <>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Номер заказа</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контактное лицо</th>
-      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Номер заказа</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контактное лицо</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
     </>
   )
 
@@ -527,19 +493,9 @@ const ComplaintList = () => {
             </div>
           ) : (
             <>
-              <div
-                ref={topScrollRef}
-                className="top-scrollbar border-b border-gray-200"
-                style={{ height: 14 }}
-                onScroll={syncScroll('top')}
-              >
-                <div style={{ width: topScrollWidth, height: 1 }} />
-              </div>
-              <div
-                ref={tableScrollRef}
-                className="overflow-x-auto"
-                onScroll={syncScroll('bottom')}
-              >
+              {/* Как в таблице позиций заказа: таблица листается внутри блока, а верхняя
+                  полоса прокрутки и заголовки колонок всегда на виду */}
+              <HScrollSync className="max-h-[calc(100vh-12rem)]">
                 <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>{tableHeader}</tr>
@@ -599,7 +555,7 @@ const ComplaintList = () => {
                   ))}
                 </tbody>
               </table>
-              </div>
+              </HScrollSync>
             </>
           )}
         </div>
