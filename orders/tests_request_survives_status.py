@@ -66,3 +66,36 @@ class RequestSurvivesStatusChangeTest(TestCase):
         self._set_status(OrderStatus.COMPLETED)
         self.assertNotIn(m.id, self._measurement_ids('unscheduled'))
         self.assertNotIn(m.id, self._measurement_ids())
+
+    def _order_folder(self, folder='measurement_requested'):
+        self.client.force_authenticate(self.manager)
+        data = self.client.get('/api/v1/orders/', {'folder': folder}).data
+        counts = {f['folder']: f['count'] for f in self.client.get('/api/v1/orders/folder_counts/', {'mine': 'true'}).data}
+        rows = data['results'] if isinstance(data, dict) else data
+        return {r['id'] for r in rows}, counts[folder]
+
+    def test_paid_order_in_manager_requested_folder(self):
+        self._set_status(OrderStatus.PAID)
+        ids, count = self._order_folder()
+        self.assertIn(self.order.id, ids)
+        self.assertEqual(count, 1)
+        # Замер создан без даты — заявка всё ещё ждёт
+        m = Measurement.objects.create(request=self.mr, service_manager=self.sm)
+        self.assertIn(self.order.id, self._order_folder()[0])
+        # Дату назначили — из «Заявка на замер» уходит
+        m.measurement_date = '2026-11-01T10:00:00+03:00'
+        m.save()
+        self.assertNotIn(self.order.id, self._order_folder()[0])
+
+    def test_finished_or_done_order_not_in_requested_folder(self):
+        Measurement.objects.create(request=self.mr, service_manager=self.sm, is_done=True)
+        self._set_status(OrderStatus.PAID)
+        self.assertNotIn(self.order.id, self._order_folder()[0])
+        Measurement.objects.all().delete()
+        for status in (OrderStatus.COMPLETED, OrderStatus.CANCELLED):
+            self._set_status(status)
+            self.assertNotIn(self.order.id, self._order_folder()[0], status)
+        self._set_status(OrderStatus.PAID)
+        self.mr.is_irrelevant = True
+        self.mr.save()
+        self.assertNotIn(self.order.id, self._order_folder()[0])

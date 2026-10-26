@@ -11,7 +11,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
@@ -320,6 +320,38 @@ def apply_people_filters(qs, request, order_path=''):
 ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
 
 
+# Статусы заказа, при которых заявка на замер не в работе. Любой другой статус
+# (в т. ч. «Оплачен», «В производстве») заявку не снимает: менеджер мог перевести
+# заказ дальше, а замер всё ещё нужен.
+MEASUREMENT_PARKED_ORDER_STATUSES = [
+    OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.COMPLETED, OrderStatus.CANCELLED,
+]
+
+
+# Статусы, у которых своя папка по ходу замера. Заказ в любом другом рабочем
+# статусе («Оплачен», «В производстве», …) с ещё не назначенным замером
+# показываем в «Заявка на замер».
+MEASUREMENT_FLOW_ORDER_STATUSES = [
+    OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED,
+    OrderStatus.MEASUREMENT_NOT_PLANNED, OrderStatus.MEASUREMENT_NOT_DONE,
+]
+
+
+def _orders_with_unscheduled_request():
+    """
+    Заказы, у которых заявка на замер ждёт СМ: замер не создан или создан без
+    даты. Выполненные прежние замеры (повторный замер) не мешают.
+    """
+    unscheduled = Measurement.objects.filter(
+        request=OuterRef('pk'), is_done=False, measurement_date__isnull=True,
+    )
+    any_measurement = Measurement.objects.filter(request=OuterRef('pk'))
+    return MeasurementRequest.objects.filter(
+        Q(Exists(unscheduled)) | ~Q(Exists(any_measurement)),
+        is_irrelevant=False,
+    ).values('order_id')
+
+
 # Папки заказов, которые описывают работу по замеру. Заявку, признанную
 # неактуальной, в них не показываем — как и в папках раздела «Замеры»:
 # работать по ней не нужно, а красная строка «Замер не выполнен» вводит
@@ -359,6 +391,14 @@ def apply_order_folder(qs, folder):
         return qs.filter(
             Q(status=OrderStatus.ACTIVE)
             | Q(status=OrderStatus.DRAFT, measurement_request__isnull=True),
+        )
+    if folder == 'measurement_requested':
+        return qs.filter(
+            Q(status=OrderStatus.MEASUREMENT_REQUESTED)
+            | (
+                ~Q(status__in=MEASUREMENT_PARKED_ORDER_STATUSES + MEASUREMENT_FLOW_ORDER_STATUSES)
+                & Q(id__in=_orders_with_unscheduled_request())
+            ),
         )
     if folder == 'today_measurement':
         # «Сегодня замер» = запланирован + дата замера сегодня
@@ -1597,14 +1637,6 @@ MEASUREMENT_FOLDERS = [
     ('drafts', 'Черновики'),
     ('done', 'Замер выполнен'),
     ('irrelevant', 'Неактуальные'),
-]
-
-
-# Статусы заказа, при которых заявка на замер не в работе. Любой другой статус
-# (в т. ч. «Оплачен», «В производстве») заявку не снимает: менеджер мог перевести
-# заказ дальше, а замер всё ещё нужен.
-MEASUREMENT_PARKED_ORDER_STATUSES = [
-    OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.COMPLETED, OrderStatus.CANCELLED,
 ]
 
 
