@@ -1600,15 +1600,24 @@ MEASUREMENT_FOLDERS = [
 ]
 
 
+# Статусы заказа, при которых заявка на замер не в работе. Любой другой статус
+# (в т. ч. «Оплачен», «В производстве») заявку не снимает: менеджер мог перевести
+# заказ дальше, а замер всё ещё нужен.
+MEASUREMENT_PARKED_ORDER_STATUSES = [
+    OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.COMPLETED, OrderStatus.CANCELLED,
+]
+
+
 def exclude_parked_measurements(qs):
     """
-    Невыполненный замер заказа в «Создан» / «Не актуален» — не в работе: заказ
-    вернули из «Не актуален», а заявку менеджер ещё не подал заново (или заказ
-    отменили). В рабочие папки СМ такой замер не попадает; выполненные остаются.
+    Невыполненный замер заказа в «Создан» / «Выполнен» / «Не актуален» — не в
+    работе: заказ вернули из «Не актуален», а заявку менеджер ещё не подал заново
+    (или заказ закрыли). В рабочие папки СМ такой замер не попадает; выполненные
+    остаются.
     """
     return qs.exclude(
         is_done=False,
-        request__order__status__in=[OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.CANCELLED],
+        request__order__status__in=MEASUREMENT_PARKED_ORDER_STATUSES,
     )
 
 
@@ -1723,7 +1732,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         Список замеров + строки-заявки, по которым замер ещё не создан.
 
         В папке «Назначить замер» и «Все» дополнительно показываем заявки без
-        созданного замера (order.status = measurement_requested/not_planned) — иначе
+        созданного замера (заказ не в «Создан» / «Выполнен» / «Не актуален») — иначе
         СМ не видел бы в «Замерах» заявки, которые нужно взять в работу (они висели
         только в «Заказах»). Такие строки помечены is_request_only и ведут в заказ.
         """
@@ -1759,10 +1768,11 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         accessible = get_orders_queryset_for_user(request.user).values_list('id', flat=True)
         qs = MeasurementRequest.objects.filter(
             order_id__in=list(accessible),
-            order__status__in=[OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_NOT_PLANNED],
             measurements__isnull=True,
             # Признанные неактуальными заявки из работы уходят — как и замеры
             is_irrelevant=False,
+        ).exclude(
+            order__status__in=MEASUREMENT_PARKED_ORDER_STATUSES,
         ).select_related('order', 'order__manager', 'order__salon')
         return self._search_requests(qs, request)
 
