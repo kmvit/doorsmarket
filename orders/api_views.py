@@ -11,7 +11,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.conf import settings
@@ -328,28 +328,83 @@ MEASUREMENT_PARKED_ORDER_STATUSES = [
 ]
 
 
-# Статусы, у которых своя папка по ходу замера. Заказ в любом другом рабочем
-# статусе («Оплачен», «В производстве», …) с ещё не назначенным замером
-# показываем в «Заявка на замер».
-MEASUREMENT_FLOW_ORDER_STATUSES = [
-    OrderStatus.MEASUREMENT_REQUESTED, OrderStatus.MEASUREMENT_SCHEDULED,
-    OrderStatus.MEASUREMENT_NOT_PLANNED, OrderStatus.MEASUREMENT_NOT_DONE,
+# Статусы, в которых заказ идёт своим ходом: оплачен и дальше. Если заявку на
+# замер подали, а заказ уже оплатили, статус заказа замер не трогает — по папкам
+# замера («Заявка на замер», «Замер запланирован», …) такой заказ проходит по
+# состоянию самого замера (см. own_flow_measurement_folders).
+ORDER_OWN_FLOW_STATUSES = [
+    OrderStatus.PAID, OrderStatus.IN_PRODUCTION, OrderStatus.ON_WAREHOUSE, OrderStatus.SHIPPED,
 ]
 
 
-def _orders_with_unscheduled_request():
+def measurement_moves_order_status(order):
+    """Двигают ли действия по замеру статус заказа (нет — у оплаченного и дальше)."""
+    return order.status not in ORDER_OWN_FLOW_STATUSES
+
+
+# Пороги просрочек — как у кронов check_measurement_not_planned / _not_processed
+NOT_PLANNED_WORKDAYS = 1
+NOT_PROCESSED_WORKDAYS = 2
+
+
+def own_flow_measurement_folders():
     """
-    Заказы, у которых заявка на замер ждёт СМ: замер не создан или создан без
-    даты. Выполненные прежние замеры (повторный замер) не мешают.
+    Папки замера для заказов «своим ходом» (ORDER_OWN_FLOW_STATUSES): папка →
+    id заказов. Этап берём из текущего замера заявки, просрочки считаем так же,
+    как кроны. «Замер обработан» — пока менеджер не сменил статус заказа после
+    обработки, как у обычного заказа: обработали → перевели дальше.
     """
-    unscheduled = Measurement.objects.filter(
-        request=OuterRef('pk'), is_done=False, measurement_date__isnull=True,
-    )
-    any_measurement = Measurement.objects.filter(request=OuterRef('pk'))
-    return MeasurementRequest.objects.filter(
-        Q(Exists(unscheduled)) | ~Q(Exists(any_measurement)),
-        is_irrelevant=False,
-    ).values('order_id')
+    from .workdays import workdays_between
+
+    now = timezone.now()
+    today = timezone.localdate()
+    folders = {}
+    processed = {}  # order_id → (статус заказа, когда обработан замер)
+
+    def put(folder, order_id):
+        folders.setdefault(folder, set()).add(order_id)
+
+    requests = MeasurementRequest.objects.filter(
+        is_irrelevant=False, order__status__in=ORDER_OWN_FLOW_STATUSES,
+    ).select_related('order').prefetch_related('measurements')
+    for mr in requests:
+        m = mr.measurement
+        if m is None or (not m.is_done and m.measurement_date is None):
+            started = mr.created_at
+            if m and m.repeat_requested_at and m.repeat_requested_at > started:
+                started = m.repeat_requested_at
+            overdue = workdays_between(started, today) > NOT_PLANNED_WORKDAYS
+            put('measurement_not_planned' if overdue else 'measurement_requested', mr.order_id)
+        elif not m.is_done:
+            if m.measurement_date < now:
+                put('measurement_not_done', mr.order_id)
+                continue
+            put('measurement_scheduled', mr.order_id)
+            day = timezone.localtime(m.measurement_date).date()
+            if day == today:
+                put('today_measurement', mr.order_id)
+            elif day == today + timedelta(days=1):
+                put('tomorrow_measurement', mr.order_id)
+        elif not m.is_processed:
+            overdue = m.done_at and workdays_between(m.done_at, today) > NOT_PROCESSED_WORKDAYS
+            put('measurement_not_processed' if overdue else 'measurement_done', mr.order_id)
+        elif m.processed_at:
+            processed[mr.order_id] = (mr.order.status, m.processed_at)
+
+    if processed:
+        # Когда заказ получил текущий статус. Обработали замер позже — заказ
+        # в «Замер обработан»; сменили статус после обработки — замер закрыт.
+        entered = {}
+        logs = OrderActivityLog.objects.filter(
+            order_id__in=list(processed), kind=ActivityKind.STATUS_CHANGED,
+        ).values_list('order_id', 'new_status', 'created_at')
+        for order_id, new_status, at in logs:
+            if new_status == processed[order_id][0] and (order_id not in entered or at > entered[order_id]):
+                entered[order_id] = at
+        for order_id, (_, processed_at) in processed.items():
+            if order_id in entered and processed_at > entered[order_id]:
+                put('measurement_processed', order_id)
+    return folders
 
 
 # Папки заказов, которые описывают работу по замеру. Заявку, признанную
@@ -366,6 +421,9 @@ MEASUREMENT_WORK_FOLDERS = frozenset({
     'measurement_not_processed',
 })
 
+# Папки, куда попадает заказ «своим ходом» по состоянию замера
+MEASUREMENT_STAGE_FOLDERS = MEASUREMENT_WORK_FOLDERS | {'measurement_done', 'measurement_processed'}
+
 
 # Папки, которые показывают заказы с назначенным на конкретный день замером.
 # В них список идёт по времени выезда, а не по дате создания заказа.
@@ -379,10 +437,20 @@ def _orders_with_open_measurement_on(day):
     ).values('request__order_id')
 
 
-def apply_order_folder(qs, folder):
-    """Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений."""
+def apply_order_folder(qs, folder, own_flow=None):
+    """
+    Применяет фильтр папки к queryset заказов. Неизвестная папка → без изменений.
+    own_flow — готовый результат own_flow_measurement_folders(), чтобы счётчики
+    по всем папкам не считали его заново для каждой.
+    """
     if not folder:
         return qs
+    if folder in MEASUREMENT_STAGE_FOLDERS:
+        if own_flow is None:
+            own_flow = own_flow_measurement_folders()
+        own_q = Q(id__in=own_flow.get(folder, set()))
+    else:
+        own_q = Q(pk__in=[])
     if folder in MEASUREMENT_WORK_FOLDERS:
         qs = qs.exclude(measurement_request__is_irrelevant=True)
     if folder == 'created':
@@ -392,25 +460,21 @@ def apply_order_folder(qs, folder):
             Q(status=OrderStatus.ACTIVE)
             | Q(status=OrderStatus.DRAFT, measurement_request__isnull=True),
         )
-    if folder == 'measurement_requested':
-        return qs.filter(
-            Q(status=OrderStatus.MEASUREMENT_REQUESTED)
-            | (
-                ~Q(status__in=MEASUREMENT_PARKED_ORDER_STATUSES + MEASUREMENT_FLOW_ORDER_STATUSES)
-                & Q(id__in=_orders_with_unscheduled_request())
-            ),
-        )
     if folder == 'today_measurement':
         # «Сегодня замер» = запланирован + дата замера сегодня
         return qs.filter(
-            status=OrderStatus.MEASUREMENT_SCHEDULED,
-            id__in=_orders_with_open_measurement_on(timezone.localdate()),
+            Q(
+                status=OrderStatus.MEASUREMENT_SCHEDULED,
+                id__in=_orders_with_open_measurement_on(timezone.localdate()),
+            ) | own_q,
         )
     if folder == 'tomorrow_measurement':
         # «Замеры на завтра» = запланирован + дата замера завтра
         return qs.filter(
-            status=OrderStatus.MEASUREMENT_SCHEDULED,
-            id__in=_orders_with_open_measurement_on(timezone.localdate() + timedelta(days=1)),
+            Q(
+                status=OrderStatus.MEASUREMENT_SCHEDULED,
+                id__in=_orders_with_open_measurement_on(timezone.localdate() + timedelta(days=1)),
+            ) | own_q,
         )
     if folder == 'designer_payouts':
         # Заказ с дизайнером ушёл в производство (и дальше), а выплату ещё не отметили
@@ -419,7 +483,7 @@ def apply_order_folder(qs, folder):
             status__in=DESIGNER_PAYOUT_STATUSES, designer_paid_at__isnull=True,
         )
     if folder in OrderStatus.values:
-        return qs.filter(status=folder)
+        return qs.filter(Q(status=folder) | own_q)
     return qs
 
 
@@ -573,12 +637,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         if request.query_params.get('mine') == 'true':
             base = base.filter(manager=request.user)
         result = []
+        own_flow = own_flow_measurement_folders()
         for folder, label, overdue in ORDER_FOLDERS:
             result.append({
                 'folder': folder,
                 'label': label,
                 'overdue': overdue,
-                'count': apply_order_folder(base, folder).count(),
+                'count': apply_order_folder(base, folder, own_flow).count(),
             })
         return Response(result)
 
@@ -995,7 +1060,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 ActivityKind.MEASUREMENT_REQUESTED, actor=request.user, description=description,
             )
         if is_create or is_resubmit:
-            order.status = OrderStatus.MEASUREMENT_REQUESTED
+            if measurement_moves_order_status(order):
+                order.status = OrderStatus.MEASUREMENT_REQUESTED
             order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED, save=False)
             order.save()
         elif address_provided:
@@ -2035,7 +2101,8 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.is_draft = False
         m.save(update_fields=['is_done', 'done_at', 'is_draft', 'updated_at'])
         order = m.request.order
-        order.status = OrderStatus.MEASUREMENT_DONE
+        if measurement_moves_order_status(order):
+            order.status = OrderStatus.MEASUREMENT_DONE
         order.touch_activity(ActivityKind.MEASUREMENT_DONE, save=False)
         order.save()
         # SMS клиенту: «Замер выполнен. Скачать {ссылка PDF}»
@@ -2102,7 +2169,8 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         m.processed_at = timezone.now()
         m.save(update_fields=['is_processed', 'processed_at', 'updated_at'])
         order = m.request.order
-        order.status = OrderStatus.MEASUREMENT_PROCESSED
+        if measurement_moves_order_status(order):
+            order.status = OrderStatus.MEASUREMENT_PROCESSED
         order.touch_activity(ActivityKind.MEASUREMENT_PROCESSED, save=False)
         order.save()
         return Response(MeasurementSerializer(m, context={'request': request}).data)
@@ -2148,9 +2216,12 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         description = f'Назначен повторный замер №{m.id} (к замеру №{prev.id})'
         if reason:
             description = f'{description}. Причина: {reason}'
-        order.change_status(
-            OrderStatus.MEASUREMENT_REQUESTED, actor=request.user, description=description,
-        )
+        if measurement_moves_order_status(order):
+            order.change_status(
+                OrderStatus.MEASUREMENT_REQUESTED, actor=request.user, description=description,
+            )
+        else:
+            order.log_activity(ActivityKind.MEASUREMENT_REQUESTED, actor=request.user, description=description)
         order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED)
 
         # Push сервис-менеджеру этого замера — он уже считал замер закрытым

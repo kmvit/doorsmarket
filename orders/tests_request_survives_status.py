@@ -5,8 +5,11 @@
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
         python manage.py test orders.tests_request_survives_status
 """
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from orders.models import Measurement, MeasurementRequest, Order, OrderStatus, Salon
@@ -82,10 +85,11 @@ class RequestSurvivesStatusChangeTest(TestCase):
         # Замер создан без даты — заявка всё ещё ждёт
         m = Measurement.objects.create(request=self.mr, service_manager=self.sm)
         self.assertIn(self.order.id, self._order_folder()[0])
-        # Дату назначили — из «Заявка на замер» уходит
-        m.measurement_date = '2026-11-01T10:00:00+03:00'
+        # Дату назначили — из «Заявка на замер» уходит в «Замер запланирован»
+        m.measurement_date = timezone.now() + timedelta(days=3)
         m.save()
         self.assertNotIn(self.order.id, self._order_folder()[0])
+        self.assertIn(self.order.id, self._order_folder('measurement_scheduled')[0])
 
     def test_finished_or_done_order_not_in_requested_folder(self):
         Measurement.objects.create(request=self.mr, service_manager=self.sm, is_done=True)
@@ -99,3 +103,77 @@ class RequestSurvivesStatusChangeTest(TestCase):
         self.mr.is_irrelevant = True
         self.mr.save()
         self.assertNotIn(self.order.id, self._order_folder()[0])
+
+
+class OwnFlowOrderMeasurementFoldersTest(TestCase):
+    """
+    Оплаченный заказ с заявкой проходит по всем папкам замера по состоянию
+    замера, а его собственный статус («Оплачен») замер не меняет.
+    """
+
+    _order_folder = RequestSurvivesStatusChangeTest._order_folder
+
+    def setUp(self):
+        RequestSurvivesStatusChangeTest.setUp(self)
+        self.order.lift_available = True
+        self.order.stairs_available = True
+        self.order.carry_to_entrance = False
+        self.order.floor_number = '3'
+        self.order.save()
+        # Оплатили, пока заявка ждала замера — как в журнале через change_status
+        self.order.change_status(OrderStatus.PAID, actor=self.manager, notify=False)
+        self.m = Measurement.objects.create(
+            request=self.mr, service_manager=self.sm, measurement_date=timezone.now() + timedelta(days=1),
+        )
+
+    def _in(self, folder):
+        return self.order.id in self._order_folder(folder)[0]
+
+    def test_scheduled_and_tomorrow(self):
+        self.assertTrue(self._in('measurement_scheduled'))
+        self.assertTrue(self._in('tomorrow_measurement'))
+        self.assertFalse(self._in('measurement_requested'))
+        self.assertTrue(self._in('paid'))  # и в своей папке «Оплачен»
+
+    def test_overdue_visit_is_not_done(self):
+        self.m.measurement_date = timezone.now() - timedelta(hours=2)
+        self.m.save()
+        self.assertTrue(self._in('measurement_not_done'))
+        self.assertFalse(self._in('measurement_scheduled'))
+
+    def test_request_waiting_long_is_not_planned(self):
+        self.m.delete()
+        MeasurementRequest.objects.filter(pk=self.mr.pk).update(created_at=timezone.now() - timedelta(days=7))
+        self.assertTrue(self._in('measurement_not_planned'))
+        self.assertFalse(self._in('measurement_requested'))
+
+    def test_done_and_processed_keep_paid_status(self):
+        self.client.force_authenticate(self.sm)
+        self.assertEqual(self.client.post(f'/api/v1/measurements/{self.m.id}/mark_done/').status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertTrue(self._in('measurement_done'))
+        self.assertFalse(self._in('measurement_scheduled'))
+
+        self.assertEqual(self.client.post(f'/api/v1/measurements/{self.m.id}/mark_processed/').status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.PAID)
+        self.assertTrue(self._in('measurement_processed'))
+        self.assertFalse(self._in('measurement_done'))
+
+        # Менеджер перевёл заказ дальше — замер для папок закрыт
+        self.order.change_status(OrderStatus.IN_PRODUCTION, actor=self.manager, notify=False)
+        self.assertFalse(self._in('measurement_processed'))
+
+    def test_done_long_ago_is_not_processed(self):
+        Measurement.objects.filter(pk=self.m.pk).update(is_done=True, done_at=timezone.now() - timedelta(days=7))
+        self.assertTrue(self._in('measurement_not_processed'))
+
+    def test_normal_paid_order_not_in_measurement_folders(self):
+        # Обычный цикл: замер обработан, потом заказ оплатили — в папках замера его нет
+        Measurement.objects.filter(pk=self.m.pk).update(
+            is_done=True, done_at=timezone.now() - timedelta(days=3),
+            is_processed=True, processed_at=timezone.now() - timedelta(days=2),
+        )
+        for folder in ('measurement_processed', 'measurement_done', 'measurement_scheduled', 'measurement_requested'):
+            self.assertFalse(self._in(folder), folder)
