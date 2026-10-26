@@ -60,6 +60,13 @@ const OrderList = () => {
     ? (FOLDER_LABELS[folder] || ORDER_STATUS_DISPLAY[folder as OrderStatus] || folder)
     : ''
 
+  // Зашли в папку с главной — сохранённый в сеансе фильтр статуса сбрасываем.
+  // Иначе он пересекается с папкой: в «Заявка на замер» есть и оплаченные заказы
+  // с неназначенным замером, и список расходился со счётчиком на плитке.
+  useEffect(() => {
+    if (folder && statusFilter.length) setStatusFilter([])
+  }, [folder])
+
   const clearFolder = () => {
     const next = new URLSearchParams(searchParams)
     next.delete('folder')
