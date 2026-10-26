@@ -63,9 +63,13 @@ const OrderList = () => {
   // Зашли в папку с главной — сохранённый в сеансе фильтр статуса сбрасываем.
   // Иначе он пересекается с папкой: в «Заявка на замер» есть и оплаченные заказы
   // с неназначенным замером, и список расходился со счётчиком на плитке.
+  // Менеджер приходит с главной с ?mine=1: плитки «Наработок» считают только его
+  // заказы — и список показываем так же, иначе в нём оказываются чужие.
+  const mineParam = searchParams.get('mine') === '1'
   useEffect(() => {
     if (folder && statusFilter.length) setStatusFilter([])
-  }, [folder])
+    if (mineParam) setMyOrders(true)
+  }, [folder, mineParam])
 
   const clearFolder = () => {
     const next = new URLSearchParams(searchParams)
@@ -196,7 +200,7 @@ const OrderList = () => {
           </div>
         )}
         <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
-        {(user?.role === 'service_manager' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'admin') && (
+        {(user?.role === 'manager' || user?.role === 'service_manager' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'admin') && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"
