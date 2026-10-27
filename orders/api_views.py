@@ -353,6 +353,11 @@ def own_flow_measurement_folders():
     id заказов. Этап берём из текущего замера заявки, просрочки считаем так же,
     как кроны. «Замер обработан» — пока менеджер не сменил статус заказа после
     обработки, как у обычного заказа: обработали → перевели дальше.
+
+    Замер, дата которого (или выполнение) была раньше, чем заказ перевели в
+    «Оплачен» и дальше, считаем закрытым: менеджер перевёл заказ сам, не дождавшись
+    кнопки СМ («Замер выполнен» / «Обработан»), — выезд уже был. Без этого старые
+    заказы висели в «Не выполнен» / «Не обработан».
     """
     from .workdays import workdays_between
 
@@ -364,9 +369,25 @@ def own_flow_measurement_folders():
     def put(folder, order_id):
         folders.setdefault(folder, set()).add(order_id)
 
-    requests = MeasurementRequest.objects.filter(
+    requests = list(MeasurementRequest.objects.filter(
         is_irrelevant=False, order__status__in=ORDER_OWN_FLOW_STATUSES,
-    ).select_related('order').prefetch_related('measurements')
+    ).select_related('order').prefetch_related('measurements'))
+
+    # Когда заказ ушёл в «Оплачен» и дальше (начало текущего отрезка «своим ходом»)
+    own = set(ORDER_OWN_FLOW_STATUSES)
+    left_measurement_at = {}
+    logs = OrderActivityLog.objects.filter(
+        order_id__in=[mr.order_id for mr in requests], kind=ActivityKind.STATUS_CHANGED,
+        new_status__in=own,
+    ).exclude(old_status__in=own).values_list('order_id', 'created_at')
+    for order_id, at in logs:
+        if order_id not in left_measurement_at or at > left_measurement_at[order_id]:
+            left_measurement_at[order_id] = at
+
+    def closed_before_own_flow(order_id, moment):
+        left_at = left_measurement_at.get(order_id)
+        return left_at is None or moment < left_at
+
     for mr in requests:
         m = mr.measurement
         if m is None or (not m.is_done and m.measurement_date is None):
@@ -376,6 +397,8 @@ def own_flow_measurement_folders():
             overdue = workdays_between(started, today) > NOT_PLANNED_WORKDAYS
             put('measurement_not_planned' if overdue else 'measurement_requested', mr.order_id)
         elif not m.is_done:
+            if closed_before_own_flow(mr.order_id, m.measurement_date):
+                continue
             if m.measurement_date < now:
                 put('measurement_not_done', mr.order_id)
                 continue
@@ -386,7 +409,9 @@ def own_flow_measurement_folders():
             elif day == today + timedelta(days=1):
                 put('tomorrow_measurement', mr.order_id)
         elif not m.is_processed:
-            overdue = m.done_at and workdays_between(m.done_at, today) > NOT_PROCESSED_WORKDAYS
+            if not m.done_at or closed_before_own_flow(mr.order_id, m.done_at):
+                continue
+            overdue = workdays_between(m.done_at, today) > NOT_PROCESSED_WORKDAYS
             put('measurement_not_processed' if overdue else 'measurement_done', mr.order_id)
         elif m.processed_at:
             processed[mr.order_id] = (mr.order.status, m.processed_at)

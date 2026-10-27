@@ -12,7 +12,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from orders.models import Measurement, MeasurementRequest, Order, OrderStatus, Salon
+from orders.models import Measurement, OrderActivityLog, MeasurementRequest, Order, OrderStatus, Salon
 from users.models import City
 
 User = get_user_model()
@@ -37,8 +37,8 @@ class RequestSurvivesStatusChangeTest(TestCase):
         self.client.force_authenticate(self.sm)
 
     def _set_status(self, status):
-        self.order.status = status
-        self.order.save()
+        # Как в работе: смена статуса пишется в журнал
+        self.order.change_status(status, actor=self.manager, notify=False)
 
     def _rows(self, folder=None):
         params = {'folder': folder} if folder else {}
@@ -126,6 +126,9 @@ class OwnFlowOrderMeasurementFoldersTest(TestCase):
             request=self.mr, service_manager=self.sm, measurement_date=timezone.now() + timedelta(days=1),
         )
 
+    def _paid_days_ago(self, days):
+        OrderActivityLog.objects.filter(order=self.order).update(created_at=timezone.now() - timedelta(days=days))
+
     def _in(self, folder):
         return self.order.id in self._order_folder(folder)[0]
 
@@ -136,6 +139,7 @@ class OwnFlowOrderMeasurementFoldersTest(TestCase):
         self.assertTrue(self._in('paid'))  # и в своей папке «Оплачен»
 
     def test_overdue_visit_is_not_done(self):
+        self._paid_days_ago(3)
         self.m.measurement_date = timezone.now() - timedelta(hours=2)
         self.m.save()
         self.assertTrue(self._in('measurement_not_done'))
@@ -166,6 +170,7 @@ class OwnFlowOrderMeasurementFoldersTest(TestCase):
         self.assertFalse(self._in('measurement_processed'))
 
     def test_done_long_ago_is_not_processed(self):
+        self._paid_days_ago(10)
         Measurement.objects.filter(pk=self.m.pk).update(is_done=True, done_at=timezone.now() - timedelta(days=7))
         self.assertTrue(self._in('measurement_not_processed'))
 
@@ -177,3 +182,14 @@ class OwnFlowOrderMeasurementFoldersTest(TestCase):
         )
         for folder in ('measurement_processed', 'measurement_done', 'measurement_scheduled', 'measurement_requested'):
             self.assertFalse(self._in(folder), folder)
+
+    def test_order_moved_on_after_visit_closes_measurement(self):
+        # Выезд был, СМ не нажал «Выполнен», менеджер перевёл заказ дальше сам
+        Measurement.objects.filter(pk=self.m.pk).update(measurement_date=timezone.now() - timedelta(days=5))
+        self.assertFalse(self._in('measurement_not_done'))
+        self.assertTrue(self._in('paid'))
+
+    def test_order_moved_on_after_done_closes_processing(self):
+        Measurement.objects.filter(pk=self.m.pk).update(is_done=True, done_at=timezone.now() - timedelta(days=7))
+        self.assertFalse(self._in('measurement_not_processed'))
+        self.assertFalse(self._in('measurement_done'))
