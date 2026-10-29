@@ -427,6 +427,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'production_start_date', 'production_deadline', 'is_overdue',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'lift_impossible_warning',
+            'installation_not_needed_at',
         ]
 
     def get_is_overdue(self, obj):

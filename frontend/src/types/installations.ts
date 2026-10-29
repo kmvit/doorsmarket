@@ -1,0 +1,160 @@
+export type InstallationStatus =
+  | 'not_planned'
+  | 'planned'
+  | 'not_ready'
+  | 'awaiting_signature'
+  | 'partially_done'
+  | 'done'
+  | 'irrelevant'
+
+export const INSTALLATION_STATUS_DISPLAY: Record<InstallationStatus, string> = {
+  not_planned: 'Не запланирован',
+  planned: 'Запланирован',
+  not_ready: 'Не готов к монтажу',
+  awaiting_signature: 'Ожидает подписи клиента',
+  partially_done: 'Частично завершён',
+  done: 'Завершён',
+  irrelevant: 'Не актуален',
+}
+
+export const INSTALLATION_STATUS_COLOR: Record<InstallationStatus, string> = {
+  not_planned: 'bg-amber-100 text-amber-800',
+  planned: 'bg-blue-100 text-blue-800',
+  not_ready: 'bg-orange-100 text-orange-800',
+  awaiting_signature: 'bg-purple-100 text-purple-800',
+  partially_done: 'bg-cyan-100 text-cyan-800',
+  done: 'bg-green-100 text-green-800',
+  irrelevant: 'bg-gray-200 text-gray-700',
+}
+
+export const INSTALLATION_STATUS_ORDER: InstallationStatus[] = [
+  'not_planned', 'planned', 'not_ready', 'awaiting_signature', 'partially_done', 'done', 'irrelevant',
+]
+
+export const CLOSED_INSTALLATION_STATUSES: InstallationStatus[] = ['done', 'irrelevant']
+
+export type InstallationFileKind =
+  | 'measurement_blank'
+  | 'final_kp'
+  | 'installation_kp'
+  | 'drawings'
+  | 'extra'
+  | 'photo'
+  | 'video'
+
+export const INSTALLATION_FILE_KIND_DISPLAY: Record<InstallationFileKind, string> = {
+  measurement_blank: 'Бланк замера',
+  final_kp: 'Финальное КП (PDF)',
+  installation_kp: 'КП на монтаж',
+  drawings: 'Чертежи (СНИ)',
+  extra: 'Дополнительные документы',
+  photo: 'Фото',
+  video: 'Видео',
+}
+
+export const INSTALLATION_FILE_KINDS: InstallationFileKind[] = [
+  'measurement_blank', 'final_kp', 'installation_kp', 'drawings', 'extra', 'photo', 'video',
+]
+
+export interface InstallationFile {
+  id: number
+  installation: number
+  kind: InstallationFileKind
+  kind_display: string
+  file_url: string | null
+  file_size: string
+  attachment_type: 'photo' | 'video' | 'document'
+  name: string
+  created_at: string
+}
+
+/** Документ заказа, который сам попадает в пакет: КП заказа, бланк выполненного замера */
+export interface OrderDocument {
+  kind: 'order_kp' | 'order_measurement'
+  kind_display: string
+  name: string
+  file_url: string
+}
+
+export interface Installation {
+  id: number
+  order: number
+  status: InstallationStatus
+  status_display: string
+  is_paid: boolean
+  client_name: string
+  address: string
+  kp_number: string
+  salon_name: string
+  city_name: string
+  manager_name: string
+  contact_name: string
+  contact_phone: string
+  work_description: string
+  collection_finish: string
+  planned_delivery_date: string | null
+  desired_date_comment: string
+  files: InstallationFile[]
+  order_documents: OrderDocument[]
+  created_at: string
+  updated_at: string
+  // Только в карточке
+  created_by_name?: string
+  order_status_display?: string
+  measurement_blank_required?: boolean
+}
+
+export interface InstallationEvent {
+  id: number
+  kind: string
+  kind_display: string
+  actor_name: string
+  description: string
+  old_status: string
+  new_status: string
+  created_at: string
+}
+
+export interface InstallationPrefill {
+  order: number
+  client_name: string
+  address: string
+  kp_number: string
+  contact_name: string
+  contact_phone: string
+  measurement_blank_required: boolean
+  installations_count: number
+}
+
+export interface InstallationFields {
+  is_paid: boolean
+  work_description: string
+  collection_finish: string
+  planned_delivery_date: string | null
+  desired_date_comment: string
+  contact_name: string
+  contact_phone: string
+}
+
+export interface InstallationFilters {
+  status?: InstallationStatus[]
+  is_paid?: boolean
+  exclude_closed?: boolean
+  mine?: boolean
+  search?: string
+  order?: number
+  cities?: string[]
+  salons?: string[]
+  managers?: string[]
+}
+
+/** Список монтажей видят все роли модуля заказов, кроме монтажника */
+export const canSeeInstallations = (role?: string) =>
+  !!role && ['manager', 'service_manager', 'leader', 'group_leader', 'admin'].includes(role)
+
+/** Оформляет монтаж менеджер (и роли с его правами) */
+export const canCreateInstallation = (role?: string) =>
+  !!role && ['manager', 'leader', 'group_leader', 'admin'].includes(role)
+
+export const formatDate = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'

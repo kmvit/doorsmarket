@@ -377,6 +377,8 @@ export interface Order {
   last_activity_kind: ActivityKind
   last_activity_kind_display: string
   lift_impossible_warning: string | null
+  // «Монтаж не нужен» — когда менеджер это отметил (null — не отмечено)
+  installation_not_needed_at?: string | null
 }
 
 export interface OrderListItem {

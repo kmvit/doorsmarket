@@ -291,6 +291,23 @@ const Header = () => {
                 </Link>
               )}
 
+              {/* Монтажи — общий список города; монтажнику и СМ «только замеры» не показываем */}
+              {isOrdersModule && ORDERS_ROLES.includes(user.role) && !measurementsOnly && (
+                <Link
+                  to="/orders/installations"
+                  className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+                    location.pathname.startsWith('/orders/installations')
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-700 hover:text-primary-600 hover:bg-primary-50'
+                  }`}
+                >
+                  <svg className="hidden 2xl:block h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                  </svg>
+                  Монтажи
+                </Link>
+              )}
+
               {/* Справочник дизайнеров — менеджеру, руководителю, админу в модуле заказов */}
               {isOrdersModule && ['manager', 'leader', 'group_leader', 'admin'].includes(user.role) && (
                 <Link
@@ -507,6 +524,19 @@ const Header = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                 </svg>
                 Наработки
+              </Link>
+            )}
+
+            {ORDERS_ROLES.includes(user.role) && !measurementsOnly && (
+              <Link
+                to="/orders/installations"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+              >
+                <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                </svg>
+                Монтажи
               </Link>
             )}
 

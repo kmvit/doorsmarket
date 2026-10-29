@@ -26,6 +26,9 @@ import OrderReplaceKp from './pages/Orders/OrderReplaceKp'
 import OrderAppendKp from './pages/Orders/OrderAppendKp'
 import PrettyOfferPage from './pages/Orders/PrettyOfferPage'
 import Workshop from './pages/Orders/Workshop'
+import InstallationList from './pages/Installations/InstallationList'
+import InstallationDetail from './pages/Installations/InstallationDetail'
+import InstallationForm from './pages/Installations/InstallationForm'
 import DesignerReport from './pages/Reports/DesignerReport'
 import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
 import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
@@ -228,6 +231,46 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <OrderCreate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/installations"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InstallationList />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/installations/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InstallationForm />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/installations/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InstallationDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/installations/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InstallationForm />
                     </Layout>
                   </ProtectedRoute>
                 }

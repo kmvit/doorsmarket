@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'orders.apps.OrdersConfig',
     'catalog.apps.CatalogConfig',
     'maxbot.apps.MaxbotConfig',
+    'installations.apps.InstallationsConfig',
 ]
 
 MIDDLEWARE = [

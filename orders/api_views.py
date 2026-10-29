@@ -271,6 +271,7 @@ ORDER_FOLDERS = [
     ('completed', 'Выполнен', False),
     ('cancelled', 'Не актуален', False),
     ('designer_payouts', 'Выплаты дизайнерам', False),
+    ('installation_needed', 'Оформить монтаж', False),
     ('measurement_not_planned', 'Не запланирован', True),
     ('measurement_not_done', 'Не выполнен', True),
     ('measurement_not_processed', 'Не обработан', True),
@@ -507,6 +508,13 @@ def apply_order_folder(qs, folder, own_flow=None):
             has_designer=True, designer__isnull=False,
             status__in=DESIGNER_PAYOUT_STATUSES, designer_paid_at__isnull=True,
         )
+    if folder == 'installation_needed':
+        # Заказ на складе или отгружен, монтаж по нему не оформлен и менеджер
+        # не отметил «Монтаж не нужен»
+        return qs.filter(
+            status__in=[OrderStatus.ON_WAREHOUSE, OrderStatus.SHIPPED],
+            installation_not_needed_at__isnull=True,
+        ).exclude(installations__isnull=False)
     if folder in OrderStatus.values:
         return qs.filter(Q(status=folder) | own_q)
     return qs

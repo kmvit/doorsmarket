@@ -16,6 +16,7 @@ const FOLDER_LABELS: Record<string, string> = {
   today_measurement: 'Сегодня замер',
   tomorrow_measurement: 'Замеры на завтра',
   designer_payouts: 'Выплаты дизайнерам',
+  installation_needed: 'Оформить монтаж',
 }
 
 // Папки дня замера: в них список идёт по времени выезда (сортирует бэкенд),

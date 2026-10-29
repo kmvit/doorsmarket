@@ -32,5 +32,6 @@ urlpatterns = [
     path('api/v1/', include('orders.urls')),
     path('api/v1/', include('catalog.urls')),
     path('api/v1/', include('maxbot.urls')),
+    path('api/v1/', include('installations.urls')),
     path('', include('projects.urls')),
 ]

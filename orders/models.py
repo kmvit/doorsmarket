@@ -131,6 +131,8 @@ class ActivityKind(models.TextChoices):
     MEASUREMENT_PROCESSED = 'measurement_processed', 'Замер обработан'
     SMS_SENT = 'sms_sent', 'Отправлено SMS клиенту'
     DESIGNER_PAID = 'designer_paid', 'Выплата дизайнеру'
+    INSTALLATION_CREATED = 'installation_created', 'Оформлен монтаж'
+    INSTALLATION_NOT_NEEDED = 'installation_not_needed', 'Монтаж не нужен'
 
 
 class Order(models.Model):
@@ -253,6 +255,15 @@ class Order(models.Model):
     )
     production_deadline = models.DateField(
         null=True, blank=True, verbose_name='Дата готовности',
+    )
+    # «Монтаж не нужен»: заказ на складе / отгружен, но монтаж не оформляем —
+    # он уходит из папки «Оформить монтаж». Менеджер может решение отменить.
+    installation_not_needed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Монтаж не нужен (когда отмечено)',
+    )
+    installation_not_needed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто отметил «Монтаж не нужен»',
     )
 
     class Meta:

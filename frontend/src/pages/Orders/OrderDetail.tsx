@@ -15,6 +15,8 @@ import HScrollSync from '../../components/common/HScrollSync'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 import FileViewer from '../../components/common/FileViewer'
 import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
+import OrderInstallationsBlock from '../../components/installations/OrderInstallationsBlock'
+import { canCreateInstallation, canSeeInstallations } from '../../types/installations'
 
 const yesNo = (v: boolean | null | undefined, yes = 'Да', no = 'Нет') =>
   v === true ? yes : v === false ? no : '—'
@@ -639,6 +641,17 @@ const OrderDetail = () => {
           )}
         </div>
       </div>
+
+      {/* Монтажи заказа: оформить, «Монтаж не нужен» */}
+      {canSeeInstallations(user?.role) && !user?.measurements_only && (
+        <OrderInstallationsBlock
+          orderId={order.id}
+          orderStatus={order.status}
+          notNeededAt={order.installation_not_needed_at}
+          canCreate={canCreateInstallation(user?.role)}
+          onChanged={reloadOrder}
+        />
+      )}
 
       {/* Документы и фото/видео по заказу (лист «Заказ» в ТЗ) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
