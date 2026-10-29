@@ -6,6 +6,8 @@ import { authAPI } from '../api/auth'
 import { ordersAPI, workshopAPI } from '../api/orders'
 import { OrderFolderCount } from '../types/orders'
 import { withOfflineFallback } from '../services/offline'
+import { installationsAPI } from '../api/installations'
+import { InstallationFolderCount } from '../types/installations'
 
 interface DashboardStat {
   key: string
@@ -60,6 +62,7 @@ const Dashboard = () => {
   const [reminderTomorrowCount, setReminderTomorrowCount] = useState<number | null>(null)
   const [reminderOverdueCount, setReminderOverdueCount] = useState<number | null>(null)
   const [orderFolders, setOrderFolders] = useState<OrderFolderCount[]>([])
+  const [installationFolders, setInstallationFolders] = useState<InstallationFolderCount[]>([])
 
   const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'group_leader', 'admin'].includes(user.role)
   const isManager = user?.role === 'manager'
@@ -74,6 +77,12 @@ const Dashboard = () => {
       ordersAPI.getFolderCounts().then(setOrderFolders).catch(() => {})
     }
   }, [isManager, isSM, isLeader])
+
+  // Папки монтажей: менеджеру — по его заказам, СМ и руководителю — по городу
+  useEffect(() => {
+    if (!(isManager || isSM || isLeader) || user?.measurements_only) return
+    installationsAPI.getFolderCounts({ mine: isManager }).then(setInstallationFolders).catch(() => {})
+  }, [isManager, isSM, isLeader, user?.measurements_only])
 
   useEffect(() => {
     if (!showWorkshopCard) return
@@ -317,18 +326,28 @@ const Dashboard = () => {
         })()}
 
         {/* Монтажи: заказы на складе / отгруженные без оформленного монтажа */}
-        {(isManager || isLeader) && (() => {
-          const due = orderFolders.find((f) => f.folder === 'installation_needed')
-          if (!due) return null
+        {(isManager || isLeader || isSM) && (() => {
+          const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
+          // Менеджеру — оформить и решить по неактуальности; СМ и руководителю — весь пайплайн
+          const shown = installationFolders.filter((f) => !isManager || f.folder === 'irrelevant_requested')
+          if (!due && shown.length === 0) return null
+          const mine = isManager ? '&mine=1' : ''
           return (
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">Монтажи</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <FolderCard
-                  to={`/orders?folder=installation_needed${isManager ? '&mine=1' : ''}`}
-                  label={due.label}
-                  count={due.count}
-                />
+                {due && (
+                  <FolderCard to={`/orders?folder=installation_needed${mine}`} label={due.label} count={due.count} />
+                )}
+                {shown.map((f) => (
+                  <FolderCard
+                    key={f.folder}
+                    to={`/orders/installations?folder=${f.folder}${mine}`}
+                    label={f.label}
+                    count={f.count}
+                    overdue={f.folder === 'irrelevant_requested'}
+                  />
+                ))}
               </div>
             </div>
           )

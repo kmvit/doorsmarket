@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { installationsAPI } from '../../api/installations'
 import {
   Installation, InstallationStatus, INSTALLATION_STATUS_COLOR, INSTALLATION_STATUS_DISPLAY,
-  INSTALLATION_STATUS_ORDER, canCreateInstallation, formatDate,
+  INSTALLATION_STATUS_ORDER, canCreateInstallation, canEditSchedule, formatDate, formatPeriod,
 } from '../../types/installations'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
@@ -14,6 +14,16 @@ import PeopleFilters, {
   canFilterByPeople, normalizePeopleFilter, EMPTY_PEOPLE_FILTER, PeopleFilterValue,
 } from '../../components/orders/PeopleFilters'
 import OrderPickerModal from './OrderPickerModal'
+import InstallationsTabs from './InstallationsTabs'
+import AssignModal from '../../components/installations/AssignModal'
+
+// Папки с главной (?folder=)
+const FOLDER_LABELS: Record<string, string> = {
+  to_assign: 'Назначить монтаж',
+  planned: 'Запланирован',
+  not_ready: 'Не готов к монтажу',
+  irrelevant_requested: 'Неактуален? Подтвердить',
+}
 
 const STATUS_OPTIONS = INSTALLATION_STATUS_ORDER.map((value) => ({ value, label: INSTALLATION_STATUS_DISPLAY[value] }))
 
@@ -27,6 +37,11 @@ const InstallationList = () => {
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null)
   const [pickingOrder, setPickingOrder] = useState(false)
+  const [assigning, setAssigning] = useState<Installation | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const folder = searchParams.get('folder') || ''
+  const mineParam = searchParams.get('mine') === '1'
+  const canAssign = canEditSchedule(user?.role)
 
   const [search, setSearch] = usePersistedState('installations:search', '')
   const [rawStatus, setStatus] = usePersistedState<InstallationStatus[]>('installations:status', [])
@@ -52,6 +67,7 @@ const InstallationList = () => {
         cities: byPeople ? people.cities : undefined,
         salons: byPeople ? people.salons : undefined,
         managers: byPeople ? people.managers : undefined,
+        folder: folder || undefined,
       }))
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки монтажей')
@@ -59,7 +75,20 @@ const InstallationList = () => {
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople])
+  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder])
+
+  // С главной менеджер приходит с ?mine=1 — плитки считают монтажи по его заказам
+  useEffect(() => {
+    if (mineParam) setMine(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mineParam])
+
+  const clearFolder = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('folder')
+    next.delete('mine')
+    setSearchParams(next)
+  }
 
   useEffect(() => {
     const timer = setTimeout(load, 300)
@@ -71,6 +100,7 @@ const InstallationList = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-[1600px]">
+      <InstallationsTabs active="list" />
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Монтажи</h1>
@@ -89,6 +119,13 @@ const InstallationList = () => {
           </button>
         )}
       </div>
+
+      {folder && (
+        <div className="mb-4 flex items-center gap-2 text-sm bg-primary-50 border border-primary-200 text-primary-800 rounded-xl px-4 py-2">
+          <span>Папка: <strong>{FOLDER_LABELS[folder] || folder}</strong></span>
+          <button onClick={clearFolder} className="ml-auto text-primary-600 hover:underline">Сбросить ✕</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[200px]">
@@ -215,9 +252,27 @@ const InstallationList = () => {
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${INSTALLATION_STATUS_COLOR[it.status]}`}>
                           {it.status_display}
                         </span>
+                        {it.status === 'planned' && it.current_visit && (
+                          <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
+                            <span className="font-semibold">{formatPeriod(it.current_visit.date_from, it.current_visit.date_to)}</span>
+                            {' · '}{it.current_visit.installers.map((u) => u.full_name).join(', ')}
+                          </div>
+                        )}
                         <div className={`mt-1 text-xs font-medium ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>
                           {it.is_paid ? 'Оплачен' : 'Не оплачен'}
                         </div>
+                        {it.irrelevant_requested_at && (
+                          <div className="mt-1 text-xs font-medium text-gray-600">Помечен неактуальным</div>
+                        )}
+                        {canAssign && ['not_planned', 'partially_done', 'planned'].includes(it.status) && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setAssigning(it) }}
+                            className="mt-1 text-xs font-medium text-primary-600 hover:underline"
+                          >
+                            {it.status === 'planned' ? 'Изменить' : 'Назначить'}
+                          </button>
+                        )}
                       </td>
                       <td className={td}>
                         <div className="font-medium text-gray-900">{it.client_name}</div>
@@ -260,6 +315,13 @@ const InstallationList = () => {
       )}
 
       {viewing && <FileViewer fileUrl={viewing.url} fileName={viewing.name} onClose={() => setViewing(null)} />}
+      {assigning && (
+        <AssignModal
+          installation={assigning}
+          onClose={() => setAssigning(null)}
+          onDone={() => { setAssigning(null); load() }}
+        />
+      )}
       {pickingOrder && (
         <OrderPickerModal
           onClose={() => setPickingOrder(false)}

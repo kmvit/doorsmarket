@@ -8,14 +8,63 @@ from marketingdoors.search import NumberAwareSearchFilter
 from orders.api_views import apply_people_filters, get_orders_queryset_for_user, requested_statuses
 
 from . import services
-from .access import CREATE_ROLES, can_see_installations, installations_for_user
+from . import sms
+from .access import (
+    CREATE_ROLES, DECIDE_ROLES, READY_ROLES, SCHEDULE_ROLES, can_see_installations, installations_for_user,
+)
 from .models import (
-    CLOSED_INSTALLATION_STATUSES, EventKind, InstallationFile,
+    CLOSED_INSTALLATION_STATUSES, EventKind, InstallationFile, InstallationStatus, InstallationVisit,
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
     InstallationFileSerializer, InstallationListSerializer, InstallationWriteSerializer,
+    ScheduleVisitSerializer, StaffSerializer,
 )
+
+# Папки списка монтажей (плитки на главной). Порядок — порядок показа.
+INSTALLATION_FOLDERS = [
+    ('to_assign', 'Назначить монтаж'),
+    ('planned', 'Запланирован'),
+    ('not_ready', 'Не готов к монтажу'),
+    ('irrelevant_requested', 'Неактуален? Подтвердить'),
+]
+
+
+def apply_installation_folder(qs, folder):
+    if folder == 'to_assign':
+        # Ждут назначения: новые и частично завершённые (нужен следующий выезд)
+        return qs.filter(status__in=[InstallationStatus.NOT_PLANNED, InstallationStatus.PARTIALLY_DONE])
+    if folder == 'planned':
+        return qs.filter(status=InstallationStatus.PLANNED)
+    if folder == 'not_ready':
+        return qs.filter(status=InstallationStatus.NOT_READY)
+    if folder == 'irrelevant_requested':
+        return qs.filter(irrelevant_requested_at__isnull=False).exclude(status=InstallationStatus.IRRELEVANT)
+    return qs
+
+
+def _parse_date(value):
+    from datetime import date
+    try:
+        return date.fromisoformat(str(value or ''))
+    except ValueError:
+        return None
+
+
+def _ids(value):
+    if isinstance(value, (list, tuple)):
+        items = value
+    else:
+        items = str(value or '').split(',')
+    return [int(v) for v in items if str(v).strip().isdigit()]
+
+
+def _forbidden(message):
+    return Response({'detail': message}, status=status.HTTP_403_FORBIDDEN)
+
+
+def _bad(message):
+    return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CanSeeInstallations(permissions.BasePermission):
@@ -79,6 +128,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             qs = qs.filter(is_paid=is_paid)
         if params.get('mine') == 'true':
             qs = qs.filter(order__manager=request.user)
+        qs = apply_installation_folder(qs, params.get('folder'))
         return apply_people_filters(qs, request, order_path='order__')
 
     def get_serializer_class(self):
@@ -173,6 +223,165 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             )
         services.set_installation_not_needed(order, not_needed, request.user)
         return Response({'order': order.id, 'installation_not_needed_at': order.installation_not_needed_at})
+
+
+    # ---------- Этап 2: распределение по монтажникам ----------
+
+    @action(detail=False, methods=['get'], url_path='folder_counts')
+    def folder_counts(self, request):
+        """Счётчики папок монтажей для главной. ?mine=true — монтажи по своим заказам."""
+        base = installations_for_user(request.user)
+        if request.query_params.get('mine') == 'true':
+            base = base.filter(order__manager=request.user)
+        return Response([
+            {'folder': folder, 'label': label, 'count': apply_installation_folder(base, folder).count()}
+            for folder, label in INSTALLATION_FOLDERS
+        ])
+
+    def _installers_qs(self, request):
+        from django.contrib.auth import get_user_model
+        from orders.serializers import user_city_id
+        qs = get_user_model().objects.filter(role='installer', is_active=True).select_related('city')
+        if request.user.role == 'admin':
+            city = request.query_params.get('city')
+            return qs.filter(city_id=city) if str(city or '').isdigit() else qs
+        if request.user.role == 'group_leader':
+            return qs.filter(city__salons__id__in=request.user.managed_salon_ids()).distinct()
+        return qs.filter(city_id=user_city_id(request.user))
+
+    @action(detail=False, methods=['get'])
+    def installers(self, request):
+        """Монтажники города — для вкладки «Монтажники» и выбора при назначении."""
+        qs = self._installers_qs(request).order_by('first_name', 'last_name', 'username')
+        return Response([
+            {**StaffSerializer(u).data, 'city': u.city_id, 'city_name': u.city.name if u.city else ''}
+            for u in qs
+        ])
+
+    @action(detail=False, methods=['get'])
+    def schedule(self, request):
+        """
+        Выезды в графиках монтажников за период: ?installers=1,2&date_from=&date_to=
+        (без installers — все монтажники, которых видит пользователь).
+        """
+        date_from = _parse_date(request.query_params.get('date_from'))
+        date_to = _parse_date(request.query_params.get('date_to'))
+        if not date_from or not date_to or date_to < date_from:
+            return _bad('Укажите период: date_from и date_to (ГГГГ-ММ-ДД).')
+        if (date_to - date_from).days > 92:
+            return _bad('Период не больше трёх месяцев.')
+        installer_ids = set(self._installers_qs(request).values_list('id', flat=True))
+        requested = set(_ids(request.query_params.get('installers')))
+        if requested:
+            installer_ids &= requested
+        visits = InstallationVisit.objects.filter(
+            installers__in=installer_ids, date_from__lte=date_to, date_to__gte=date_from,
+        ).exclude(installation__status=InstallationStatus.IRRELEVANT).select_related(
+            'installation', 'installation__order',
+        ).prefetch_related('installers').distinct().order_by('date_from', 'id')
+        return Response(ScheduleVisitSerializer(visits, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def assign(self, request, pk=None):
+        """СМ назначает монтаж: {installers: [id], date_from, date_to}."""
+        if request.user.role not in SCHEDULE_ROLES:
+            return _forbidden('Назначает монтажи сервис-менеджер.')
+        inst = self.get_object()
+        allowed = (InstallationStatus.NOT_PLANNED, InstallationStatus.PLANNED, InstallationStatus.PARTIALLY_DONE)
+        if inst.status not in allowed:
+            return _bad(f'Монтаж в статусе «{inst.get_status_display()}» назначить нельзя.')
+        date_from = _parse_date(request.data.get('date_from'))
+        date_to = _parse_date(request.data.get('date_to')) or date_from
+        if not date_from:
+            return _bad('Укажите дату монтажа.')
+        if date_to < date_from:
+            return _bad('Дата окончания раньше даты начала.')
+        installer_ids = _ids(request.data.get('installers'))
+        installers = list(services.city_installers(inst.order.salon.city_id).filter(id__in=installer_ids))
+        if not installers or len(installers) != len(set(installer_ids)):
+            return _bad('Выберите монтажников города, где монтаж.')
+        services.assign(inst, installers=installers, date_from=date_from, date_to=date_to, actor=request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'])
+    def unassign(self, request, pk=None):
+        if request.user.role not in SCHEDULE_ROLES:
+            return _forbidden('Графики правит сервис-менеджер.')
+        inst = self.get_object()
+        if inst.status != InstallationStatus.PLANNED:
+            return _bad('Монтаж не стоит в графике.')
+        services.unassign(inst, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='not_ready')
+    def not_ready(self, request, pk=None):
+        if request.user.role not in SCHEDULE_ROLES:
+            return _forbidden('Отмечает сервис-менеджер.')
+        inst = self.get_object()
+        if inst.status not in (InstallationStatus.NOT_PLANNED, InstallationStatus.PLANNED,
+                               InstallationStatus.PARTIALLY_DONE):
+            return _bad(f'Из статуса «{inst.get_status_display()}» — нельзя.')
+        services.mark_not_ready(inst, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'])
+    def ready(self, request, pk=None):
+        """«Назначить монтаж»: клиент готов — монтаж снова ждёт назначения СМ."""
+        if request.user.role not in READY_ROLES:
+            return _forbidden('Недоступно.')
+        inst = self.get_object()
+        if inst.status != InstallationStatus.NOT_READY:
+            return _bad('Монтаж не в статусе «Не готов к монтажу».')
+        services.mark_ready(inst, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='request_irrelevant')
+    def request_irrelevant(self, request, pk=None):
+        if request.user.role not in SCHEDULE_ROLES:
+            return _forbidden('Пометить неактуальным может сервис-менеджер.')
+        inst = self.get_object()
+        if inst.is_closed or inst.irrelevant_requested_at:
+            return _bad('Монтаж уже закрыт или ждёт решения менеджера.')
+        services.request_irrelevant(inst, (request.data.get('reason') or '').strip()[:500], request.user)
+        return Response(self._detail(inst))
+
+    def _decide(self, request):
+        if request.user.role not in DECIDE_ROLES:
+            return None, _forbidden('Решение по неактуальности принимает менеджер.')
+        inst = self.get_object()
+        if not inst.irrelevant_requested_at or inst.is_closed:
+            return None, _bad('Монтаж не помечен неактуальным.')
+        return inst, None
+
+    @action(detail=True, methods=['post'], url_path='confirm_irrelevant')
+    def confirm_irrelevant(self, request, pk=None):
+        inst, error = self._decide(request)
+        if error:
+            return error
+        services.confirm_irrelevant(inst, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='keep_relevant')
+    def keep_relevant(self, request, pk=None):
+        inst, error = self._decide(request)
+        if error:
+            return error
+        services.keep_relevant(inst, (request.data.get('comment') or '').strip()[:500], request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='notify_call_failed')
+    def notify_call_failed(self, request, pk=None):
+        """СМ не дозвонился до контактного лица — СМС «перезвоните»."""
+        if request.user.role not in SCHEDULE_ROLES:
+            return _forbidden('Отправляет сервис-менеджер.')
+        inst = self.get_object()
+        if inst.is_closed:
+            return _bad('Монтаж закрыт.')
+        if not (inst.contact_phone or inst.order.contact_phone):
+            return _bad('У контактного лица нет телефона.')
+        if not sms.send(inst, sms.call_failed(request.user), actor=request.user, purpose='call_failed'):
+            return _bad('Не удалось отправить СМС.')
+        return Response(self._detail(inst))
 
 
 class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,

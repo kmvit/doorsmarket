@@ -76,12 +76,54 @@ export interface OrderDocument {
   file_url: string
 }
 
+export interface Staff {
+  id: number
+  full_name: string
+  phone_number: string | null
+}
+
+export interface Installer extends Staff {
+  city: number | null
+  city_name: string
+}
+
+/** Выезд: монтаж в графике монтажников на интервал дат */
+export interface InstallationVisit {
+  id: number
+  date_from: string
+  date_to: string
+  installers: Staff[]
+}
+
+/** Выезд в календаре монтажника */
+export interface ScheduleVisit extends InstallationVisit {
+  installation_id: number
+  status: InstallationStatus
+  status_display: string
+  order: number
+  client_name: string
+  address: string
+  work_description: string
+  contact_name: string
+  contact_phone: string
+}
+
+export interface InstallationFolderCount {
+  folder: string
+  label: string
+  count: number
+}
+
 export interface Installation {
   id: number
   order: number
   status: InstallationStatus
   status_display: string
   is_paid: boolean
+  current_visit: InstallationVisit | null
+  irrelevant_requested_at: string | null
+  irrelevant_requested_by_name: string
+  irrelevant_reason: string
   client_name: string
   address: string
   kp_number: string
@@ -102,6 +144,8 @@ export interface Installation {
   created_by_name?: string
   order_status_display?: string
   measurement_blank_required?: boolean
+  order_manager_id?: number
+  visits?: InstallationVisit[]
 }
 
 export interface InstallationEvent {
@@ -146,6 +190,7 @@ export interface InstallationFilters {
   cities?: string[]
   salons?: string[]
   managers?: string[]
+  folder?: string
 }
 
 /** Список монтажей видят все роли модуля заказов, кроме монтажника */
@@ -158,3 +203,19 @@ export const canCreateInstallation = (role?: string) =>
 
 export const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+
+/** Графики монтажников правит СМ */
+export const canEditSchedule = (role?: string) => role === 'service_manager' || role === 'admin'
+
+/** Решение по неактуальности — менеджер */
+export const canDecideIrrelevant = (role?: string) => canCreateInstallation(role)
+
+/** Дата ГГГГ-ММ-ДД по локальному времени (без сдвига в UTC) */
+export const isoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** «10.11» или «10.11–12.11» */
+export const formatPeriod = (from: string, to: string) => {
+  const short = (v: string) => `${v.slice(8, 10)}.${v.slice(5, 7)}`
+  return from === to ? short(from) : `${short(from)}–${short(to)}`
+}

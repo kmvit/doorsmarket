@@ -32,6 +32,14 @@ class EventKind(models.TextChoices):
     STATUS_CHANGED = 'status_changed', 'Изменён статус'
     FILE_ADDED = 'file_added', 'Добавлен файл'
     FILE_DELETED = 'file_deleted', 'Удалён файл'
+    ASSIGNED = 'assigned', 'Назначен монтаж'
+    UNASSIGNED = 'unassigned', 'Снят с графика'
+    NOT_READY = 'not_ready', 'Клиент не готов к монтажу'
+    READY = 'ready', 'Клиент готов к монтажу'
+    IRRELEVANT_REQUESTED = 'irrelevant_requested', 'Помечен неактуальным'
+    IRRELEVANT_CONFIRMED = 'irrelevant_confirmed', 'Неактуальность подтверждена'
+    IRRELEVANT_REJECTED = 'irrelevant_rejected', 'Оставлен в работе'
+    SMS_SENT = 'sms_sent', 'СМС клиенту'
 
 
 class Installation(models.Model):
@@ -69,6 +77,15 @@ class Installation(models.Model):
         related_name='created_installations', verbose_name='Кто оформил',
     )
 
+    # «Не актуален»: СМ помечает, менеджер подтверждает (как у замеров) — до его
+    # решения монтаж остаётся в работе
+    irrelevant_requested_at = models.DateTimeField(null=True, blank=True, verbose_name='Помечен неактуальным')
+    irrelevant_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто пометил неактуальным',
+    )
+    irrelevant_reason = models.CharField(max_length=500, blank=True, verbose_name='Причина неактуальности')
+
     class Meta:
         verbose_name = 'Монтаж'
         verbose_name_plural = 'Монтажи'
@@ -81,11 +98,47 @@ class Installation(models.Model):
     def is_closed(self):
         return self.status in CLOSED_INSTALLATION_STATUSES
 
+    @property
+    def current_visit(self):
+        """Последний выезд (назначение в график) или None. Берёт prefetch, если он есть."""
+        return max(self.visits.all(), key=lambda v: v.id, default=None)
+
     def log(self, kind, actor=None, description='', old_status='', new_status='', meta=None):
         return InstallationEvent.objects.create(
             installation=self, kind=kind, actor=actor, description=description or '',
             old_status=old_status or '', new_status=new_status or '', meta=meta or {},
         )
+
+
+class InstallationVisit(models.Model):
+    """
+    Выезд: монтаж в графике монтажников на интервал дат. Монтажников на выезде
+    может быть несколько; у монтажника в один день — несколько выездов.
+    Монтаж, завершённый частично, получает следующий выезд, прежний остаётся.
+    """
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE, related_name='visits', verbose_name='Монтаж',
+    )
+    date_from = models.DateField(verbose_name='С')
+    date_to = models.DateField(verbose_name='По')
+    installers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name='installation_visits', verbose_name='Монтажники',
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто назначил',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Выезд на монтаж'
+        verbose_name_plural = 'Выезды на монтаж'
+        ordering = ['date_from', 'id']
+        indexes = [models.Index(fields=['date_from', 'date_to'])]
+
+    def __str__(self):
+        return f'Монтаж #{self.installation_id}: {self.date_from}–{self.date_to}'
 
 
 class InstallationFile(models.Model):

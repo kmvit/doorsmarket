@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import {
   CLOSED_INSTALLATION_STATUSES, Installation, InstallationEvent, InstallationFileKind,
-  INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR, formatDate,
+  INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR, formatDate, formatPeriod,
+  canDecideIrrelevant, canEditSchedule, canSeeInstallations,
 } from '../../types/installations'
+import AssignModal from '../../components/installations/AssignModal'
 import PhoneLink from '../../components/common/PhoneLink'
 import FileViewer from '../../components/common/FileViewer'
 
@@ -19,6 +22,9 @@ const InstallationDetail = () => {
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null)
   const [busyKind, setBusyKind] = useState<InstallationFileKind | null>(null)
+  const [assigning, setAssigning] = useState(false)
+  const [acting, setActing] = useState(false)
+  const { user } = useAuthStore()
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +81,40 @@ const InstallationDetail = () => {
     }
   }
 
+  const run = async (
+    name: Parameters<typeof installationsAPI.action>[1],
+    body: Record<string, string> = {},
+    done?: string,
+  ) => {
+    setActing(true)
+    try {
+      setInst(await installationsAPI.action(inst.id, name, body))
+      setEvents(await installationsAPI.getEvents(inst.id).catch(() => events))
+      if (done) alert(done)
+    } catch (err) {
+      alert(apiErrorText(err, 'Не удалось выполнить действие'))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const ask = (question: string, name: Parameters<typeof installationsAPI.action>[1], field?: string) => {
+    if (field) {
+      const text = window.prompt(question)
+      if (text === null) return
+      run(name, { [field]: text.trim() })
+    } else if (window.confirm(question)) {
+      run(name)
+    }
+  }
+
+  const sm = canEditSchedule(user?.role)
+  const assignable = ['not_planned', 'partially_done', 'planned'].includes(inst.status)
+  const pending = !!inst.irrelevant_requested_at && editable
+  const btn = 'px-3 py-1.5 text-sm rounded-lg border transition-all disabled:opacity-50'
+  const btnPrimary = `${btn} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`
+  const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50`
+
   const row = (label: string, value: React.ReactNode) => (
     <div className="py-2 grid grid-cols-1 sm:grid-cols-3 gap-1">
       <dt className="text-sm text-gray-500">{label}</dt>
@@ -111,6 +151,74 @@ const InstallationDetail = () => {
         )}
       </div>
 
+      {pending && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
+          <p className="text-sm text-amber-900">
+            <span className="font-semibold">{inst.irrelevant_requested_by_name || 'Сервис-менеджер'}</span> пометил монтаж
+            неактуальным{inst.irrelevant_reason && <>: «{inst.irrelevant_reason}»</>}. До решения менеджера монтаж в работе.
+          </p>
+          {canDecideIrrelevant(user?.role) && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button type="button" disabled={acting} className={btnPrimary}
+                onClick={() => ask('Подтвердить: монтаж не актуален?', 'confirm_irrelevant')}>
+                Подтвердить неактуальность
+              </button>
+              <button type="button" disabled={acting} className={btnPlain}
+                onClick={() => ask('Комментарий для сервис-менеджера (необязательно):', 'keep_relevant', 'comment')}>
+                Оставить в работе
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {inst.status === 'planned' && inst.current_visit && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-900">
+          Монтаж назначен на <span className="font-semibold">{formatPeriod(inst.current_visit.date_from, inst.current_visit.date_to)}</span>
+          {' · '}монтажник: {inst.current_visit.installers.map((u) => u.full_name).join(', ')}
+        </div>
+      )}
+
+      {editable && (sm || inst.status === 'not_ready') && canSeeInstallations(user?.role) && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {sm && assignable && (
+            <button type="button" disabled={acting} className={btnPrimary} onClick={() => setAssigning(true)}>
+              {inst.status === 'planned' ? 'Изменить назначение' : 'Назначить монтажника'}
+            </button>
+          )}
+          {inst.status === 'not_ready' && (
+            <button type="button" disabled={acting} className={btnPrimary}
+              onClick={() => ask('Клиент готов? Монтаж снова попадёт в «Назначить монтаж».', 'ready')}>
+              Назначить монтаж
+            </button>
+          )}
+          {sm && inst.status === 'planned' && (
+            <button type="button" disabled={acting} className={btnPlain}
+              onClick={() => ask('Снять монтаж с графика монтажников?', 'unassign')}>
+              Снять с графика
+            </button>
+          )}
+          {sm && assignable && (
+            <button type="button" disabled={acting} className={btnPlain}
+              onClick={() => ask('Клиент не готов к монтажу? Дата в графике освободится.', 'not_ready')}>
+              Не готов к монтажу
+            </button>
+          )}
+          {sm && (
+            <button type="button" disabled={acting} className={btnPlain}
+              onClick={() => ask('Отправить клиенту СМС «Мы не дозвонились, перезвоните»?', 'notify_call_failed')}>
+              Не дозвонился — отправить СМС
+            </button>
+          )}
+          {sm && !inst.irrelevant_requested_at && (
+            <button type="button" disabled={acting} className={`${btn} border-red-200 text-red-700 bg-white hover:bg-red-50`}
+              onClick={() => ask('Почему монтаж не актуален? Решение примет менеджер.', 'request_irrelevant', 'reason')}>
+              Не актуален
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
         <dl className="divide-y divide-gray-100">
           {row('Заказ', (
@@ -132,6 +240,13 @@ const InstallationDetail = () => {
           {row('Плановая дата доставки', formatDate(inst.planned_delivery_date))}
           {row('Желаемая дата монтажа и комментарии', inst.desired_date_comment)}
           {row('Оформил', `${inst.created_by_name || '—'}, ${formatDateTime(inst.created_at)}`)}
+          {(inst.visits?.length || 0) > 0 && row('Выезды', (
+            <ul>
+              {inst.visits!.map((v) => (
+                <li key={v.id}>{formatPeriod(v.date_from, v.date_to)} · {v.installers.map((u) => u.full_name).join(', ')}</li>
+              ))}
+            </ul>
+          ))}
         </dl>
       </div>
 
@@ -231,6 +346,13 @@ const InstallationDetail = () => {
       </div>
 
       {viewing && <FileViewer fileUrl={viewing.url} fileName={viewing.name} onClose={() => setViewing(null)} />}
+      {assigning && (
+        <AssignModal
+          installation={inst}
+          onClose={() => setAssigning(false)}
+          onDone={() => { setAssigning(false); load() }}
+        />
+      )}
     </div>
   )
 }

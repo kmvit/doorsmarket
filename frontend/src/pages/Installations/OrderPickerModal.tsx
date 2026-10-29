@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ModalPortal from '../../components/installations/ModalPortal'
 import { ordersAPI } from '../../api/orders'
 import { OrderListItem, ORDER_STATUS_DISPLAY } from '../../types/orders'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
@@ -31,6 +32,7 @@ const OrderPickerModal = ({ onClose, onPick }: { onClose: () => void; onPick: (o
   }, [search])
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] flex flex-col"
@@ -79,6 +81,7 @@ const OrderPickerModal = ({ onClose, onPick }: { onClose: () => void; onPick: (o
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

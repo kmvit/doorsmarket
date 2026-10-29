@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from orders.serializers import format_file_size, infer_attachment_type
 
-from .models import Installation, InstallationEvent, InstallationFile
+from .models import Installation, InstallationEvent, InstallationFile, InstallationVisit
 
 
 def _user_name(user):
@@ -61,6 +61,23 @@ def order_documents(order):
     return docs
 
 
+class StaffSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    full_name = serializers.SerializerMethodField()
+    phone_number = serializers.CharField(allow_null=True)
+
+    def get_full_name(self, obj):
+        return _user_name(obj)
+
+
+class InstallationVisitSerializer(serializers.ModelSerializer):
+    installers = StaffSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InstallationVisit
+        fields = ['id', 'date_from', 'date_to', 'installers']
+
+
 class InstallationListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     client_name = serializers.CharField(source='order.client_name', read_only=True)
@@ -71,11 +88,14 @@ class InstallationListSerializer(serializers.ModelSerializer):
     manager_name = serializers.SerializerMethodField()
     files = InstallationFileSerializer(many=True, read_only=True)
     order_documents = serializers.SerializerMethodField()
+    current_visit = serializers.SerializerMethodField()
+    irrelevant_requested_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
         fields = [
             'id', 'order', 'status', 'status_display', 'is_paid',
+            'current_visit', 'irrelevant_requested_at', 'irrelevant_requested_by_name', 'irrelevant_reason',
             'client_name', 'address', 'kp_number', 'salon_name', 'city_name', 'manager_name',
             'contact_name', 'contact_phone',
             'work_description', 'collection_finish', 'planned_delivery_date', 'desired_date_comment',
@@ -87,6 +107,13 @@ class InstallationListSerializer(serializers.ModelSerializer):
 
     def get_order_documents(self, obj):
         return order_documents(obj.order)
+
+    def get_current_visit(self, obj):
+        visit = obj.current_visit
+        return InstallationVisitSerializer(visit).data if visit else None
+
+    def get_irrelevant_requested_by_name(self, obj):
+        return _user_name(obj.irrelevant_requested_by)
 
 
 class InstallationEventSerializer(serializers.ModelSerializer):
@@ -106,11 +133,17 @@ class InstallationDetailSerializer(InstallationListSerializer):
     created_by_name = serializers.SerializerMethodField()
     order_status_display = serializers.CharField(source='order.get_status_display', read_only=True)
     measurement_blank_required = serializers.SerializerMethodField()
+    order_manager_id = serializers.SerializerMethodField()
+    visits = InstallationVisitSerializer(many=True, read_only=True)
 
     class Meta(InstallationListSerializer.Meta):
         fields = InstallationListSerializer.Meta.fields + [
             'created_by_name', 'order_status_display', 'measurement_blank_required',
+            'order_manager_id', 'visits',
         ]
+
+    def get_order_manager_id(self, obj):
+        return obj.order.manager_id
 
     def get_created_by_name(self, obj):
         return _user_name(obj.created_by)
@@ -148,3 +181,24 @@ class InstallationWriteSerializer(serializers.ModelSerializer):
         if self.instance is None and 'is_paid' not in self.initial_data:
             raise serializers.ValidationError({'is_paid': ['Укажите, оплачен монтаж или нет.']})
         return attrs
+
+
+class ScheduleVisitSerializer(serializers.ModelSerializer):
+    """Выезд в календаре монтажника: что, куда, к кому."""
+    installers = StaffSerializer(many=True, read_only=True)
+    installation_id = serializers.IntegerField(source='installation.id')
+    status = serializers.CharField(source='installation.status')
+    status_display = serializers.CharField(source='installation.get_status_display')
+    order = serializers.IntegerField(source='installation.order_id')
+    client_name = serializers.CharField(source='installation.order.client_name')
+    address = serializers.CharField(source='installation.order.address')
+    work_description = serializers.CharField(source='installation.work_description')
+    contact_name = serializers.CharField(source='installation.contact_name')
+    contact_phone = serializers.CharField(source='installation.contact_phone')
+
+    class Meta:
+        model = InstallationVisit
+        fields = [
+            'id', 'date_from', 'date_to', 'installers', 'installation_id', 'status', 'status_display',
+            'order', 'client_name', 'address', 'work_description', 'contact_name', 'contact_phone',
+        ]

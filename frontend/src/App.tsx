@@ -29,6 +29,7 @@ import Workshop from './pages/Orders/Workshop'
 import InstallationList from './pages/Installations/InstallationList'
 import InstallationDetail from './pages/Installations/InstallationDetail'
 import InstallationForm from './pages/Installations/InstallationForm'
+import InstallersSchedule from './pages/Installations/InstallersSchedule'
 import DesignerReport from './pages/Reports/DesignerReport'
 import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
 import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
@@ -241,6 +242,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <InstallationList />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/installations/installers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InstallersSchedule />
                     </Layout>
                   </ProtectedRoute>
                 }

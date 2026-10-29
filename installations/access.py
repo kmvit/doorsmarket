@@ -4,13 +4,19 @@ from django.db.models import Prefetch
 from orders.models import Measurement
 from orders.serializers import user_city_id
 
-from .models import Installation
+from .models import Installation, InstallationVisit
 
 # Оформляет монтаж менеджер (и роли с его правами по заказам)
 CREATE_ROLES = frozenset({'manager', 'leader', 'group_leader', 'admin'})
 # Список общий на город: смотрят и правят все пользователи города, кроме монтажников.
 # Отдел рекламаций с заказами не работает.
 LIST_ROLES = CREATE_ROLES | {'service_manager'}
+# Графики монтажников правит СМ (монтажник — свой, это этап 3)
+SCHEDULE_ROLES = frozenset({'service_manager', 'admin'})
+# Решение по неактуальности — за менеджером заказа
+DECIDE_ROLES = CREATE_ROLES
+# «Назначить монтаж» после «Не готов к монтажу» нажимает менеджер или СМ
+READY_ROLES = LIST_ROLES
 
 
 def can_see_installations(user):
@@ -24,9 +30,10 @@ def can_see_installations(user):
 def installations_for_user(user):
     qs = Installation.objects.select_related(
         'order', 'order__salon', 'order__salon__city', 'order__manager',
-        'order__measurement_request', 'created_by',
+        'order__measurement_request', 'created_by', 'irrelevant_requested_by',
     ).prefetch_related(
         'files',
+        Prefetch('visits', queryset=InstallationVisit.objects.prefetch_related('installers')),
         # Бланки выполненных замеров идут в пакет документов
         Prefetch(
             'order__measurement_request__measurements',

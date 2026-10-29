@@ -2,7 +2,7 @@ import apiClient from './client'
 import { withOfflineFallback } from '../services/offline'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
-  InstallationFilters, InstallationPrefill,
+  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, ScheduleVisit,
 } from '../types/installations'
 
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -21,6 +21,7 @@ export const installationsAPI = {
     if (filters?.cities?.length) params.city__in = filters.cities.join(',')
     if (filters?.salons?.length) params.salon__in = filters.salons.join(',')
     if (filters?.managers?.length) params.manager__in = filters.managers.join(',')
+    if (filters?.folder) params.folder = filters.folder
     return withOfflineFallback({
       cacheKey: `installations_list_${JSON.stringify(params)}`,
       request: async () => asList<Installation>((await apiClient.get('/installations/', { params })).data),
@@ -87,6 +88,43 @@ export const installationsAPI = {
   deleteFile: async (fileId: number): Promise<void> => {
     await apiClient.delete(`/installation-files/${fileId}/`)
   },
+
+  getFolderCounts: async (opts?: { mine?: boolean }): Promise<InstallationFolderCount[]> =>
+    withOfflineFallback({
+      cacheKey: `installations_folder_counts_${opts?.mine ? 'mine' : 'all'}`,
+      request: async () =>
+        asList<InstallationFolderCount>((await apiClient.get('/installations/folder_counts/', {
+          params: opts?.mine ? { mine: 'true' } : {},
+        })).data),
+      ttl: LONG_TTL,
+    }),
+
+  getInstallers: async (): Promise<Installer[]> =>
+    withOfflineFallback({
+      cacheKey: 'installations_installers',
+      request: async () => asList<Installer>((await apiClient.get('/installations/installers/')).data),
+      ttl: LONG_TTL,
+    }),
+
+  getSchedule: async (dateFrom: string, dateTo: string, installers?: number[]): Promise<ScheduleVisit[]> => {
+    const params: Record<string, string> = { date_from: dateFrom, date_to: dateTo }
+    if (installers?.length) params.installers = installers.join(',')
+    return withOfflineFallback({
+      cacheKey: `installations_schedule_${JSON.stringify(params)}`,
+      request: async () => asList<ScheduleVisit>((await apiClient.get('/installations/schedule/', { params })).data),
+      ttl: LONG_TTL,
+    })
+  },
+
+  assign: async (id: number, installers: number[], dateFrom: string, dateTo: string): Promise<Installation> =>
+    (await apiClient.post(`/installations/${id}/assign/`, { installers, date_from: dateFrom, date_to: dateTo })).data,
+
+  action: async (
+    id: number,
+    name: 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
+      | 'notify_call_failed',
+    body: Record<string, string> = {},
+  ): Promise<Installation> => (await apiClient.post(`/installations/${id}/${name}/`, body)).data,
 
   setNotNeeded: async (orderId: number, notNeeded: boolean): Promise<void> => {
     await apiClient.post('/installations/set_not_needed/', { order: orderId, not_needed: notNeeded })

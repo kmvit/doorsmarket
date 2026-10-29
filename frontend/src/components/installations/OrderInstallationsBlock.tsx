@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { Installation, INSTALLATION_STATUS_COLOR, formatDate } from '../../types/installations'
+import { Installation, INSTALLATION_STATUS_COLOR, formatDate, formatPeriod } from '../../types/installations'
 
 interface Props {
   orderId: number
@@ -98,6 +98,12 @@ const OrderInstallationsBlock = ({ orderId, orderStatus, notNeededAt, canCreate,
                 <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${INSTALLATION_STATUS_COLOR[it.status]}`}>
                   {it.status_display}
                 </span>
+                {it.status === 'planned' && it.current_visit && (
+                  <span className="text-xs text-gray-700">
+                    {formatPeriod(it.current_visit.date_from, it.current_visit.date_to)}
+                    {' · '}{it.current_visit.installers.map((u) => u.full_name).join(', ')}
+                  </span>
+                )}
                 <span className={`text-xs ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>
                   {it.is_paid ? 'оплачен' : 'не оплачен'}
                 </span>
