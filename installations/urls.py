@@ -6,6 +6,7 @@ from . import api_views
 router = DefaultRouter()
 router.register('installations', api_views.InstallationViewSet, basename='installation')
 router.register('installation-files', api_views.InstallationFileViewSet, basename='installation-file')
+router.register('installation-ratings', api_views.RatingReportView, basename='installation-rating')
 # Страница клиента по ссылке из СМС (без входа)
 router.register('public/installation-acts', api_views.PublicInstallationActView, basename='public-installation-act')
 

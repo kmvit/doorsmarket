@@ -9,6 +9,8 @@ import {
 } from '../../types/installations'
 import AssignModal from '../../components/installations/AssignModal'
 import InstallerWorkPanel from '../../components/installations/InstallerWorkPanel'
+import PaymentBlock from '../../components/installations/PaymentBlock'
+import RatingView from '../../components/installations/RatingView'
 import PhoneLink from '../../components/common/PhoneLink'
 import FileViewer from '../../components/common/FileViewer'
 
@@ -209,6 +211,11 @@ const InstallationDetail = () => {
         <InstallerWorkPanel inst={inst} onChanged={(updated) => { if (updated) setInst(updated); load() }} />
       )}
 
+      {/* Акт на оплату — монтажнику выезда и СМ, когда монтаж (частично) завершён */}
+      {['done', 'partially_done'].includes(inst.status) && (myVisit || sm) && (
+        <PaymentBlock inst={inst} onChanged={(updated) => { setInst(updated); load() }} />
+      )}
+
       {inst.status === 'planned' && inst.current_visit && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-900">
           Монтаж назначен на <span className="font-semibold">{formatPeriod(inst.current_visit.date_from, inst.current_visit.date_to)}</span>
@@ -362,6 +369,15 @@ const InstallationDetail = () => {
           })}
         </div>
       </div>
+
+      {inst.rating && (
+        <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-4 mb-4">
+          <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wider mb-2">
+            Оценка клиента · {formatDate(inst.rating.created_at)}
+          </h2>
+          <RatingView rating={inst.rating} />
+        </div>
+      )}
 
       {(inst.complaints?.length || 0) > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-red-200 p-4 mb-4">

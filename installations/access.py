@@ -43,7 +43,7 @@ def is_installer_of(user, inst):
 def installations_for_user(user):
     qs = Installation.objects.select_related(
         'order', 'order__salon', 'order__salon__city', 'order__manager',
-        'order__measurement_request', 'created_by', 'irrelevant_requested_by',
+        'order__measurement_request', 'created_by', 'irrelevant_requested_by', 'rating',
     ).prefetch_related(
         'files',
         Prefetch('visits', queryset=InstallationVisit.objects.prefetch_related('installers')),

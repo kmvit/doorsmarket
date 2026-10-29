@@ -19,6 +19,13 @@ const REPORTS = [
     smText: 'Мои замеры за период: проёмы, сумма по шкале, удалённость, итого за месяц, выгрузка в Excel',
     roles: ['admin', 'leader', 'group_leader', 'service_manager'],
   },
+  {
+    to: '/orders/reports/ratings',
+    title: 'Оценки клиентов',
+    text: 'Оценки после монтажа за любой период: по сотрудникам, салонам, городам, по каждому параметру и в динамике',
+    // Оценки видят все
+    roles: ['admin', 'leader', 'group_leader', 'service_manager', 'manager'],
+  },
 ]
 
 

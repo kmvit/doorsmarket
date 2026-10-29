@@ -157,6 +157,7 @@ export interface Installation {
   desired_date_comment: string
   files: InstallationFile[]
   order_documents: OrderDocument[]
+  rating_overall: number | null
   created_at: string
   updated_at: string
   // Только в карточке
@@ -170,6 +171,32 @@ export interface Installation {
   act_sent_at?: string | null
   client_confirmed_at?: string | null
   client_link?: string | null
+  rating?: RatingScores | null
+  payment?: {
+    available: boolean
+    sent_at: string | null
+    sent_by_name: string
+    accountant_email: string
+  } | null
+}
+
+/** Оценка клиента: баллы 1–5 и комментарии по параметрам формы */
+export interface RatingScores {
+  created_at: string
+  items: { key: string; label: string; score: number | null; comment: string }[]
+}
+
+export interface RatingReport {
+  params: { key: string; label: string }[]
+  months: string[]
+  rows: {
+    key: number
+    name: string
+    note: string
+    count: number
+    scores: Record<string, number | null>
+    months: Record<string, number | null>
+  }[]
 }
 
 /** Страница клиента по ссылке /m/{код} */
@@ -185,6 +212,9 @@ export interface PublicActPage {
   documents: { id: number; kind: InstallationFileKind; kind_display: string; name: string; file_url: string }[]
   last_upload: { name: string; review_status: string; review_comment: string; created_at: string } | null
   signed: boolean
+  rating_open: boolean
+  rating: RatingScores | null
+  rating_fields: { key: string; label: string }[]
 }
 
 export interface InstallationEvent {

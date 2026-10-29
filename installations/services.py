@@ -353,6 +353,7 @@ def complete(inst, *, partial, actor):
                     'Часть работ выполнена, монтаж продолжится')
     else:
         _set_status(inst, InstallationStatus.DONE, actor, EventKind.COMPLETED, 'Монтаж завершён')
+        request_rating(inst, actor)
     _push(inst.order.manager, f'Монтаж #{inst.id}: {inst.get_status_display().lower()}',
           inst.order.client_name, f'/orders/installations/{inst.id}', actor)
 
@@ -438,3 +439,108 @@ def reject_act(f, reason, actor):
     f.save(update_fields=['review_status', 'review_comment', 'reviewed_by', 'reviewed_at'])
     inst.log(EventKind.ACT_REJECTED, actor=actor, description=f'{f.name}: {reason}')
     sms.send(inst, sms.act_rejected(inst, reason), actor=actor, purpose='act_rejected')
+
+
+# ==================== Этап 5: оценка клиента, акт на оплату ====================
+
+def request_rating(inst, actor):
+    """Монтаж завершён — клиенту ссылка на оценку (та же страница /m/{код})."""
+    from . import sms
+    ensure_client_code(inst)
+    sms.send(inst, sms.rating_request(inst), actor=actor, purpose='rating_request')
+
+
+def rating_participants(inst):
+    """Кто работал с заказом: менеджер, замерщик (выполненные замеры), монтажники всех выездов."""
+    from django.contrib.auth import get_user_model
+    from orders.models import Measurement
+    ids = {inst.order.manager_id}
+    ids.update(Measurement.objects.filter(request__order=inst.order, is_done=True)
+               .exclude(service_manager__isnull=True).values_list('service_manager_id', flat=True))
+    ids.update(inst.visits.values_list('installers', flat=True))
+    return get_user_model().objects.filter(id__in=[i for i in ids if i])
+
+
+@transaction.atomic
+def submit_rating(inst, scores, comments):
+    from .models import RATING_FIELDS, InstallationRating
+    rating = InstallationRating.objects.create(
+        installation=inst, comments=comments,
+        **{InstallationRating.column(k): v for k, v in scores.items()},
+    )
+    rating.participants.set(rating_participants(inst))
+    overall = f'общее впечатление {scores["overall"]}/5' if scores.get('overall') else 'оценки получены'
+    inst.log(EventKind.RATED, description=f'Клиент оценил работу: {overall}')
+    labels = dict(RATING_FIELDS)
+    body = ', '.join(f'{labels[k]} — {v}' for k, v in scores.items() if v)
+    for user in rating.participants.all():
+        _push(user, f'Клиент оценил заказ #{inst.order_id}', body, f'/orders/installations/{inst.id}')
+    return rating
+
+
+def payment_acts(inst):
+    """Подписанные акты текущего выезда — их и шлём бухгалтеру."""
+    visit = inst.current_visit
+    if visit is None:
+        return InstallationFile.objects.none()
+    return inst.files.filter(visit=visit, kind=InstallationFileKind.ACT,
+                             review_status__in=['', ActReview.APPROVED])
+
+
+def payment_subject(inst, installer):
+    from .sms import staff_name_phone
+    order = inst.order
+    kp = f' (КП {order.kp_number})' if order.kp_number else ''
+    return (f'Акт на оплату: монтаж #{inst.id}, заказ #{order.id}{kp}, {order.client_name}, '
+            f'монтажник {staff_name_phone(installer)[0]}')
+
+
+class PaymentEmailError(Exception):
+    pass
+
+
+def send_to_payment(inst, estimate, actor):
+    """
+    Акт выполненных работ — бухгалтеру города. Письмо уходит с общего адреса,
+    ответ — монтажнику (Reply-To); в теме монтажник, номер заказа и монтажа,
+    в теле — смета работ и ссылка на монтаж.
+    """
+    from django.conf import settings
+    from django.core.mail import EmailMessage
+    from orders.sms_templates import _base_url
+    from .sms import staff_name_phone
+
+    to = inst.order.salon.city.accountant_email
+    if not to:
+        raise PaymentEmailError('У города не указана почта бухгалтера — обратитесь к администратору.')
+    acts = list(payment_acts(inst))
+    if not acts:
+        raise PaymentEmailError('Нет подписанного акта — без него на оплату не отправить.')
+    name, phone = staff_name_phone(actor)
+    body = (
+        f'{payment_subject(inst, actor)}\n'
+        f'Статус монтажа: {inst.get_status_display()}\n'
+        f'Адрес: {inst.order.address}\n'
+        f'Монтаж в программе: {_base_url()}/orders/installations/{inst.id}\n\n'
+        f'Смета работ:\n{estimate}\n\n'
+        f'{name}{", " + phone if phone else ""}'
+    )
+    email = EmailMessage(
+        subject=payment_subject(inst, actor), body=body, from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[to], reply_to=[actor.email] if actor.email else None,
+    )
+    for f in acts:
+        with f.file.open('rb') as fh:
+            email.attach(f.name, fh.read())
+    try:
+        email.send()
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).error('Не удалось отправить акт монтажа #%s на оплату: %s', inst.id, exc)
+        raise PaymentEmailError('Письмо не отправилось — попробуйте ещё раз позже.')
+    visit = inst.current_visit
+    again = visit.payment_sent_at is not None
+    visit.payment_sent_at, visit.payment_sent_by = timezone.now(), actor
+    visit.save(update_fields=['payment_sent_at', 'payment_sent_by', 'updated_at'])
+    inst.log(EventKind.PAYMENT_SENT, actor=actor,
+             description=f'{"Повторно: " if again else ""}акт отправлен на {to}', meta={'estimate': estimate})

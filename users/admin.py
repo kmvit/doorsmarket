@@ -7,9 +7,9 @@ from orders.models import Salon
 
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'warehouse_notification_email')
+    list_display = ('id', 'name', 'warehouse_notification_email', 'accountant_email')
     search_fields = ('name',)
-    fields = ('name', 'warehouse_notification_email')
+    fields = ('name', 'warehouse_notification_email', 'accountant_email')
 
 
 @admin.register(User)

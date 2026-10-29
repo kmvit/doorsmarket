@@ -14,6 +14,11 @@ class City(models.Model):
         verbose_name='Email уведомления "Товар на складе"',
         help_text='Если указан, при нажатии кнопки "Товар на складе" ОР этого города будет отправлено письмо на этот адрес'
     )
+    accountant_email = models.EmailField(
+        blank=True,
+        verbose_name='Email бухгалтера (акты монтажей на оплату)',
+        help_text='Сюда монтажник отправляет акт выполненных работ на оплату.',
+    )
 
     def __str__(self):
         return self.name

@@ -31,6 +31,7 @@ import InstallationDetail from './pages/Installations/InstallationDetail'
 import InstallationForm from './pages/Installations/InstallationForm'
 import InstallersSchedule from './pages/Installations/InstallersSchedule'
 import ClientActPage from './pages/Installations/ClientActPage'
+import RatingsReport from './pages/Reports/RatingsReport'
 import DesignerReport from './pages/Reports/DesignerReport'
 import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
 import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
@@ -375,6 +376,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <ServiceManagerReport />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/reports/ratings"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <RatingsReport />
                     </Layout>
                   </ProtectedRoute>
                 }

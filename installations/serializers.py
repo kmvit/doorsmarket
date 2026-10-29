@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from orders.serializers import format_file_size, infer_attachment_type
 
-from .models import Installation, InstallationEvent, InstallationFile, InstallationVisit
+from .models import RATING_FIELDS, Installation, InstallationEvent, InstallationFile, InstallationRating, InstallationVisit
 
 
 def _user_name(user):
@@ -62,6 +62,18 @@ def order_documents(order):
     return docs
 
 
+def rating_scores(rating):
+    """Оценка клиента: баллы и комментарии по параметрам формы."""
+    return {
+        'created_at': rating.created_at,
+        'items': [
+            {'key': k, 'label': label, 'score': getattr(rating, InstallationRating.column(k)),
+             'comment': (rating.comments or {}).get(k, '')}
+            for k, label in RATING_FIELDS
+        ],
+    }
+
+
 class StaffSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     full_name = serializers.SerializerMethodField()
@@ -99,6 +111,7 @@ class InstallationListSerializer(serializers.ModelSerializer):
     order_documents = serializers.SerializerMethodField()
     current_visit = serializers.SerializerMethodField()
     irrelevant_requested_by_name = serializers.SerializerMethodField()
+    rating_overall = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -108,8 +121,12 @@ class InstallationListSerializer(serializers.ModelSerializer):
             'client_name', 'address', 'kp_number', 'salon_name', 'city_name', 'manager_name',
             'contact_name', 'contact_phone',
             'work_description', 'collection_finish', 'planned_delivery_date', 'desired_date_comment',
-            'files', 'order_documents', 'created_at', 'updated_at',
+            'files', 'order_documents', 'rating_overall', 'created_at', 'updated_at',
         ]
+
+    def get_rating_overall(self, obj):
+        rating = getattr(obj, 'rating', None) if hasattr(obj, 'rating') else None
+        return rating.overall if rating else None
 
     def get_manager_name(self, obj):
         return _user_name(obj.order.manager)
@@ -149,13 +166,31 @@ class InstallationDetailSerializer(InstallationListSerializer):
     installer_notified_at = serializers.SerializerMethodField()
     complaints = serializers.SerializerMethodField()
     client_link = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
 
     class Meta(InstallationListSerializer.Meta):
         fields = InstallationListSerializer.Meta.fields + [
             'created_by_name', 'order_status_display', 'measurement_blank_required',
             'order_manager_id', 'visits', 'installer_notified_at', 'complaints',
-            'act_sent_at', 'client_confirmed_at', 'client_link',
+            'act_sent_at', 'client_confirmed_at', 'client_link', 'rating', 'payment',
         ]
+
+    def get_rating(self, obj):
+        return rating_scores(obj.rating) if hasattr(obj, 'rating') else None
+
+    def get_payment(self, obj):
+        """Акт текущего выезда на оплату: можно ли отправить и когда уже отправляли."""
+        from .services import payment_acts
+        visit = obj.current_visit
+        if visit is None:
+            return None
+        return {
+            'available': obj.status in ('done', 'partially_done') and payment_acts(obj).exists(),
+            'sent_at': visit.payment_sent_at,
+            'sent_by_name': _user_name(visit.payment_sent_by),
+            'accountant_email': obj.order.salon.city.accountant_email,
+        }
 
     def get_client_link(self, obj):
         from .sms import client_link

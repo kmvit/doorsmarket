@@ -14,13 +14,13 @@ from .access import (
     can_see_installations, installations_for_user, is_installer_of,
 )
 from .models import (
-    CLOSED_INSTALLATION_STATUSES, ActReview, EventKind, Installation, InstallationFile, InstallationStatus,
-    InstallationVisit,
+    CLOSED_INSTALLATION_STATUSES, RATING_FIELDS, ActReview, EventKind, Installation, InstallationFile,
+    InstallationStatus, InstallationVisit,
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
     InstallationFileSerializer, InstallationListSerializer, InstallationWriteSerializer,
-    ScheduleVisitSerializer, StaffSerializer,
+    ScheduleVisitSerializer, StaffSerializer, rating_scores,
 )
 
 # Папки списка монтажей (плитки на главной). Порядок — порядок показа.
@@ -535,6 +535,25 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         services.reject_act(f, reason, request.user)
         return Response(self._detail(inst))
 
+    # ---------- Этап 5: акт на оплату ----------
+
+    @action(detail=True, methods=['post'], url_path='send_to_payment')
+    def send_to_payment(self, request, pk=None):
+        """Акт выполненных работ бухгалтеру: {estimate} — смета работ."""
+        inst = self.get_object()
+        if (error := self._installer_or_sm(request, inst)):
+            return error
+        if inst.status not in (InstallationStatus.DONE, InstallationStatus.PARTIALLY_DONE):
+            return _bad('На оплату отправляют завершённый (или частично завершённый) монтаж.')
+        estimate = (request.data.get('estimate') or '').strip()[:5000]
+        if not estimate:
+            return _bad('Распишите смету работ.')
+        try:
+            services.send_to_payment(inst, estimate, request.user)
+        except services.PaymentEmailError as exc:
+            return _bad(str(exc))
+        return Response(self._detail(inst))
+
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         return self._complete(request, partial=False)
@@ -653,6 +672,10 @@ class PublicInstallationActView(viewsets.ViewSet):
                 'created_at': last.created_at,
             } if last else None,
             'signed': services.has_current_act(inst),
+            # Оценка: форма открыта после завершения, клиент видит только свои оценки
+            'rating_open': inst.status == InstallationStatus.DONE and not hasattr(inst, 'rating'),
+            'rating': rating_scores(inst.rating) if hasattr(inst, 'rating') else None,
+            'rating_fields': [{'key': k, 'label': label} for k, label in RATING_FIELDS],
         }
 
     def retrieve(self, request, code=None):
@@ -672,6 +695,34 @@ class PublicInstallationActView(viewsets.ViewSet):
         return Response(self._data(inst))
 
     @action(detail=True, methods=['post'])
+    def rate(self, request, code=None):
+        """Оценка клиента: {scores: {параметр: 1..5}, comments: {параметр: текст}}."""
+        inst = self._get(code)
+        if inst.status != InstallationStatus.DONE:
+            return _bad('Оценить можно завершённый монтаж.')
+        if hasattr(inst, 'rating'):
+            return _bad('Вы уже оценили эту работу. Спасибо!')
+        raw_scores = request.data.get('scores') or {}
+        raw_comments = request.data.get('comments') or {}
+        if not isinstance(raw_scores, dict) or not isinstance(raw_comments, dict):
+            return _bad('Неверный формат оценки.')
+        scores, comments = {}, {}
+        for key, _label in RATING_FIELDS:
+            value = raw_scores.get(key)
+            if value in (None, ''):
+                continue
+            if str(value) not in ('1', '2', '3', '4', '5'):
+                return _bad('Оценка — от 1 до 5.')
+            scores[key] = int(value)
+            if (text := str(raw_comments.get(key) or '').strip()):
+                comments[key] = text[:1000]
+        if not scores.get('overall'):
+            return _bad('Поставьте оценку «Общее впечатление».')
+        services.submit_rating(inst, scores, comments)
+        inst = self._get(code)
+        return Response(self._data(inst))
+
+    @action(detail=True, methods=['post'])
     def upload(self, request, code=None):
         inst = self._get(code)
         if (error := self._check_open(inst)):
@@ -687,3 +738,75 @@ class PublicInstallationActView(viewsets.ViewSet):
             return _bad('Слишком много файлов — свяжитесь с сервисной службой.')
         services.client_upload_act(inst, upload)
         return Response(self._data(inst))
+
+
+# ==================== Отчёт по оценкам клиентов ====================
+
+class RatingReportView(viewsets.ViewSet):
+    """
+    Оценки клиентов за период: в среднем по каждому параметру и в целом, в
+    разрезе сотрудника (участники заказа), салона, города или по всем; и
+    динамика по месяцам. Видимость — как у списка монтажей.
+    GET /installation-ratings/report/?date_from&date_to&group=staff|salon|city|all
+    """
+    permission_classes = [permissions.IsAuthenticated, CanSeeInstallations]
+
+    @action(detail=False, methods=['get'])
+    def report(self, request):
+        from collections import defaultdict
+        from .models import InstallationRating
+
+        date_from = _parse_date(request.query_params.get('date_from'))
+        date_to = _parse_date(request.query_params.get('date_to'))
+        group = request.query_params.get('group') or 'all'
+        if group not in ('staff', 'salon', 'city', 'all'):
+            return _bad('group: staff, salon, city или all.')
+        qs = InstallationRating.objects.filter(
+            installation__in=installations_for_user(request.user),
+        ).select_related('installation__order__salon__city').prefetch_related('participants')
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        qs = apply_people_filters(qs, request, order_path='installation__order__')
+
+        def keys(r):
+            salon = r.installation.order.salon
+            if group == 'staff':
+                return [(u.id, f'{u.first_name} {u.last_name}'.strip() or u.username, u.get_role_display())
+                        for u in r.participants.all()]
+            if group == 'salon':
+                return [(salon.id, salon.name, salon.city.name)]
+            if group == 'city':
+                return [(salon.city_id, salon.city.name, '')]
+            return [(0, 'Все оценки', '')]
+
+        params = [k for k, _ in RATING_FIELDS]
+        sums = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+        months = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+        names, counts = {}, defaultdict(int)
+        for r in qs:
+            month = r.created_at.strftime('%Y-%m')
+            for key, name, note in keys(r):
+                names[key] = (name, note)
+                counts[key] += 1
+                for p in params:
+                    value = getattr(r, InstallationRating.column(p))
+                    if value:
+                        sums[key][p][0] += value
+                        sums[key][p][1] += 1
+                if r.overall:
+                    months[key][month][0] += r.overall
+                    months[key][month][1] += 1
+
+        avg = lambda pair: round(pair[0] / pair[1], 2) if pair[1] else None  # noqa: E731
+        rows = [{
+            'key': key, 'name': names[key][0], 'note': names[key][1], 'count': counts[key],
+            'scores': {p: avg(sums[key][p]) for p in params},
+            'months': {m: avg(v) for m, v in sorted(months[key].items())},
+        } for key in sorted(names, key=lambda k: names[k][0])]
+        all_months = sorted({m for row in rows for m in row['months']})
+        return Response({
+            'params': [{'key': k, 'label': label} for k, label in RATING_FIELDS],
+            'months': all_months, 'rows': rows,
+        })

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { publicActAPI, apiErrorText } from '../../api/installations'
 import { PublicActPage } from '../../types/installations'
+import RatingView from '../../components/installations/RatingView'
 
 /**
  * Страница клиента по ссылке из СМС (/m/{код}), без входа. Монтажу не
@@ -73,13 +74,23 @@ const ClientActPage = () => {
   return shell(
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm p-5">
-        <h1 className="text-xl font-bold text-gray-900 mb-1">Акт выполненных работ</h1>
+        <h1 className="text-xl font-bold text-gray-900 mb-1">
+          {page.rating_open || page.rating ? 'Монтаж завершён' : 'Акт выполненных работ'}
+        </h1>
         <p className="text-sm text-gray-600">Монтаж №{page.id} · {page.client_name}</p>
         {page.address && <p className="text-sm text-gray-500">{page.address}</p>}
         {page.work_description && <p className="text-sm text-gray-700 mt-2 whitespace-pre-line">{page.work_description}</p>}
       </div>
 
-      {!page.awaiting_signature ? (
+      {page.rating_open ? (
+        <RatingForm page={page} code={code} onDone={(p) => { setPage(p); setMessage('Спасибо за оценку!') }} />
+      ) : page.rating ? (
+        <div className="bg-white rounded-2xl shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 mb-2">Ваша оценка</h2>
+          <RatingView rating={page.rating} />
+          <p className="text-sm text-gray-600 mt-3">Спасибо, что выбрали нас!</p>
+        </div>
+      ) : !page.awaiting_signature ? (
         <div className="bg-white rounded-2xl shadow-sm p-5 text-center text-gray-700">
           {page.signed || page.status === 'done'
             ? 'Акт подписан. Спасибо, что выбрали нас!'
@@ -133,6 +144,69 @@ const ClientActPage = () => {
 
       {message && <p className="text-sm text-center text-gray-700">{message}</p>}
     </div>,
+  )
+}
+
+/** Оценка работы: параметры из формы, 1–5 звёзд, комментарий к каждому — по желанию */
+const RatingForm = ({ page, code, onDone }: { page: PublicActPage; code: string; onDone: (p: PublicActPage) => void }) => {
+  const [scores, setScores] = useState<Record<string, number>>({})
+  const [comments, setComments] = useState<Record<string, string>>({})
+  const [openComment, setOpenComment] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!scores.overall) { setError('Поставьте оценку «Общее впечатление»'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      onDone(await publicActAPI.rate(code, scores, comments))
+    } catch (err) {
+      setError(apiErrorText(err, 'Не удалось сохранить оценку'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-5">
+      <h2 className="font-semibold text-gray-900 mb-1">Оцените, пожалуйста, нашу работу</h2>
+      <p className="text-sm text-gray-500 mb-3">От 1 до 5. Если что-то не касалось вас — пропустите.</p>
+      <ul className="divide-y divide-gray-100">
+        {page.rating_fields.map((f) => (
+          <li key={f.key} className="py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-gray-800">
+                {f.label}{f.key === 'overall' && <span className="text-red-500"> *</span>}
+              </span>
+              <div className="flex">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" aria-label={`${f.label}: ${n}`}
+                    onClick={() => setScores((s) => ({ ...s, [f.key]: n }))}
+                    className={`text-2xl leading-none px-0.5 ${(scores[f.key] || 0) >= n ? 'text-amber-500' : 'text-gray-300'}`}>
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            {openComment === f.key || comments[f.key] ? (
+              <textarea rows={2} value={comments[f.key] || ''} placeholder="Комментарий"
+                onChange={(e) => setComments((c) => ({ ...c, [f.key]: e.target.value }))}
+                className="mt-2 w-full rounded-lg border-gray-300 shadow-sm text-sm" />
+            ) : (
+              <button type="button" onClick={() => setOpenComment(f.key)} className="text-xs text-primary-600 hover:underline">
+                + комментарий
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+      <button type="button" onClick={submit} disabled={busy}
+        className="mt-4 w-full py-3 rounded-xl text-white font-medium bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+        {busy ? 'Отправка…' : 'Отправить оценку'}
+      </button>
+    </div>
   )
 }
 

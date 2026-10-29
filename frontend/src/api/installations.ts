@@ -3,7 +3,8 @@ import { withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
-  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, PublicActPage, ScheduleVisit,
+  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, PublicActPage, RatingReport,
+  ScheduleVisit,
 } from '../types/installations'
 
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -139,7 +140,7 @@ export const installationsAPI = {
     id: number,
     name: 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
       | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule'
-      | 'send_act_to_client' | 'approve_act' | 'reject_act',
+      | 'send_act_to_client' | 'approve_act' | 'reject_act' | 'send_to_payment',
     body: Record<string, string> = {},
   ): Promise<Installation> => (await apiClient.post(`/installations/${id}/${name}/`, body)).data,
 
@@ -165,11 +166,27 @@ const publicUrl = (code: string, action = '') =>
 export const publicActAPI = {
   get: async (code: string): Promise<PublicActPage> => (await apiClient.get(publicUrl(code))).data,
   confirm: async (code: string): Promise<PublicActPage> => (await apiClient.post(publicUrl(code, 'confirm'))).data,
+  rate: async (code: string, scores: Record<string, number>, comments: Record<string, string>): Promise<PublicActPage> =>
+    (await apiClient.post(publicUrl(code, 'rate'), { scores, comments })).data,
   upload: async (code: string, file: File): Promise<PublicActPage> => {
     const form = new FormData()
     form.append('file', file)
     return (await apiClient.post(publicUrl(code, 'upload'), form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })).data
+  },
+}
+
+export const ratingsAPI = {
+  report: async (params: {
+    date_from?: string; date_to?: string; group: string; cities?: string[]; salons?: string[]; managers?: string[]
+  }): Promise<RatingReport> => {
+    const query: Record<string, string> = { group: params.group }
+    if (params.date_from) query.date_from = params.date_from
+    if (params.date_to) query.date_to = params.date_to
+    if (params.cities?.length) query.city__in = params.cities.join(',')
+    if (params.salons?.length) query.salon__in = params.salons.join(',')
+    if (params.managers?.length) query.manager__in = params.managers.join(',')
+    return (await apiClient.get('/installation-ratings/report/', { params: query })).data
   },
 }

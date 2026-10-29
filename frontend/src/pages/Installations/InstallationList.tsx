@@ -267,6 +267,11 @@ const InstallationList = () => {
                         <div className={`mt-1 text-xs font-medium ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>
                           {it.is_paid ? 'Оплачен' : 'Не оплачен'}
                         </div>
+                        {it.rating_overall && (
+                          <div className="mt-1 text-xs text-amber-600 whitespace-nowrap" title="Оценка клиента: общее впечатление">
+                            ★ {it.rating_overall}/5
+                          </div>
+                        )}
                         {it.irrelevant_requested_at && (
                           <div className="mt-1 text-xs font-medium text-gray-600">Помечен неактуальным</div>
                         )}

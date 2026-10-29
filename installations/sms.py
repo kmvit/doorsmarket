@@ -65,6 +65,11 @@ def act_rejected(installation, reason):
             f'ещё раз по ссылке {client_link(installation)}')
 
 
+def rating_request(installation):
+    return (f'{BRAND} Монтаж по вашему заказу завершен. Оцените пожалуйста нашу работу, '
+            f'пройдя по ссылке {client_link(installation)}')
+
+
 def send(installation, message, *, actor=None, purpose=''):
     """
     Отправляет сообщение контактному лицу монтажа и пишет его в историю

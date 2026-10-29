@@ -61,6 +61,8 @@ class EventKind(models.TextChoices):
     CLIENT_ACT_UPLOADED = 'client_act_uploaded', 'Клиент приложил подписанный акт'
     ACT_APPROVED = 'act_approved', 'Подпись в акте подтверждена'
     ACT_REJECTED = 'act_rejected', 'Акт от клиента не принят'
+    PAYMENT_SENT = 'payment_sent', 'Акт отправлен на оплату'
+    RATED = 'rated', 'Клиент оценил работу'
 
 
 class Installation(models.Model):
@@ -169,6 +171,12 @@ class InstallationVisit(models.Model):
     reschedule_reason = models.CharField(max_length=500, blank=True, verbose_name='Причина переноса')
     previous_date_from = models.DateField(null=True, blank=True, verbose_name='Было с')
     previous_date_to = models.DateField(null=True, blank=True, verbose_name='Было по')
+    # Акт выезда отправлен бухгалтеру на оплату (кнопка меняется на «повторно»)
+    payment_sent_at = models.DateTimeField(null=True, blank=True, verbose_name='Акт отправлен на оплату')
+    payment_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто отправил на оплату',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -244,3 +252,60 @@ class InstallationEvent(models.Model):
 
     def __str__(self):
         return f'{self.get_kind_display()} — монтаж #{self.installation_id}'
+
+
+# Параметры оценки — лист «форма для оценки клиента». Порядок = порядок в форме.
+RATING_FIELDS = [
+    ('product_quality', 'Качество продукта'),
+    ('delivery_terms', 'Сроки поставки'),
+    ('manager', 'Менеджер'),
+    ('measurement', 'Замер'),
+    ('delivery', 'Доставка'),
+    ('installation', 'Монтаж'),
+    ('issue_resolution', 'Решение вопросов'),
+    ('overall', 'Общее впечатление'),
+]
+
+
+def _score_field(label):
+    return models.PositiveSmallIntegerField(
+        null=True, blank=True, choices=[(i, str(i)) for i in range(1, 6)], verbose_name=label,
+    )
+
+
+class InstallationRating(models.Model):
+    """
+    Оценка клиента после монтажа. Лично ни на кого не влияет и видна всем;
+    в отчёт по сотруднику идут оценки заказов, где он участвовал (participants).
+    """
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE, related_name='rating', verbose_name='Монтаж',
+    )
+    product_quality = _score_field('Качество продукта')
+    delivery_terms = _score_field('Сроки поставки')
+    manager = _score_field('Менеджер')
+    measurement = _score_field('Замер')
+    delivery = _score_field('Доставка')
+    installation_score = _score_field('Монтаж')
+    issue_resolution = _score_field('Решение вопросов')
+    overall = _score_field('Общее впечатление')
+    # Комментарии к параметрам: {"manager": "…", …}
+    comments = models.JSONField(default=dict, blank=True, verbose_name='Комментарии')
+    # Кто работал с заказом на момент оценки: менеджер, замерщик, монтажники
+    participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name='installation_ratings', blank=True, verbose_name='Участники',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Когда')
+
+    class Meta:
+        verbose_name = 'Оценка клиента'
+        verbose_name_plural = 'Оценки клиентов'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Оценка монтажа #{self.installation_id}'
+
+    @staticmethod
+    def column(key):
+        """Поле модели для параметра: «installation» занято связью с монтажом."""
+        return 'installation_score' if key == 'installation' else key
