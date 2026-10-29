@@ -310,13 +310,13 @@ const ComplaintList = () => {
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">№</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Номер заказа</th>
-      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
-      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контактное лицо</th>
       <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инициатор</th>
+      <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
     </>
   )
 
@@ -522,20 +522,6 @@ const ComplaintList = () => {
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                         {complaint.order_number}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {complaint.initiator.first_name && complaint.initiator.last_name
-                          ? `${complaint.initiator.first_name} ${complaint.initiator.last_name}`
-                          : complaint.initiator.username}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {complaint.manager ? (
-                          complaint.manager.first_name && complaint.manager.last_name
-                            ? `${complaint.manager.first_name} ${complaint.manager.last_name}`
-                            : complaint.manager.username
-                        ) : (
-                          <span className="text-orange-600 font-medium">Не назначен</span>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {complaint.client_name}
                       </td>
@@ -550,6 +536,20 @@ const ComplaintList = () => {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900" onClick={(e) => e.stopPropagation()}>
                         <PhoneLink phone={complaint.contact_phone} stopPropagation />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {complaint.initiator.first_name && complaint.initiator.last_name
+                          ? `${complaint.initiator.first_name} ${complaint.initiator.last_name}`
+                          : complaint.initiator.username}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {complaint.manager ? (
+                          complaint.manager.first_name && complaint.manager.last_name
+                            ? `${complaint.manager.first_name} ${complaint.manager.last_name}`
+                            : complaint.manager.username
+                        ) : (
+                          <span className="text-orange-600 font-medium">Не назначен</span>
+                        )}
                       </td>
                     </tr>
                   ))}
