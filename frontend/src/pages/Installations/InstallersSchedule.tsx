@@ -68,7 +68,9 @@ const InstallersSchedule = () => {
   const [assigning, setAssigning] = useState<Installation | null>(null)
   const editable = canEditSchedule(user?.role)
 
-  const installerId = Number(searchParams.get('installer')) || installers[0]?.id || null
+  // Монтажник открывает свой график, остальные — первого в списке
+  const own = user?.role === 'installer' ? installers.find((u) => u.id === user.id)?.id : undefined
+  const installerId = Number(searchParams.get('installer')) || own || installers[0]?.id || null
   const current = installers.find((u) => u.id === installerId)
 
   useEffect(() => {

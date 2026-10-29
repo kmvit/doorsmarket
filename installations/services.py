@@ -136,6 +136,8 @@ def assign(inst, *, installers, date_from, date_to, actor):
     if visit is None:
         visit = InstallationVisit(installation=inst)
     visit.date_from, visit.date_to, visit.assigned_by = date_from, date_to, actor
+    # СМ сам выставил даты — запрос монтажника на перенос этим решён
+    _clear_reschedule(visit)
     visit.save()
     visit.installers.set(installers)
 
@@ -227,3 +229,109 @@ def keep_relevant(inst, comment, actor):
              description=f'Комментарий: {comment}' if comment else 'Менеджер оставил монтаж в работе')
     _push(requested_by, f'Монтаж #{inst.id} остаётся в работе',
           comment or 'Менеджер не подтвердил неактуальность', f'/orders/installations/{inst.id}', actor)
+
+
+# ==================== Этап 3: работа монтажника ====================
+
+def add_file(inst, *, kind, upload, name, actor):
+    """
+    Файл в пакет монтажа. Акт и фото/видео результата привязываются к текущему
+    выезду и сразу попадают во вложения заказа (тот же файл, без копии).
+    """
+    from orders.models import OrderAttachment
+    visit = None
+    if kind in (InstallationFileKind.ACT, InstallationFileKind.RESULT):
+        visit = inst.current_visit
+    f = InstallationFile.objects.create(
+        installation=inst, kind=kind, visit=visit, file=upload, name=name, uploaded_by=actor,
+    )
+    if visit is not None:
+        OrderAttachment.objects.create(
+            order=inst.order, file=f.file.name, name=f'Монтаж #{inst.id}. {f.get_kind_display()}: {name}'[:255],
+        )
+    inst.log(EventKind.FILE_ADDED, actor=actor, description=f'{f.get_kind_display()}: {f.name}',
+             meta={'file_id': f.id})
+    return f
+
+
+def city_service_managers(inst):
+    from django.contrib.auth import get_user_model
+    return get_user_model().objects.filter(
+        role='service_manager', is_active=True, city_id=inst.order.salon.city_id, measurements_only=False,
+    )
+
+
+def installer_call_failed(inst, actor):
+    from . import sms
+    return sms.send(inst, sms.installer_call_failed(actor), actor=actor, purpose='installer_call_failed')
+
+
+@transaction.atomic
+def reschedule_by_installer(inst, *, date_from, date_to, reason, actor):
+    visit = inst.current_visit
+    if visit.reschedule_requested_at is None:
+        visit.previous_date_from, visit.previous_date_to = visit.date_from, visit.date_to
+    visit.date_from, visit.date_to = date_from, date_to
+    visit.reschedule_requested_at = timezone.now()
+    visit.reschedule_requested_by = actor
+    visit.reschedule_reason = reason
+    visit.save()
+    inst.log(EventKind.RESCHEDULE_REQUESTED, actor=actor,
+             description=f'Новая дата {_period(visit)}. Причина: {reason}',
+             meta={'previous_from': str(visit.previous_date_from), 'previous_to': str(visit.previous_date_to)})
+    for sm in city_service_managers(inst):
+        _push(sm, f'Монтаж #{inst.id}: перенос на {_period(visit)}',
+              f'Подтвердите перенос. Причина: {reason}', f'/orders/installations/{inst.id}', actor)
+
+
+def _clear_reschedule(visit):
+    visit.reschedule_requested_at = None
+    visit.reschedule_requested_by = None
+    visit.reschedule_reason = ''
+    visit.previous_date_from = None
+    visit.previous_date_to = None
+
+
+@transaction.atomic
+def confirm_reschedule(inst, actor):
+    """СМ подтверждает перенос — клиенту СМС с новой датой."""
+    from . import sms
+    visit = inst.current_visit
+    requested_by = visit.reschedule_requested_by
+    date_changed = visit.previous_date_from != visit.date_from
+    _clear_reschedule(visit)
+    visit.save()
+    inst.log(EventKind.RESCHEDULE_CONFIRMED, actor=actor, description=f'Монтаж на {_period(visit)}')
+    _push(requested_by, f'Перенос монтажа #{inst.id} подтверждён', _period(visit),
+          f'/orders/installations/{inst.id}', actor)
+    if date_changed:
+        sms.send(inst, sms.installation_rescheduled(visit.date_from, actor), actor=actor, purpose='rescheduled')
+
+
+@transaction.atomic
+def reject_reschedule(inst, comment, actor):
+    """СМ отклоняет перенос — в графике возвращаются прежние даты."""
+    visit = inst.current_visit
+    requested_by = visit.reschedule_requested_by
+    visit.date_from, visit.date_to = visit.previous_date_from, visit.previous_date_to
+    _clear_reschedule(visit)
+    visit.save()
+    inst.log(EventKind.RESCHEDULE_REJECTED, actor=actor,
+             description=f'Остаётся {_period(visit)}' + (f'. {comment}' if comment else ''))
+    _push(requested_by, f'Перенос монтажа #{inst.id} отклонён',
+          comment or f'Монтаж остаётся на {_period(visit)}', f'/orders/installations/{inst.id}', actor)
+
+
+def has_current_act(inst):
+    visit = inst.current_visit
+    return visit is not None and inst.files.filter(visit=visit, kind=InstallationFileKind.ACT).exists()
+
+
+def complete(inst, *, partial, actor):
+    if partial:
+        _set_status(inst, InstallationStatus.PARTIALLY_DONE, actor, EventKind.PARTIALLY_COMPLETED,
+                    'Часть работ выполнена, монтаж продолжится')
+    else:
+        _set_status(inst, InstallationStatus.DONE, actor, EventKind.COMPLETED, 'Монтаж завершён')
+    _push(inst.order.manager, f'Монтаж #{inst.id}: {inst.get_status_display().lower()}',
+          inst.order.client_name, f'/orders/installations/{inst.id}', actor)

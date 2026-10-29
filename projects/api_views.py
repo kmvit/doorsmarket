@@ -557,11 +557,12 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if query.isdigit():
             lookup = lookup | Q(id=int(query))
 
-        orders = (
-            get_orders_queryset_for_user(request.user)
-            .filter(lookup)
-            .order_by('-created_at')[:10]
-        )
+        orders = get_orders_queryset_for_user(request.user)
+        if request.user.role == 'installer':
+            # Монтажник заводит рекламацию из своего монтажа — ему доступны заказы его монтажей
+            from orders.models import Order
+            orders = Order.objects.filter(installations__visits__installers=request.user).distinct()
+        orders = orders.filter(lookup).order_by('-created_at')[:10]
         data = OrderDetailSerializer(orders, many=True, context={'request': request}).data
         return Response(data)
 

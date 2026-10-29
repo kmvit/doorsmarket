@@ -24,6 +24,9 @@ class InstallationFileKind(models.TextChoices):
     EXTRA = 'extra', 'Дополнительные документы'
     PHOTO = 'photo', 'Фото'
     VIDEO = 'video', 'Видео'
+    # Загружает монтажник по факту работ
+    ACT = 'act', 'Акт выполненных работ'
+    RESULT = 'result', 'Фото/видео результата'
 
 
 class EventKind(models.TextChoices):
@@ -40,6 +43,11 @@ class EventKind(models.TextChoices):
     IRRELEVANT_CONFIRMED = 'irrelevant_confirmed', 'Неактуальность подтверждена'
     IRRELEVANT_REJECTED = 'irrelevant_rejected', 'Оставлен в работе'
     SMS_SENT = 'sms_sent', 'СМС клиенту'
+    RESCHEDULE_REQUESTED = 'reschedule_requested', 'Монтажник перенёс дату'
+    RESCHEDULE_CONFIRMED = 'reschedule_confirmed', 'Перенос подтверждён'
+    RESCHEDULE_REJECTED = 'reschedule_rejected', 'Перенос отклонён'
+    COMPLETED = 'completed', 'Монтаж завершён'
+    PARTIALLY_COMPLETED = 'partially_completed', 'Монтаж завершён частично'
 
 
 class Installation(models.Model):
@@ -128,6 +136,16 @@ class InstallationVisit(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='Кто назначил',
     )
+    # Перенос монтажником: дата в графике меняется сразу, прежняя хранится до
+    # решения СМ (подтвердил — клиенту СМС с новой датой, отклонил — откат)
+    reschedule_requested_at = models.DateTimeField(null=True, blank=True, verbose_name='Перенос запрошен')
+    reschedule_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто перенёс',
+    )
+    reschedule_reason = models.CharField(max_length=500, blank=True, verbose_name='Причина переноса')
+    previous_date_from = models.DateField(null=True, blank=True, verbose_name='Было с')
+    previous_date_to = models.DateField(null=True, blank=True, verbose_name='Было по')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -147,6 +165,11 @@ class InstallationFile(models.Model):
         Installation, on_delete=models.CASCADE, related_name='files', verbose_name='Монтаж',
     )
     kind = models.CharField(max_length=30, choices=InstallationFileKind.choices, verbose_name='Вид')
+    # Акт и фото результата относятся к выезду: «Монтаж завершён» требует акт текущего выезда
+    visit = models.ForeignKey(
+        'InstallationVisit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='files', verbose_name='Выезд',
+    )
     file = models.FileField(upload_to='installations/files/', verbose_name='Файл')
     name = models.CharField(max_length=255, blank=True, verbose_name='Имя файла')
     uploaded_by = models.ForeignKey(

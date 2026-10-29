@@ -1,19 +1,28 @@
 import { useState } from 'react'
 import {
   prefetchMeasurementsForOffline,
+  prefetchInstallationsForOffline,
   getLastPrefetchAt,
+  getLastInstallationsPrefetchAt,
   PrefetchProgress,
 } from '../../services/prefetch'
+
+// Что скачиваем: замеры (СМ) или монтажи (монтажник)
+const TARGETS = {
+  measurements: { run: prefetchMeasurementsForOffline, lastAt: getLastPrefetchAt, noun: 'Замеров' },
+  installations: { run: prefetchInstallationsForOffline, lastAt: getLastInstallationsPrefetchAt, noun: 'Монтажей' },
+}
 
 // Кнопка «Скачать для офлайна»: СМ жмёт её перед выездом (дома, в офисе, на Wi-Fi),
 // и все его замеры с проёмами, заказами и файлами оказываются в памяти телефона.
 // Без неё офлайн-копия набиралась только из карточек, открытых вручную.
-const OfflinePrefetchButton = () => {
+const OfflinePrefetchButton = ({ target = 'measurements' }: { target?: keyof typeof TARGETS }) => {
+  const { run, lastAt: readLastAt, noun } = TARGETS[target]
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<PrefetchProgress | null>(null)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [lastAt, setLastAt] = useState<number | null>(getLastPrefetchAt())
+  const [lastAt, setLastAt] = useState<number | null>(readLastAt())
 
   const formatMoment = (ts: number): string =>
     new Date(ts).toLocaleString('ru-RU', {
@@ -25,9 +34,9 @@ const OfflinePrefetchButton = () => {
     setError(null)
     setResult(null)
     try {
-      const res = await prefetchMeasurementsForOffline(setProgress)
-      setLastAt(getLastPrefetchAt())
-      const summary = `Замеров — ${res.measurements}, файлов — ${res.files}`
+      const res = await run(setProgress)
+      setLastAt(readLastAt())
+      const summary = `${noun} — ${res.measurements}, файлов — ${res.files}`
       if (res.failed > 0) {
         // Частично не скачалось — молчать нельзя: СМ уедет и узнает об этом в поле
         setError(`${summary}. Не удалось загрузить: ${res.failed}. Повторите на устойчивой связи.`)

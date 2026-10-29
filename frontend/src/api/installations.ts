@@ -1,5 +1,6 @@
 import apiClient from './client'
 import { withOfflineFallback } from '../services/offline'
+import { requestWithQueue } from '../services/sync'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
   InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, ScheduleVisit,
@@ -85,6 +86,21 @@ export const installationsAPI = {
     return response.data
   },
 
+  // Акт и фото результата монтажник прикладывает и без связи: запрос встаёт в
+  // очередь (файл хранится байтами) и уйдёт, когда сеть появится
+  uploadWorkFile: async (installationId: number, kind: 'act' | 'result', file: File): Promise<InstallationFile> => {
+    const form = new FormData()
+    form.append('installation', String(installationId))
+    form.append('kind', kind)
+    form.append('file', file)
+    return requestWithQueue('POST', '/installation-files/', form, { 'Content-Type': 'multipart/form-data' })
+  },
+
+  // Завершение тоже через очередь: в поле связи может не быть. Очередь идёт по
+  // порядку, поэтому акт, приложенный офлайн, попадёт на сервер раньше
+  complete: async (id: number, partial: boolean): Promise<Installation> =>
+    requestWithQueue('POST', `/installations/${id}/${partial ? 'complete_partial' : 'complete'}/`, {}),
+
   deleteFile: async (fileId: number): Promise<void> => {
     await apiClient.delete(`/installation-files/${fileId}/`)
   },
@@ -122,7 +138,7 @@ export const installationsAPI = {
   action: async (
     id: number,
     name: 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
-      | 'notify_call_failed',
+      | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule',
     body: Record<string, string> = {},
   ): Promise<Installation> => (await apiClient.post(`/installations/${id}/${name}/`, body)).data,
 

@@ -44,6 +44,11 @@ def call_failed(sm):
             f'Перезвоните пожалуйста {_contact(*staff_name_phone(sm))}')
 
 
+def installer_call_failed(installer):
+    return (f'{BRAND} Монтажник до вас не дозвонился по согласованию времени встречи. '
+            f'Перезвоните пожалуйста {_contact(*staff_name_phone(installer))}')
+
+
 def send(installation, message, *, actor=None, purpose=''):
     """
     Отправляет сообщение контактному лицу монтажа и пишет его в историю

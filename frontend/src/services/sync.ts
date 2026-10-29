@@ -207,6 +207,9 @@ const describeRequest = (method: string, url: string): string => {
   if (url.includes('/measurement-attachments/')) return 'Загрузка файла к замеру'
   if (url.includes('/measurement-openings/')) return 'Сохранение проёма замера'
   if (url.includes('/measurements/')) return `Изменение замера${suffix}`
+  if (url.includes('/installation-files/')) return 'Загрузка акта / фото монтажа'
+  if (url.includes('/installations/') && url.includes('/complete')) return `Завершение монтажа${id ? ` #${id}` : ''}`
+  if (url.includes('/installations/')) return `Действие по монтажу${id ? ` #${id}` : ''}`
   if (url.includes('/complaints/')) return `Действие по рекламации${suffix}`
   if (url.includes('/orders/')) return `Изменение заказа${suffix}`
   return `${method} ${url}`

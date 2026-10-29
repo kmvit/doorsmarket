@@ -170,9 +170,11 @@ class InstallationListTest(InstallationTestBase):
         self.assertEqual(self.ids(self.manager), {self.inst.id, self.inst2.id})
         self.assertEqual(self.ids(self.sm), {self.inst.id, self.inst2.id})
 
-    def test_installer_has_no_access_to_list(self):
+    def test_installer_sees_only_installations_he_is_assigned_to(self):
+        # Монтажник видит только монтажи, где он на выезде (этап 3); здесь — ни одного
         response = self.client_for(self.installer).get('/api/v1/installations/')
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
 
     def test_filters(self):
         self.assertEqual(self.ids(self.sm, exclude_closed='true'), {self.inst.id})
@@ -242,11 +244,11 @@ class InstallationFilesTest(InstallationTestBase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(InstallationFile.objects.filter(kind='photo').exists())
 
-    def test_installer_cannot_upload(self):
+    def test_installer_cannot_upload_to_foreign_installation(self):
         response = self.client_for(self.installer).post('/api/v1/installation-files/', {
-            'installation': self.inst.id, 'kind': 'photo', 'file': pdf('x.pdf'),
+            'installation': self.inst.id, 'kind': 'act', 'file': pdf('x.pdf'),
         }, format='multipart')
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 400)
 
 
 class InstallationNeededFolderTest(InstallationTestBase):

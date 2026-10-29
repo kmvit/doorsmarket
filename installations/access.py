@@ -13,6 +13,10 @@ CREATE_ROLES = frozenset({'manager', 'leader', 'group_leader', 'admin'})
 LIST_ROLES = CREATE_ROLES | {'service_manager'}
 # Графики монтажников правит СМ (монтажник — свой, это этап 3)
 SCHEDULE_ROLES = frozenset({'service_manager', 'admin'})
+# Монтажник видит монтажи, где он на выезде, и графики коллег (только просмотр)
+INSTALLER_ROLE = 'installer'
+# Виды файлов, которые загружает монтажник
+INSTALLER_FILE_KINDS = frozenset({'act', 'result'})
 # Решение по неактуальности — за менеджером заказа
 DECIDE_ROLES = CREATE_ROLES
 # «Назначить монтаж» после «Не готов к монтажу» нажимает менеджер или СМ
@@ -22,8 +26,17 @@ READY_ROLES = LIST_ROLES
 def can_see_installations(user):
     return (
         user.is_authenticated
-        and user.role in LIST_ROLES
+        and (user.role in LIST_ROLES or user.role == INSTALLER_ROLE)
         and not getattr(user, 'measurements_only', False)
+    )
+
+
+def is_installer_of(user, inst):
+    """Монтажник стоит на текущем выезде монтажа."""
+    visit = inst.current_visit
+    return (
+        user.role == INSTALLER_ROLE and visit is not None
+        and any(u.id == user.id for u in visit.installers.all())
     )
 
 
@@ -45,6 +58,8 @@ def installations_for_user(user):
         return qs.none()
     if user.role == 'admin':
         return qs
+    if user.role == INSTALLER_ROLE:
+        return qs.filter(visits__installers=user).distinct()
     if user.role == 'group_leader':
         return qs.filter(order__salon_id__in=user.managed_salon_ids())
     city_id = user_city_id(user)

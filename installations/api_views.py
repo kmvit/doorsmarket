@@ -10,7 +10,8 @@ from orders.api_views import apply_people_filters, get_orders_queryset_for_user,
 from . import services
 from . import sms
 from .access import (
-    CREATE_ROLES, DECIDE_ROLES, READY_ROLES, SCHEDULE_ROLES, can_see_installations, installations_for_user,
+    CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES, SCHEDULE_ROLES,
+    can_see_installations, installations_for_user, is_installer_of,
 )
 from .models import (
     CLOSED_INSTALLATION_STATUSES, EventKind, InstallationFile, InstallationStatus, InstallationVisit,
@@ -27,6 +28,7 @@ INSTALLATION_FOLDERS = [
     ('planned', 'Запланирован'),
     ('not_ready', 'Не готов к монтажу'),
     ('irrelevant_requested', 'Неактуален? Подтвердить'),
+    ('reschedule_requested', 'Перенос даты? Подтвердить'),
 ]
 
 
@@ -40,6 +42,10 @@ def apply_installation_folder(qs, folder):
         return qs.filter(status=InstallationStatus.NOT_READY)
     if folder == 'irrelevant_requested':
         return qs.filter(irrelevant_requested_at__isnull=False).exclude(status=InstallationStatus.IRRELEVANT)
+    if folder == 'reschedule_requested':
+        return qs.filter(
+            status=InstallationStatus.PLANNED, visits__reschedule_requested_at__isnull=False,
+        ).distinct()
     return qs
 
 
@@ -166,6 +172,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response(self._detail(inst), status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
+        if request.user.role == INSTALLER_ROLE:
+            return _forbidden('Монтаж правят менеджер и сервис-менеджер.')
         inst = self.get_object()
         if inst.is_closed:
             return Response(
@@ -384,6 +392,95 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response(self._detail(inst))
 
 
+    # ---------- Этап 3: монтажник ----------
+
+    def _installer_or_sm(self, request, inst):
+        """Действие монтажника по текущему выезду (СМ может сделать за него)."""
+        if request.user.role in SCHEDULE_ROLES or is_installer_of(request.user, inst):
+            return None
+        return _forbidden('Это делает монтажник, назначенный на монтаж.')
+
+    @action(detail=True, methods=['post'], url_path='installer_call_failed')
+    def installer_call_failed(self, request, pk=None):
+        """Монтажник не дозвонился до клиента — СМС «перезвоните монтажнику»."""
+        inst = self.get_object()
+        if (error := self._installer_or_sm(request, inst)):
+            return error
+        if inst.status != InstallationStatus.PLANNED:
+            return _bad('Монтаж не запланирован.')
+        if not (inst.contact_phone or inst.order.contact_phone):
+            return _bad('У контактного лица нет телефона.')
+        if not services.installer_call_failed(inst, request.user):
+            return _bad('Не удалось отправить уведомление.')
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'])
+    def reschedule(self, request, pk=None):
+        """Монтажник переносит дату: {date_from, date_to, reason}. СМ потом подтверждает."""
+        inst = self.get_object()
+        if (error := self._installer_or_sm(request, inst)):
+            return error
+        if inst.status != InstallationStatus.PLANNED:
+            return _bad('Монтаж не запланирован.')
+        date_from = _parse_date(request.data.get('date_from'))
+        date_to = _parse_date(request.data.get('date_to')) or date_from
+        reason = (request.data.get('reason') or '').strip()[:500]
+        if not date_from or date_to < date_from:
+            return _bad('Укажите новые даты.')
+        if not reason:
+            return _bad('Укажите причину переноса.')
+        visit = inst.current_visit
+        if (visit.date_from, visit.date_to) == (date_from, date_to):
+            return _bad('Даты не изменились.')
+        services.reschedule_by_installer(inst, date_from=date_from, date_to=date_to, reason=reason,
+                                         actor=request.user)
+        return Response(self._detail(inst))
+
+    def _pending_reschedule(self, request):
+        if request.user.role not in SCHEDULE_ROLES:
+            return None, _forbidden('Перенос подтверждает сервис-менеджер.')
+        inst = self.get_object()
+        visit = inst.current_visit
+        if inst.status != InstallationStatus.PLANNED or not visit or not visit.reschedule_requested_at:
+            return None, _bad('Переноса, ждущего решения, нет.')
+        return inst, None
+
+    @action(detail=True, methods=['post'], url_path='confirm_reschedule')
+    def confirm_reschedule(self, request, pk=None):
+        inst, error = self._pending_reschedule(request)
+        if error:
+            return error
+        services.confirm_reschedule(inst, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='reject_reschedule')
+    def reject_reschedule(self, request, pk=None):
+        inst, error = self._pending_reschedule(request)
+        if error:
+            return error
+        services.reject_reschedule(inst, (request.data.get('comment') or '').strip()[:500], request.user)
+        return Response(self._detail(inst))
+
+    def _complete(self, request, partial):
+        inst = self.get_object()
+        if (error := self._installer_or_sm(request, inst)):
+            return error
+        if inst.status != InstallationStatus.PLANNED:
+            return _bad('Завершить можно запланированный монтаж.')
+        if not services.has_current_act(inst):
+            return _bad('Сначала прикрепите акт выполненных работ с подписью клиента.')
+        services.complete(inst, partial=partial, actor=request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        return self._complete(request, partial=False)
+
+    @action(detail=True, methods=['post'], url_path='complete_partial')
+    def complete_partial(self, request, pk=None):
+        return self._complete(request, partial=True)
+
+
 class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
                               viewsets.GenericViewSet):
     """Файлы пакета документов монтажа: добавить / удалить, пока монтаж не завершён."""
@@ -407,16 +504,23 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
             return Response({'detail': 'Монтаж закрыт — файлы не меняются.'}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        kind = serializer.validated_data['kind']
+        if request.user.role == INSTALLER_ROLE and (
+            kind not in INSTALLER_FILE_KINDS or not is_installer_of(request.user, inst)
+        ):
+            return _forbidden('Монтажник прикладывает акт и фото/видео своего монтажа.')
+        if kind in INSTALLER_FILE_KINDS and inst.status != InstallationStatus.PLANNED:
+            return _bad('Акт и фото результата прикладывают к запланированному монтажу.')
         upload = serializer.validated_data['file']
-        f = serializer.save(installation=inst, uploaded_by=request.user,
-                            name=serializer.validated_data.get('name') or upload.name[:255])
-        inst.log(EventKind.FILE_ADDED, actor=request.user,
-                 description=f'{f.get_kind_display()}: {f.name}', meta={'file_id': f.id})
+        f = services.add_file(inst, kind=kind, upload=upload, actor=request.user,
+                              name=serializer.validated_data.get('name') or upload.name[:255])
         return Response(self.get_serializer(f).data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, *args, **kwargs):
         f = self.get_object()
         inst = f.installation
+        if request.user.role == INSTALLER_ROLE and f.uploaded_by_id != request.user.id:
+            return _forbidden('Монтажник удаляет только свои файлы.')
         if inst.is_closed:
             return Response({'detail': 'Монтаж закрыт — файлы не меняются.'}, status=status.HTTP_400_BAD_REQUEST)
         # Последний файл обязательного вида не удаляем — пакет должен остаться полным

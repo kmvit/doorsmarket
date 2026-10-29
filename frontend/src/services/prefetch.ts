@@ -226,3 +226,68 @@ export const prefetchMeasurementsForOffline = async (
     failed: failedDetails + failedOrders + failedFiles,
   }
 }
+
+// ==================== Монтажи: офлайн-копия для монтажника ====================
+
+const INSTALLATIONS_PREFETCH_KEY = 'offline_prefetch_installations_at'
+
+export const getLastInstallationsPrefetchAt = (): number | null => {
+  const value = Number(localStorage.getItem(INSTALLATIONS_PREFETCH_KEY) || NaN)
+  return Number.isFinite(value) ? value : null
+}
+
+// Монтажи, карточки и файлы пакета документов (кроме видео) — чтобы на объекте
+// без связи открыть адрес, контакт, КП и чертежи. Ключи кеша — те же, что у
+// installationsAPI, тогда офлайн-фолбэк найдёт данные.
+export const prefetchInstallationsForOffline = async (
+  onProgress?: (progress: PrefetchProgress) => void,
+): Promise<PrefetchResult> => {
+  if (!navigator.onLine) {
+    throw new Error('Нет связи — подключитесь к интернету и повторите')
+  }
+  const report = (stage: string, done: number, total: number) => onProgress?.({ stage, done, total })
+
+  report('Список монтажей', 0, 1)
+  const params = { exclude_closed: 'true' }
+  let list: { id: number }[]
+  try {
+    const response = await apiClient.get('/installations/', { params })
+    list = Array.isArray(response.data) ? response.data : (response.data.results || [])
+  } catch (error: any) {
+    throw new Error(`Не удалось получить список монтажей: ${error?.message || 'сервер недоступен'}`)
+  }
+  await cacheUtils.set(`installations_list_${JSON.stringify(params)}`, list, PREFETCH_TTL)
+  report('Список монтажей', 1, 1)
+
+  const files = new Set<string>()
+  let loaded = 0
+  let done = 0
+  const failedDetails = await runPool(
+    list,
+    async (item) => {
+      const detail = (await apiClient.get(`/installations/${item.id}/`)).data
+      await cacheUtils.set(`installation_detail_${item.id}`, detail, PREFETCH_TTL)
+      const events = (await apiClient.get(`/installations/${item.id}/events/`)).data
+      await cacheUtils.set(`installation_events_${item.id}`, events, PREFETCH_TTL)
+      loaded++
+      for (const f of detail.files || []) {
+        if (f.file_url && f.attachment_type !== 'video') files.add(f.file_url)
+      }
+      for (const d of detail.order_documents || []) {
+        if (d.file_url?.startsWith('/media/')) files.add(d.file_url)
+      }
+    },
+    () => report('Карточки монтажей', ++done, list.length),
+  )
+
+  done = 0
+  const fileList = Array.from(files).slice(0, MAX_FILES)
+  const failedFiles = await runPool(
+    fileList,
+    (url) => cacheFile(url),
+    () => report('Документы', ++done, fileList.length),
+  )
+
+  localStorage.setItem(INSTALLATIONS_PREFETCH_KEY, String(Date.now()))
+  return { measurements: loaded, files: fileList.length - failedFiles, failed: failedDetails + failedFiles }
+}

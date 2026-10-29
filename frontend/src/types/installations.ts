@@ -41,6 +41,8 @@ export type InstallationFileKind =
   | 'extra'
   | 'photo'
   | 'video'
+  | 'act'
+  | 'result'
 
 export const INSTALLATION_FILE_KIND_DISPLAY: Record<InstallationFileKind, string> = {
   measurement_blank: 'Бланк замера',
@@ -50,17 +52,24 @@ export const INSTALLATION_FILE_KIND_DISPLAY: Record<InstallationFileKind, string
   extra: 'Дополнительные документы',
   photo: 'Фото',
   video: 'Видео',
+  act: 'Акт выполненных работ',
+  result: 'Фото/видео результата',
 }
 
 export const INSTALLATION_FILE_KINDS: InstallationFileKind[] = [
-  'measurement_blank', 'final_kp', 'installation_kp', 'drawings', 'extra', 'photo', 'video',
+  'measurement_blank', 'final_kp', 'installation_kp', 'drawings', 'extra', 'photo', 'video', 'act', 'result',
 ]
+
+/** Что прикладывает монтажник по факту работ */
+export const INSTALLER_FILE_KINDS: InstallationFileKind[] = ['act', 'result']
 
 export interface InstallationFile {
   id: number
   installation: number
   kind: InstallationFileKind
   kind_display: string
+  visit: number | null
+  uploaded_by: number | null
   file_url: string | null
   file_size: string
   attachment_type: 'photo' | 'video' | 'document'
@@ -93,6 +102,11 @@ export interface InstallationVisit {
   date_from: string
   date_to: string
   installers: Staff[]
+  reschedule_requested_at?: string | null
+  reschedule_requested_by_name?: string
+  reschedule_reason?: string
+  previous_date_from?: string | null
+  previous_date_to?: string | null
 }
 
 /** Выезд в календаре монтажника */
@@ -146,6 +160,8 @@ export interface Installation {
   measurement_blank_required?: boolean
   order_manager_id?: number
   visits?: InstallationVisit[]
+  installer_notified_at?: string | null
+  complaints?: { id: number; created_at: string; status_display: string }[]
 }
 
 export interface InstallationEvent {

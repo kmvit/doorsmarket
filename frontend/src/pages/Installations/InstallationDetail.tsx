@@ -5,9 +5,10 @@ import { installationsAPI, apiErrorText } from '../../api/installations'
 import {
   CLOSED_INSTALLATION_STATUSES, Installation, InstallationEvent, InstallationFileKind,
   INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR, formatDate, formatPeriod,
-  canDecideIrrelevant, canEditSchedule, canSeeInstallations,
+  canDecideIrrelevant, canEditSchedule, canSeeInstallations, INSTALLER_FILE_KINDS,
 } from '../../types/installations'
 import AssignModal from '../../components/installations/AssignModal'
+import InstallerWorkPanel from '../../components/installations/InstallerWorkPanel'
 import PhoneLink from '../../components/common/PhoneLink'
 import FileViewer from '../../components/common/FileViewer'
 
@@ -109,6 +110,15 @@ const InstallationDetail = () => {
   }
 
   const sm = canEditSchedule(user?.role)
+  const isInstaller = user?.role === 'installer'
+  const visit = inst.current_visit
+  const myVisit = !!visit && visit.installers.some((u) => u.id === user?.id)
+  const reschedulePending = inst.status === 'planned' && !!visit?.reschedule_requested_at
+  // Пакет документов: монтажник прикладывает только акт и фото (через панель работ),
+  // остальные — любые виды; акт и фото — только пока монтаж запланирован
+  const canUploadKind = (kind: InstallationFileKind) => editable && !isInstaller
+    && (!INSTALLER_FILE_KINDS.includes(kind) || inst.status === 'planned')
+  const canDeleteFile = (uploadedBy: number | null) => editable && (!isInstaller || uploadedBy === user?.id)
   const assignable = ['not_planned', 'partially_done', 'planned'].includes(inst.status)
   const pending = !!inst.irrelevant_requested_at && editable
   const btn = 'px-3 py-1.5 text-sm rounded-lg border transition-all disabled:opacity-50'
@@ -141,7 +151,7 @@ const InstallationDetail = () => {
             </span>
           </div>
         </div>
-        {editable && (
+        {editable && !isInstaller && (
           <Link
             to={`/orders/installations/${inst.id}/edit`}
             className="px-4 py-2 text-sm font-medium rounded-xl border border-primary-300 text-primary-700 hover:bg-primary-50"
@@ -172,6 +182,33 @@ const InstallationDetail = () => {
         </div>
       )}
 
+      {reschedulePending && !isInstaller && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
+          <p className="text-sm text-amber-900">
+            <span className="font-semibold">{visit!.reschedule_requested_by_name || 'Монтажник'}</span> перенёс монтаж
+            {visit!.previous_date_from && <> с {formatPeriod(visit!.previous_date_from, visit!.previous_date_to || visit!.previous_date_from)}</>}
+            {' '}на <span className="font-semibold">{formatPeriod(visit!.date_from, visit!.date_to)}</span>.
+            Причина: «{visit!.reschedule_reason}». Клиенту СМС уйдёт после подтверждения.
+          </p>
+          {sm && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button type="button" disabled={acting} className={btnPrimary}
+                onClick={() => ask('Подтвердить перенос? Клиенту уйдёт СМС с новой датой.', 'confirm_reschedule')}>
+                Подтвердить перенос
+              </button>
+              <button type="button" disabled={acting} className={btnPlain}
+                onClick={() => ask('Комментарий для монтажника (вернутся прежние даты):', 'reject_reschedule', 'comment')}>
+                Отклонить
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {inst.status === 'planned' && (myVisit || sm) && (
+        <InstallerWorkPanel inst={inst} onChanged={(updated) => { if (updated) setInst(updated); load() }} />
+      )}
+
       {inst.status === 'planned' && inst.current_visit && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-900">
           Монтаж назначен на <span className="font-semibold">{formatPeriod(inst.current_visit.date_from, inst.current_visit.date_to)}</span>
@@ -179,7 +216,7 @@ const InstallationDetail = () => {
         </div>
       )}
 
-      {editable && (sm || inst.status === 'not_ready') && canSeeInstallations(user?.role) && (
+      {editable && !isInstaller && (sm || inst.status === 'not_ready') && canSeeInstallations(user?.role) && (
         <div className="flex flex-wrap gap-2 mb-4">
           {sm && assignable && (
             <button type="button" disabled={acting} className={btnPrimary} onClick={() => setAssigning(true)}>
@@ -274,7 +311,8 @@ const InstallationDetail = () => {
           {INSTALLATION_FILE_KINDS.map((kind) => {
             const list = inst.files.filter((f) => f.kind === kind)
             const required = requiredKinds.includes(kind)
-            if (!list.length && !editable) return null
+            // Пустые разделы показываем, только если в них можно что-то загрузить
+            if (!list.length && !canUploadKind(kind)) return null
             return (
               <div key={kind} className="py-2">
                 <div className="flex items-center justify-between gap-2">
@@ -282,7 +320,7 @@ const InstallationDetail = () => {
                     {INSTALLATION_FILE_KIND_DISPLAY[kind]}
                     {required && <span className="text-red-500"> *</span>}
                   </span>
-                  {editable && (
+                  {canUploadKind(kind) && (
                     <label className="text-sm text-primary-600 hover:underline cursor-pointer whitespace-nowrap">
                       {busyKind === kind ? 'Загрузка…' : '+ Добавить'}
                       <input
@@ -310,7 +348,7 @@ const InstallationDetail = () => {
                           {f.name}
                           {f.file_size && <span className="text-gray-400 ml-1 text-xs">{f.file_size}</span>}
                         </button>
-                        {editable && (
+                        {canDeleteFile(f.uploaded_by) && (
                           <button type="button" onClick={() => remove(f.id)} className="text-xs text-red-500 hover:underline">
                             удалить
                           </button>
@@ -324,6 +362,20 @@ const InstallationDetail = () => {
           })}
         </div>
       </div>
+
+      {(inst.complaints?.length || 0) > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-red-200 p-4 mb-4">
+          <h2 className="text-sm font-semibold text-red-700 uppercase tracking-wider mb-2">Рекламации по заказу</h2>
+          <ul className="space-y-1">
+            {inst.complaints!.map((c) => (
+              <li key={c.id} className="text-sm">
+                <Link to={`/complaints/${c.id}`} className="text-primary-600 hover:underline">Рекламация #{c.id}</Link>
+                <span className="text-gray-500"> · {formatDate(c.created_at)} · {c.status_display}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">История</h2>

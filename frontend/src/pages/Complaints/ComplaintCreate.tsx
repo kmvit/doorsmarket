@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
@@ -12,6 +12,7 @@ import { useAuthStore } from '../../store/authStore'
 import Button from '../../components/common/Button'
 import PhoneInput, { normalizePhone } from '../../components/common/PhoneInput'
 import FileUploadList from '../../components/complaints/FileUploadList'
+import { installationsAPI } from '../../api/installations'
 
 interface DefectiveProductForm {
   product_name: string
@@ -285,6 +286,33 @@ const ComplaintCreate = () => {
       setShowProductSelection(true)
     }
   }
+
+  // Рекламация из монтажа (?order=&installation=): заказ подставляется сам,
+  // контактное лицо — из монтажа, позиции выбираются галочками как обычно
+  const [searchParams] = useSearchParams()
+  const prefillDone = useRef(false)
+  useEffect(() => {
+    const orderId = Number(searchParams.get('order'))
+    const installationId = Number(searchParams.get('installation'))
+    if (!orderId || prefillDone.current) return
+    prefillDone.current = true
+    const prefill = async () => {
+      try {
+        const order = (await complaintsAPI.findOrderByNumber(String(orderId))).find((o) => o.id === orderId)
+        if (order) handlePickOrder(order)
+      } catch { /* заказ выберут вручную */ }
+      // Контакт монтажа — после заказа, чтобы телефон из заказа его не затёр
+      if (installationId) {
+        try {
+          const inst = await installationsAPI.getById(installationId)
+          if (inst.contact_name) setValue('contact_person', inst.contact_name)
+          if (inst.contact_phone) setValue('contact_phone', normalizePhone(inst.contact_phone))
+        } catch { /* не критично */ }
+      }
+    }
+    prefill()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index))

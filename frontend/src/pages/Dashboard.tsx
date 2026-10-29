@@ -68,6 +68,7 @@ const Dashboard = () => {
   const isManager = user?.role === 'manager'
   const isSM = user?.role === 'service_manager'
   const isLeader = (user?.role === 'leader' || user?.role === 'group_leader')
+  const isInstaller = user?.role === 'installer'
 
   // Папки Фазы 6: менеджеру — свои заказы, СМ и руководителю — заказы города (пайплайн замера)
   useEffect(() => {
@@ -80,9 +81,9 @@ const Dashboard = () => {
 
   // Папки монтажей: менеджеру — по его заказам, СМ и руководителю — по городу
   useEffect(() => {
-    if (!(isManager || isSM || isLeader) || user?.measurements_only) return
+    if (!(isManager || isSM || isLeader || isInstaller) || user?.measurements_only) return
     installationsAPI.getFolderCounts({ mine: isManager }).then(setInstallationFolders).catch(() => {})
-  }, [isManager, isSM, isLeader, user?.measurements_only])
+  }, [isManager, isSM, isLeader, isInstaller, user?.measurements_only])
 
   useEffect(() => {
     if (!showWorkshopCard) return
@@ -326,10 +327,14 @@ const Dashboard = () => {
         })()}
 
         {/* Монтажи: заказы на складе / отгруженные без оформленного монтажа */}
-        {(isManager || isLeader || isSM) && (() => {
+        {(isManager || isLeader || isSM || isInstaller) && (() => {
           const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
           // Менеджеру — оформить и решить по неактуальности; СМ и руководителю — весь пайплайн
-          const shown = installationFolders.filter((f) => !isManager || f.folder === 'irrelevant_requested')
+          // Монтажнику — его запланированные монтажи
+          const shown = installationFolders
+            .filter((f) => !isManager || f.folder === 'irrelevant_requested')
+            .filter((f) => !isInstaller || f.folder === 'planned')
+            .map((f) => (isInstaller ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
           const mine = isManager ? '&mine=1' : ''
           return (
@@ -345,7 +350,7 @@ const Dashboard = () => {
                     to={`/orders/installations?folder=${f.folder}${mine}`}
                     label={f.label}
                     count={f.count}
-                    overdue={f.folder === 'irrelevant_requested'}
+                    overdue={f.folder === 'irrelevant_requested' || f.folder === 'reschedule_requested'}
                   />
                 ))}
               </div>

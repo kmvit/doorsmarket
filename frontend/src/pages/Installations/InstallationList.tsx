@@ -16,6 +16,7 @@ import PeopleFilters, {
 import OrderPickerModal from './OrderPickerModal'
 import InstallationsTabs from './InstallationsTabs'
 import AssignModal from '../../components/installations/AssignModal'
+import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
 
 // Папки с главной (?folder=)
 const FOLDER_LABELS: Record<string, string> = {
@@ -23,6 +24,7 @@ const FOLDER_LABELS: Record<string, string> = {
   planned: 'Запланирован',
   not_ready: 'Не готов к монтажу',
   irrelevant_requested: 'Неактуален? Подтвердить',
+  reschedule_requested: 'Перенос даты? Подтвердить',
 }
 
 const STATUS_OPTIONS = INSTALLATION_STATUS_ORDER.map((value) => ({ value, label: INSTALLATION_STATUS_DISPLAY[value] }))
@@ -101,6 +103,8 @@ const InstallationList = () => {
   return (
     <div className="container mx-auto px-4 py-6 max-w-[1600px]">
       <InstallationsTabs active="list" />
+      {/* Монтажнику — офлайн-копия его монтажей с документами перед выездом */}
+      {user?.role === 'installer' && <OfflinePrefetchButton target="installations" />}
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Монтажи</h1>

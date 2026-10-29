@@ -20,10 +20,10 @@ class InstallationFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallationFile
         fields = [
-            'id', 'installation', 'kind', 'kind_display', 'file', 'file_url', 'file_size',
-            'attachment_type', 'name', 'created_at',
+            'id', 'installation', 'kind', 'kind_display', 'visit', 'file', 'file_url', 'file_size',
+            'attachment_type', 'name', 'uploaded_by', 'created_at',
         ]
-        read_only_fields = ['id', 'installation', 'created_at']
+        read_only_fields = ['id', 'installation', 'visit', 'uploaded_by', 'created_at']
         extra_kwargs = {'file': {'write_only': True}}
 
     def get_file_url(self, obj):
@@ -72,10 +72,18 @@ class StaffSerializer(serializers.Serializer):
 
 class InstallationVisitSerializer(serializers.ModelSerializer):
     installers = StaffSerializer(many=True, read_only=True)
+    reschedule_requested_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = InstallationVisit
-        fields = ['id', 'date_from', 'date_to', 'installers']
+        fields = [
+            'id', 'date_from', 'date_to', 'installers',
+            'reschedule_requested_at', 'reschedule_requested_by_name', 'reschedule_reason',
+            'previous_date_from', 'previous_date_to',
+        ]
+
+    def get_reschedule_requested_by_name(self, obj):
+        return _user_name(obj.reschedule_requested_by)
 
 
 class InstallationListSerializer(serializers.ModelSerializer):
@@ -135,12 +143,30 @@ class InstallationDetailSerializer(InstallationListSerializer):
     measurement_blank_required = serializers.SerializerMethodField()
     order_manager_id = serializers.SerializerMethodField()
     visits = InstallationVisitSerializer(many=True, read_only=True)
+    installer_notified_at = serializers.SerializerMethodField()
+    complaints = serializers.SerializerMethodField()
 
     class Meta(InstallationListSerializer.Meta):
         fields = InstallationListSerializer.Meta.fields + [
             'created_by_name', 'order_status_display', 'measurement_blank_required',
-            'order_manager_id', 'visits',
+            'order_manager_id', 'visits', 'installer_notified_at', 'complaints',
         ]
+
+    def get_installer_notified_at(self, obj):
+        """Когда монтажник последний раз отправил «не дозвонился» по текущему выезду."""
+        visit = obj.current_visit
+        if visit is None:
+            return None
+        event = obj.events.filter(
+            kind='sms_sent', meta__purpose='installer_call_failed', created_at__gte=visit.created_at,
+        ).order_by('-created_at').first()
+        return event.created_at if event else None
+
+    def get_complaints(self, obj):
+        """Рекламации по заказу, заведённые после оформления монтажа."""
+        from projects.models import Complaint
+        rows = Complaint.objects.filter(source_order=obj.order, created_at__gte=obj.created_at).order_by('-id')
+        return [{'id': c.id, 'created_at': c.created_at, 'status_display': c.get_status_display()} for c in rows]
 
     def get_order_manager_id(self, obj):
         return obj.order.manager_id
