@@ -299,7 +299,17 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         ).exclude(installation__status=InstallationStatus.IRRELEVANT).select_related(
             'installation', 'installation__order',
         ).prefetch_related('installers').distinct().order_by('date_from', 'id')
-        return Response(ScheduleVisitSerializer(visits, many=True).data)
+        rows = [{**row, 'kind': 'installation'} for row in ScheduleVisitSerializer(visits, many=True).data]
+        # Рекламационные выезды — в тех же графиках, выделены цветом на фронте
+        from .complaints import complaint_visits
+        rows += complaint_visits(installer_ids, date_from, date_to)
+        return Response(sorted(rows, key=lambda r: r['date_from']))
+
+    @action(detail=False, methods=['get'])
+    def complaints(self, request):
+        """Рекламационные монтажи для общего списка (планируются в рекламациях)."""
+        from .complaints import complaint_installations, complaint_row
+        return Response([complaint_row(c) for c in complaint_installations(request.user, request.query_params)])
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):

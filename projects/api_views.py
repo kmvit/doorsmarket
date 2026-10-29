@@ -129,6 +129,46 @@ def _parse_installation_window(request):
     return start, end, None
 
 
+def scope_complaints_for_user(queryset, user):
+    """
+    Видимость рекламаций по роли. Общая для раздела рекламаций и списка
+    монтажей (рекламационные монтажи), чтобы правила не разошлись.
+    """
+    # Администратор видит все рекламации. Django superuser (is_staff) тоже получает полный доступ
+    if user.role == 'admin' or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+        pass  # Без фильтрации — видит все
+    elif user.role == 'installer':
+        # Монтажник видит только назначенные ему или созданные им
+        queryset = queryset.filter(
+            Q(initiator=user) | Q(installer_assigned=user)
+        )
+    elif user.role == 'complaint_department':
+        # ОР видит только фабричные рекламации
+        queryset = queryset.filter(complaint_type='factory')
+    elif user.role == 'leader':
+        # Руководитель видит все по своему городу
+        if user.city:
+            queryset = queryset.filter(initiator__city=user.city)
+    elif user.role == 'group_leader':
+        # Руководитель группы — только рекламации своих салонов
+        queryset = queryset.filter(group_leader_complaints_q(user))
+    elif user.role == 'service_manager':
+        # Сервис-менеджер видит рекламации из своего города или созданные им
+        user_city = getattr(user, 'city', None)
+        if user_city:
+            city_filter = Q(initiator__city=user_city)
+            personal_filter = Q(initiator=user)
+            queryset = queryset.filter(city_filter | personal_filter)
+        else:
+            # Если нет города, видит только созданные им
+            queryset = queryset.filter(initiator=user)
+    elif user.role == 'manager':
+        # Менеджер видит рекламации из своего города
+        if user.city:
+            queryset = queryset.filter(initiator__city=user.city)
+    return queryset
+
+
 class ComplaintViewSet(viewsets.ModelViewSet):
     """
     ViewSet для работы с рекламациями
@@ -167,40 +207,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             'comments__author'
         )
         
-        # Фильтрация по ролям
-        # Администратор видит все рекламации. Django superuser (is_staff) тоже получает полный доступ
-        if user.role == 'admin' or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
-            pass  # Без фильтрации — видит все
-        elif user.role == 'installer':
-            # Монтажник видит только назначенные ему или созданные им
-            queryset = queryset.filter(
-                Q(initiator=user) | Q(installer_assigned=user)
-            )
-        elif user.role == 'complaint_department':
-            # ОР видит только фабричные рекламации
-            queryset = queryset.filter(complaint_type='factory')
-        elif user.role == 'leader':
-            # Руководитель видит все по своему городу
-            if user.city:
-                queryset = queryset.filter(initiator__city=user.city)
-        elif user.role == 'group_leader':
-            # Руководитель группы — только рекламации своих салонов
-            queryset = queryset.filter(group_leader_complaints_q(user))
-        elif user.role == 'service_manager':
-            # Сервис-менеджер видит рекламации из своего города или созданные им
-            user_city = getattr(user, 'city', None)
-            if user_city:
-                city_filter = Q(initiator__city=user_city)
-                personal_filter = Q(initiator=user)
-                queryset = queryset.filter(city_filter | personal_filter)
-            else:
-                # Если нет города, видит только созданные им
-                queryset = queryset.filter(initiator=user)
-        elif user.role == 'manager':
-            # Менеджер видит рекламации из своего города
-            if user.city:
-                queryset = queryset.filter(initiator__city=user.city)
-        
+        queryset = scope_complaints_for_user(queryset, user)
+
         # Дополнительные фильтры из query params
         my_complaints = self.request.query_params.get('my_complaints')
         my_orders = self.request.query_params.get('my_orders')

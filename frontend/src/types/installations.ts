@@ -114,17 +114,40 @@ export interface InstallationVisit {
   previous_date_to?: string | null
 }
 
-/** Выезд в календаре монтажника */
-export interface ScheduleVisit extends InstallationVisit {
-  installation_id: number
+/** Выезд в календаре монтажника: монтаж или рекламация (kind) */
+export interface ScheduleVisit extends Omit<InstallationVisit, 'id'> {
+  id: number | string
+  kind: 'installation' | 'complaint'
+  complaint_id?: number
+  window?: string
+  installation_id: number | null
   status: InstallationStatus
   status_display: string
-  order: number
+  order: number | null
   client_name: string
   address: string
   work_description: string
   contact_name: string
   contact_phone: string
+}
+
+/** Рекламационный монтаж в общем списке (планируется в рекламации) */
+export interface ComplaintInstallationRow {
+  id: number
+  status: string
+  status_display: string
+  client_name: string
+  address: string
+  order_number: string
+  contact_name: string
+  contact_phone: string
+  manager_name: string
+  installer_name: string
+  installer_id: number | null
+  products: string
+  date: string | null
+  window: string
+  needs_planning: boolean
 }
 
 export interface InstallationFolderCount {

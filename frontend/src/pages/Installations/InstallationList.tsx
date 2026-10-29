@@ -4,7 +4,8 @@ import { useAuthStore } from '../../store/authStore'
 import { installationsAPI } from '../../api/installations'
 import {
   Installation, InstallationStatus, INSTALLATION_STATUS_COLOR, INSTALLATION_STATUS_DISPLAY,
-  INSTALLATION_STATUS_ORDER, canCreateInstallation, canEditSchedule, formatDate, formatPeriod,
+  INSTALLATION_STATUS_ORDER, ComplaintInstallationRow, canCreateInstallation, canEditSchedule, formatDate,
+  formatPeriod,
 } from '../../types/installations'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
@@ -57,12 +58,17 @@ const InstallationList = () => {
   const [rawPeople, setPeople] = usePersistedState<PeopleFilterValue>('installations:people', EMPTY_PEOPLE_FILTER)
   const people = normalizePeopleFilter(rawPeople)
   const byPeople = canFilterByPeople(user?.role)
+  // Рекламационные монтажи в общем списке (выделены цветом, планируются в рекламации)
+  const [showComplaints, setShowComplaints] = usePersistedState('installations:complaints', true)
+  const [complaintRows, setComplaintRows] = useState<ComplaintInstallationRow[]>([])
+  // Статусы, оплата и папки — понятия монтажа: с ними рекламации не показываем
+  const complaintsShown = showComplaints && !folder && !status.length && paid === ''
 
   const load = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      setItems(await installationsAPI.getList({
+      const filters = {
         search: search || undefined,
         status,
         is_paid: paid === '' ? undefined : paid === 'paid',
@@ -72,14 +78,20 @@ const InstallationList = () => {
         salons: byPeople ? people.salons : undefined,
         managers: byPeople ? people.managers : undefined,
         folder: folder || undefined,
-      }))
+      }
+      const [list, complaints] = await Promise.all([
+        installationsAPI.getList(filters),
+        complaintsShown ? installationsAPI.getComplaintRows(filters).catch(() => []) : Promise.resolve([]),
+      ])
+      setItems(list)
+      setComplaintRows(complaints)
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки монтажей')
     } finally {
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder])
+  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder, complaintsShown])
 
   // С главной менеджер приходит с ?mine=1 — плитки считают монтажи по его заказам
   useEffect(() => {
@@ -110,7 +122,9 @@ const InstallationList = () => {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Монтажи</h1>
-          <p className="text-sm text-gray-500 mt-1">{items.length} монтаж(ей)</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {items.length} монтаж(ей){complaintRows.length > 0 && `, ${complaintRows.length} по рекламациям`}
+          </p>
         </div>
         {canCreateInstallation(user?.role) && (
           <button
@@ -187,6 +201,16 @@ const InstallationList = () => {
           />
           Кроме выполненных
         </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showComplaints}
+            onChange={(e) => setShowComplaints(e.target.checked)}
+            className="rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+          />
+          <span className="inline-block w-3 h-3 rounded-sm bg-rose-100 border border-rose-300" />
+          Рекламации
+        </label>
       </div>
 
       {error && (
@@ -197,7 +221,7 @@ const InstallationList = () => {
         <div className="flex justify-center items-center h-48">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && complaintRows.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
           <div className="text-5xl mb-4">🛠️</div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Монтажей нет</h2>
@@ -319,6 +343,49 @@ const InstallationList = () => {
                     </tr>
                   )
                 })}
+                {complaintRows.map((c) => (
+                  <tr
+                    key={`c${c.id}`}
+                    className="bg-rose-50 hover:bg-rose-100 cursor-pointer"
+                    onClick={() => navigate(`/complaints/${c.id}`)}
+                  >
+                    <td className={`${td} whitespace-nowrap`}>
+                      <Link to={`/complaints/${c.id}`} className="text-rose-700 font-medium hover:underline"
+                        onClick={(e) => e.stopPropagation()}>
+                        Рекл. #{c.id}
+                      </Link>
+                      <div className="text-xs text-gray-500">заказ {c.order_number}</div>
+                    </td>
+                    <td className={td}>
+                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-rose-100 text-rose-800">
+                        {c.status_display}
+                      </span>
+                      {c.window && (
+                        <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
+                          <span className="font-semibold">{c.window}</span>
+                          {c.installer_name && <> · {c.installer_name}</>}
+                        </div>
+                      )}
+                      {c.needs_planning && (
+                        <div className="mt-1 text-xs font-medium text-rose-700">Запланировать в рекламации →</div>
+                      )}
+                    </td>
+                    <td className={td}>
+                      <div className="font-medium text-gray-900">{c.client_name}</div>
+                      {c.address && <div className="text-xs text-gray-500 max-w-[220px]">{c.address}</div>}
+                    </td>
+                    <td className={td}>
+                      <div>{c.contact_name || '—'}</div>
+                      {c.contact_phone && <PhoneLink phone={c.contact_phone} className="text-xs" stopPropagation />}
+                    </td>
+                    <td className={td}>{c.manager_name || '—'}</td>
+                    <td className={`${td} max-w-[240px]`}>{c.products || 'Рекламация'}</td>
+                    <td className={td}>—</td>
+                    <td className={td}>—</td>
+                    <td className={td}>—</td>
+                    <td className={td}>—</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

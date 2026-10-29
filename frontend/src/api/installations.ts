@@ -3,8 +3,8 @@ import { withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
-  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, PublicActPage, RatingReport,
-  ScheduleVisit,
+  ComplaintInstallationRow, InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer,
+  PublicActPage, RatingReport, ScheduleVisit,
 } from '../types/installations'
 
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -27,6 +27,20 @@ export const installationsAPI = {
     return withOfflineFallback({
       cacheKey: `installations_list_${JSON.stringify(params)}`,
       request: async () => asList<Installation>((await apiClient.get('/installations/', { params })).data),
+      ttl: LONG_TTL,
+    })
+  },
+
+  // Рекламационные монтажи — показываются в общем списке, планируются в рекламациях
+  getComplaintRows: async (filters?: InstallationFilters): Promise<ComplaintInstallationRow[]> => {
+    const params: Record<string, string> = {}
+    if (filters?.search) params.search = filters.search
+    if (filters?.mine) params.mine = 'true'
+    if (filters?.cities?.length) params.city__in = filters.cities.join(',')
+    if (filters?.managers?.length) params.manager__in = filters.managers.join(',')
+    return withOfflineFallback({
+      cacheKey: `installations_complaints_${JSON.stringify(params)}`,
+      request: async () => asList<ComplaintInstallationRow>((await apiClient.get('/installations/complaints/', { params })).data),
       ttl: LONG_TTL,
     })
   },

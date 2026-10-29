@@ -165,11 +165,16 @@ const InstallersSchedule = () => {
                       {visitsOn(day).map((v) => (
                         <Link
                           key={v.id}
-                          to={`/orders/installations/${v.installation_id}`}
+                          to={v.kind === 'complaint' ? `/complaints/${v.complaint_id}` : `/orders/installations/${v.installation_id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className={`block rounded-md px-1.5 py-1 text-[11px] leading-tight hover:ring-1 hover:ring-primary-400 ${INSTALLATION_STATUS_COLOR[v.status]}`}
-                          title={`${v.client_name}\n${v.address}\n${v.work_description}`}
+                          className={`block rounded-md px-1.5 py-1 text-[11px] leading-tight hover:ring-1 hover:ring-primary-400 ${
+                            v.kind === 'complaint'
+                              ? 'bg-rose-100 text-rose-900 border-l-2 border-rose-500'
+                              : INSTALLATION_STATUS_COLOR[v.status as keyof typeof INSTALLATION_STATUS_COLOR]
+                          }`}
+                          title={`${v.kind === 'complaint' ? `Рекламация #${v.complaint_id}, ${v.window}\n` : ''}${v.client_name}\n${v.address}\n${v.work_description}`}
                         >
+                          {v.kind === 'complaint' && <span className="block font-semibold">Рекламация</span>}
                           <span className="font-semibold block truncate">{v.client_name}</span>
                           <span className="block truncate">{v.address}</span>
                           <span className="block truncate opacity-80">{v.work_description}</span>
