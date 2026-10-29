@@ -49,6 +49,22 @@ def installer_call_failed(installer):
             f'Перезвоните пожалуйста {_contact(*staff_name_phone(installer))}')
 
 
+def client_link(installation):
+    """Короткая ссылка клиенту на страницу подписи акта."""
+    from orders.sms_templates import _base_url
+    return f'{_base_url()}/m/{installation.client_code}'
+
+
+def act_sign_request(installation):
+    return (f'{BRAND} Монтаж по вашему заказу завершен. Подпишите пожалуйста акт выполненных работ, '
+            f'пройдя по ссылке {client_link(installation)}')
+
+
+def act_rejected(installation, reason):
+    return (f'{BRAND} Акт выполненных работ не принят: {reason}. Приложите пожалуйста подписанный акт '
+            f'ещё раз по ссылке {client_link(installation)}')
+
+
 def send(installation, message, *, actor=None, purpose=''):
     """
     Отправляет сообщение контактному лицу монтажа и пишет его в историю

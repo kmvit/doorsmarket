@@ -117,7 +117,7 @@ const InstallationDetail = () => {
   // Пакет документов: монтажник прикладывает только акт и фото (через панель работ),
   // остальные — любые виды; акт и фото — только пока монтаж запланирован
   const canUploadKind = (kind: InstallationFileKind) => editable && !isInstaller
-    && (!INSTALLER_FILE_KINDS.includes(kind) || inst.status === 'planned')
+    && (!INSTALLER_FILE_KINDS.includes(kind) || ['planned', 'awaiting_signature'].includes(inst.status))
   const canDeleteFile = (uploadedBy: number | null) => editable && (!isInstaller || uploadedBy === user?.id)
   const assignable = ['not_planned', 'partially_done', 'planned'].includes(inst.status)
   const pending = !!inst.irrelevant_requested_at && editable
@@ -205,7 +205,7 @@ const InstallationDetail = () => {
         </div>
       )}
 
-      {inst.status === 'planned' && (myVisit || sm) && (
+      {['planned', 'awaiting_signature'].includes(inst.status) && (myVisit || sm) && (
         <InstallerWorkPanel inst={inst} onChanged={(updated) => { if (updated) setInst(updated); load() }} />
       )}
 

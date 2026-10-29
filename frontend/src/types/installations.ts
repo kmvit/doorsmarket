@@ -42,6 +42,7 @@ export type InstallationFileKind =
   | 'photo'
   | 'video'
   | 'act'
+  | 'act_unsigned'
   | 'result'
 
 export const INSTALLATION_FILE_KIND_DISPLAY: Record<InstallationFileKind, string> = {
@@ -53,15 +54,16 @@ export const INSTALLATION_FILE_KIND_DISPLAY: Record<InstallationFileKind, string
   photo: 'Фото',
   video: 'Видео',
   act: 'Акт выполненных работ',
+  act_unsigned: 'Акт без подписи клиента',
   result: 'Фото/видео результата',
 }
 
 export const INSTALLATION_FILE_KINDS: InstallationFileKind[] = [
-  'measurement_blank', 'final_kp', 'installation_kp', 'drawings', 'extra', 'photo', 'video', 'act', 'result',
+  'measurement_blank', 'final_kp', 'installation_kp', 'drawings', 'extra', 'photo', 'video', 'act', 'act_unsigned', 'result',
 ]
 
 /** Что прикладывает монтажник по факту работ */
-export const INSTALLER_FILE_KINDS: InstallationFileKind[] = ['act', 'result']
+export const INSTALLER_FILE_KINDS: InstallationFileKind[] = ['act', 'act_unsigned', 'result']
 
 export interface InstallationFile {
   id: number
@@ -70,6 +72,9 @@ export interface InstallationFile {
   kind_display: string
   visit: number | null
   uploaded_by: number | null
+  // Акт, приложенный клиентом по ссылке, засчитывается после проверки подписи
+  review_status: '' | 'pending' | 'approved' | 'rejected'
+  review_comment: string
   file_url: string | null
   file_size: string
   attachment_type: 'photo' | 'video' | 'document'
@@ -162,6 +167,24 @@ export interface Installation {
   visits?: InstallationVisit[]
   installer_notified_at?: string | null
   complaints?: { id: number; created_at: string; status_display: string }[]
+  act_sent_at?: string | null
+  client_confirmed_at?: string | null
+  client_link?: string | null
+}
+
+/** Страница клиента по ссылке /m/{код} */
+export interface PublicActPage {
+  id: number
+  client_name: string
+  address: string
+  work_description: string
+  status: InstallationStatus
+  status_display: string
+  awaiting_signature: boolean
+  client_confirmed_at: string | null
+  documents: { id: number; kind: InstallationFileKind; kind_display: string; name: string; file_url: string }[]
+  last_upload: { name: string; review_status: string; review_comment: string; created_at: string } | null
+  signed: boolean
 }
 
 export interface InstallationEvent {

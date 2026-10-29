@@ -10,6 +10,10 @@ interface Props {
   onChanged: (inst?: Installation) => void
 }
 
+type WorkKind = 'act' | 'act_unsigned' | 'result'
+
+const QUEUED_LABEL: Record<WorkKind, string> = { act: 'Акт', act_unsigned: 'Акт без подписи', result: 'Фото/видео' }
+
 const btn = 'px-3 py-2 text-sm rounded-lg border transition-all disabled:opacity-50'
 const btnPrimary = `${btn} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`
 const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50`
@@ -25,13 +29,18 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const [rescheduling, setRescheduling] = useState(false)
   // Файлы, ушедшие в офлайн-очередь: сервер их ещё не видит, но монтажник
   // приложил акт и должен иметь возможность завершить монтаж
-  const [queued, setQueued] = useState<{ kind: 'act' | 'result'; name: string }[]>([])
+  const [queued, setQueued] = useState<{ kind: WorkKind; name: string }[]>([])
   const [notice, setNotice] = useState<string | null>(null)
 
-  const hasAct = inst.files.some((f) => f.kind === 'act' && f.visit === visit?.id)
+  const visitFiles = inst.files.filter((f) => f.visit === visit?.id)
+  // Акт засчитывается, если его приложил сотрудник или подпись клиента проверена
+  const hasAct = visitFiles.some((f) => f.kind === 'act' && (f.review_status === '' || f.review_status === 'approved'))
     || queued.some((q) => q.kind === 'act')
+  const unsignedAct = visitFiles.some((f) => f.kind === 'act_unsigned') || queued.some((q) => q.kind === 'act_unsigned')
+  const toReview = visitFiles.filter((f) => f.kind === 'act' && f.review_status === 'pending')
+  const awaiting = inst.status === 'awaiting_signature'
 
-  const upload = async (kind: 'act' | 'result', files: File[]) => {
+  const upload = async (kind: WorkKind, files: File[]) => {
     if (!files.length) return
     setBusy(true)
     setNotice(null)
@@ -90,14 +99,49 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
     }
   }
 
-  const fileButton = (kind: 'act' | 'result', label: string, primary: boolean) => (
+  const sendToClient = async () => {
+    const again = awaiting
+    if (!window.confirm(again
+      ? 'Отправить клиенту ссылку на подпись акта ещё раз?'
+      : 'Отправить клиенту акт и фото на подпись? Монтаж перейдёт в «Ожидает подписи клиента».')) return
+    setBusy(true)
+    try {
+      onChanged(await installationsAPI.action(inst.id, 'send_act_to_client'))
+      setNotice('Клиенту отправлена ссылка на подпись акта.')
+    } catch (err) {
+      alert(apiErrorText(err, 'Не удалось отправить акт клиенту'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const review = async (fileId: number, approve: boolean) => {
+    let body: Record<string, string> = { file: String(fileId) }
+    if (approve) {
+      if (!window.confirm('Подпись клиента в акте на месте?')) return
+    } else {
+      const reason = window.prompt('Что не так с актом? Это увидит клиент, ему снова уйдёт ссылка.')
+      if (!reason?.trim()) return
+      body = { ...body, reason: reason.trim() }
+    }
+    setBusy(true)
+    try {
+      onChanged(await installationsAPI.action(inst.id, approve ? 'approve_act' : 'reject_act', body))
+    } catch (err) {
+      alert(apiErrorText(err, 'Не удалось сохранить проверку'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const fileButton = (kind: WorkKind, label: string, primary: boolean) => (
     <label className={`${primary ? btnPrimary : btnPlain} cursor-pointer inline-flex items-center ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
       {label}
       <input
         type="file"
         multiple
         className="hidden"
-        accept={kind === 'act' ? 'image/*,application/pdf' : 'image/*,video/*'}
+        accept={kind === 'result' ? 'image/*,video/*' : 'image/*,application/pdf'}
         onChange={(e) => { upload(kind, Array.from(e.target.files || [])); e.target.value = '' }}
       />
     </label>
@@ -115,17 +159,22 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
       )}
 
       <div>
-        <p className="text-xs text-gray-500 mb-2">Договоритесь с клиентом о времени</p>
+        <p className="text-xs text-gray-500 mb-2">{awaiting ? 'Связаться с клиентом' : 'Договоритесь с клиентом о времени'}</p>
         <div className="flex flex-wrap gap-2">
           {inst.contact_phone && (
             <a href={`tel:${inst.contact_phone}`} className={btnPrimary}>📞 Позвонить {inst.contact_name}</a>
           )}
-          <button type="button" disabled={busy} onClick={callFailed} className={btnPlain}>
-            {inst.installer_notified_at ? 'Повторно отправить уведомление' : 'Не дозвонился — отправить уведомление'}
-          </button>
-          <button type="button" disabled={busy} onClick={() => setRescheduling(true)} className={btnPlain}>
-            Перенести дату
-          </button>
+          {/* Договариваться о времени и переносить имеет смысл, пока монтаж не сделан */}
+          {!awaiting && (
+            <>
+              <button type="button" disabled={busy} onClick={callFailed} className={btnPlain}>
+                {inst.installer_notified_at ? 'Повторно отправить уведомление' : 'Не дозвонился — отправить уведомление'}
+              </button>
+              <button type="button" disabled={busy} onClick={() => setRescheduling(true)} className={btnPlain}>
+                Перенести дату
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -137,9 +186,54 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
         </div>
         {queued.length > 0 && (
           <ul className="mt-2 text-xs text-amber-700 space-y-0.5">
-            {queued.map((q, i) => <li key={i}>⏳ {q.kind === 'act' ? 'Акт' : 'Фото/видео'}: {q.name} — ждёт связи</li>)}
+            {queued.map((q, i) => <li key={i}>⏳ {QUEUED_LABEL[q.kind]}: {q.name} — ждёт связи</li>)}
           </ul>
         )}
+      </div>
+
+      {/* Клиент приложил подписанный акт — проверить подпись */}
+      {toReview.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-900 mb-2">Клиент приложил подписанный акт — проверьте подпись</p>
+          <ul className="space-y-2">
+            {toReview.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-center gap-2">
+                <a href={f.file_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex-1 truncate">
+                  {f.name}
+                </a>
+                <button type="button" disabled={busy} onClick={() => review(f.id, true)}
+                  className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>Подпись на месте</button>
+                <button type="button" disabled={busy} onClick={() => review(f.id, false)} className={btnPlain}>Не принять</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Работу не приняли на месте: акт без подписи — клиенту по ссылке */}
+      <div>
+        <p className="text-xs text-gray-500 mb-2">
+          {awaiting ? 'Акт отправлен клиенту на подпись' : 'Работу не приняли или некому подписать акт'}
+        </p>
+        {awaiting && (
+          <p className="text-sm text-gray-700 mb-2">
+            {inst.client_confirmed_at
+              ? '✓ Клиент подтвердил выполнение работ по ссылке. '
+              : 'Клиент ещё не открывал ссылку или не подтвердил. '}
+            {inst.client_link && (
+              <button type="button" className="text-primary-600 hover:underline"
+                onClick={() => { navigator.clipboard?.writeText(inst.client_link!); setNotice('Ссылка скопирована') }}>
+                Скопировать ссылку
+              </button>
+            )}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {!awaiting && fileButton('act_unsigned', '📄 Акт без подписи', false)}
+          <button type="button" disabled={busy || !unsignedAct} onClick={sendToClient} className={btnPlain}>
+            {awaiting ? 'Отправить ссылку повторно' : 'Отправить акт клиенту на подпись'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">

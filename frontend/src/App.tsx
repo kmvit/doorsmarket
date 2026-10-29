@@ -30,6 +30,7 @@ import InstallationList from './pages/Installations/InstallationList'
 import InstallationDetail from './pages/Installations/InstallationDetail'
 import InstallationForm from './pages/Installations/InstallationForm'
 import InstallersSchedule from './pages/Installations/InstallersSchedule'
+import ClientActPage from './pages/Installations/ClientActPage'
 import DesignerReport from './pages/Reports/DesignerReport'
 import DesignerReportDetail from './pages/Reports/DesignerReportDetail'
 import ServiceManagerReport from './pages/Reports/ServiceManagerReport'
@@ -76,6 +77,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />} />
+        {/* Подпись акта клиентом по ссылке из СМС — без входа */}
+        <Route path="/m/:code" element={<ClientActPage />} />
         <Route
           path="/dashboard"
           element={

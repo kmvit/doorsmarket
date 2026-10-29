@@ -25,6 +25,8 @@ const FOLDER_LABELS: Record<string, string> = {
   not_ready: 'Не готов к монтажу',
   irrelevant_requested: 'Неактуален? Подтвердить',
   reschedule_requested: 'Перенос даты? Подтвердить',
+  awaiting_signature: 'Ожидает подписи клиента',
+  act_review: 'Проверить акт клиента',
 }
 
 const STATUS_OPTIONS = INSTALLATION_STATUS_ORDER.map((value) => ({ value, label: INSTALLATION_STATUS_DISPLAY[value] }))

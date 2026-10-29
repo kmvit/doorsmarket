@@ -333,8 +333,8 @@ const Dashboard = () => {
           // Монтажнику — его запланированные монтажи
           const shown = installationFolders
             .filter((f) => !isManager || f.folder === 'irrelevant_requested')
-            .filter((f) => !isInstaller || f.folder === 'planned')
-            .map((f) => (isInstaller ? { ...f, label: 'Мои монтажи' } : f))
+            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
+            .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
           const mine = isManager ? '&mine=1' : ''
           return (
@@ -350,7 +350,7 @@ const Dashboard = () => {
                     to={`/orders/installations?folder=${f.folder}${mine}`}
                     label={f.label}
                     count={f.count}
-                    overdue={f.folder === 'irrelevant_requested' || f.folder === 'reschedule_requested'}
+                    overdue={['irrelevant_requested', 'reschedule_requested', 'act_review'].includes(f.folder)}
                   />
                 ))}
               </div>

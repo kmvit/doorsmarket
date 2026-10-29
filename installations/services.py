@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from orders.models import ActivityKind, Measurement
 
-from .models import EventKind, Installation, InstallationFile, InstallationFileKind, InstallationStatus
+from .models import ActReview, EventKind, Installation, InstallationFile, InstallationFileKind, InstallationStatus
 
 # Виды файлов, которые можно приложить при оформлении (ключи multipart-формы)
 UPLOAD_KINDS = [k for k, _ in InstallationFileKind.choices]
@@ -233,25 +233,37 @@ def keep_relevant(inst, comment, actor):
 
 # ==================== Этап 3: работа монтажника ====================
 
-def add_file(inst, *, kind, upload, name, actor):
+# Файлы по факту работ — привязаны к выезду
+WORK_FILE_KINDS = (InstallationFileKind.ACT, InstallationFileKind.ACT_UNSIGNED, InstallationFileKind.RESULT)
+
+
+def add_file(inst, *, kind, upload, name, actor, review_status='', log=True):
     """
     Файл в пакет монтажа. Акт и фото/видео результата привязываются к текущему
     выезду и сразу попадают во вложения заказа (тот же файл, без копии).
     """
-    from orders.models import OrderAttachment
     visit = None
-    if kind in (InstallationFileKind.ACT, InstallationFileKind.RESULT):
+    if kind in WORK_FILE_KINDS:
         visit = inst.current_visit
     f = InstallationFile.objects.create(
         installation=inst, kind=kind, visit=visit, file=upload, name=name, uploaded_by=actor,
+        review_status=review_status,
     )
-    if visit is not None:
-        OrderAttachment.objects.create(
-            order=inst.order, file=f.file.name, name=f'Монтаж #{inst.id}. {f.get_kind_display()}: {name}'[:255],
-        )
-    inst.log(EventKind.FILE_ADDED, actor=actor, description=f'{f.get_kind_display()}: {f.name}',
-             meta={'file_id': f.id})
+    # Акт клиента до проверки подписи в заказ не идёт — только подтверждённый
+    if visit is not None and kind != InstallationFileKind.ACT_UNSIGNED and review_status != ActReview.PENDING:
+        _attach_to_order(inst, f)
+    if log:
+        inst.log(EventKind.FILE_ADDED, actor=actor, description=f'{f.get_kind_display()}: {f.name}',
+                 meta={'file_id': f.id})
     return f
+
+
+def _attach_to_order(inst, f):
+    from orders.models import OrderAttachment
+    OrderAttachment.objects.create(
+        order=inst.order, file=f.file.name,
+        name=f'Монтаж #{inst.id}. {f.get_kind_display()}: {f.name}'[:255],
+    )
 
 
 def city_service_managers(inst):
@@ -323,8 +335,16 @@ def reject_reschedule(inst, comment, actor):
 
 
 def has_current_act(inst):
+    """Подписанный акт текущего выезда: от сотрудника или клиентский с подтверждённой подписью."""
     visit = inst.current_visit
-    return visit is not None and inst.files.filter(visit=visit, kind=InstallationFileKind.ACT).exists()
+    return visit is not None and inst.files.filter(
+        visit=visit, kind=InstallationFileKind.ACT, review_status__in=['', ActReview.APPROVED],
+    ).exists()
+
+
+def has_unsigned_act(inst):
+    visit = inst.current_visit
+    return visit is not None and inst.files.filter(visit=visit, kind=InstallationFileKind.ACT_UNSIGNED).exists()
 
 
 def complete(inst, *, partial, actor):
@@ -335,3 +355,86 @@ def complete(inst, *, partial, actor):
         _set_status(inst, InstallationStatus.DONE, actor, EventKind.COMPLETED, 'Монтаж завершён')
     _push(inst.order.manager, f'Монтаж #{inst.id}: {inst.get_status_display().lower()}',
           inst.order.client_name, f'/orders/installations/{inst.id}', actor)
+
+
+# ==================== Этап 4: подпись акта клиентом ====================
+
+def ensure_client_code(inst):
+    from orders.models import generate_short_code
+    if not inst.client_code:
+        while True:
+            code = generate_short_code(8)
+            if not Installation.objects.filter(client_code=code).exists():
+                break
+        inst.client_code = code
+        inst.save(update_fields=['client_code', 'updated_at'])
+    return inst.client_code
+
+
+def _push_installers(inst, title, body, actor=None):
+    visit = inst.current_visit
+    for user in (visit.installers.all() if visit else []):
+        _push(user, title, body, f'/orders/installations/{inst.id}', actor)
+
+
+@transaction.atomic
+def send_act_to_client(inst, actor):
+    """Работу не приняли: монтаж ждёт подписи, клиенту — ссылка на акт."""
+    from . import sms
+    ensure_client_code(inst)
+    first = inst.status != InstallationStatus.AWAITING_SIGNATURE
+    inst.act_sent_at = timezone.now()
+    if first:
+        _set_status(inst, InstallationStatus.AWAITING_SIGNATURE, actor, EventKind.ACT_SENT,
+                    'Работу не приняли на месте — акт отправлен клиенту на подпись', extra_fields=['act_sent_at'])
+    else:
+        inst.save(update_fields=['act_sent_at', 'updated_at'])
+        inst.log(EventKind.ACT_SENT, actor=actor, description='Ссылка на подпись акта отправлена повторно')
+    sms.send(inst, sms.act_sign_request(inst), actor=actor, purpose='act_sign_request')
+
+
+def client_confirm(inst):
+    if inst.client_confirmed_at:
+        return
+    inst.client_confirmed_at = timezone.now()
+    inst.save(update_fields=['client_confirmed_at', 'updated_at'])
+    inst.log(EventKind.CLIENT_CONFIRMED, description='Клиент подтвердил по ссылке, что работы выполнены')
+    _push_installers(inst, f'Клиент подтвердил монтаж #{inst.id}',
+                     'Подписанного акта пока нет — монтаж можно завершить только с ним')
+
+
+@transaction.atomic
+def client_upload_act(inst, upload):
+    """Клиент приложил подписанный акт — монтажнику задача проверить подпись."""
+    f = add_file(inst, kind=InstallationFileKind.ACT, upload=upload, name=upload.name[:255], actor=None,
+                 review_status=ActReview.PENDING, log=False)
+    if not inst.client_confirmed_at:
+        inst.client_confirmed_at = timezone.now()
+        inst.save(update_fields=['client_confirmed_at', 'updated_at'])
+    inst.log(EventKind.CLIENT_ACT_UPLOADED, description=f'Подписанный акт: {f.name}', meta={'file_id': f.id})
+    _push_installers(inst, f'Монтаж #{inst.id}: проверьте акт',
+                     'Клиент приложил подписанный акт — проверьте подпись и подтвердите')
+    return f
+
+
+@transaction.atomic
+def approve_act(f, actor):
+    inst = f.installation
+    f.review_status = ActReview.APPROVED
+    f.reviewed_by, f.reviewed_at = actor, timezone.now()
+    f.save(update_fields=['review_status', 'reviewed_by', 'reviewed_at'])
+    _attach_to_order(inst, f)
+    inst.log(EventKind.ACT_APPROVED, actor=actor, description=f'{f.name}: подпись на месте')
+
+
+@transaction.atomic
+def reject_act(f, reason, actor):
+    """Подпись не подтверждена — клиенту снова уходит ссылка с причиной."""
+    from . import sms
+    inst = f.installation
+    f.review_status = ActReview.REJECTED
+    f.review_comment = reason
+    f.reviewed_by, f.reviewed_at = actor, timezone.now()
+    f.save(update_fields=['review_status', 'review_comment', 'reviewed_by', 'reviewed_at'])
+    inst.log(EventKind.ACT_REJECTED, actor=actor, description=f'{f.name}: {reason}')
+    sms.send(inst, sms.act_rejected(inst, reason), actor=actor, purpose='act_rejected')

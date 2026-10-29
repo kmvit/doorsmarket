@@ -14,7 +14,8 @@ from .access import (
     can_see_installations, installations_for_user, is_installer_of,
 )
 from .models import (
-    CLOSED_INSTALLATION_STATUSES, EventKind, InstallationFile, InstallationStatus, InstallationVisit,
+    CLOSED_INSTALLATION_STATUSES, ActReview, EventKind, Installation, InstallationFile, InstallationStatus,
+    InstallationVisit,
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
@@ -29,7 +30,12 @@ INSTALLATION_FOLDERS = [
     ('not_ready', 'Не готов к монтажу'),
     ('irrelevant_requested', 'Неактуален? Подтвердить'),
     ('reschedule_requested', 'Перенос даты? Подтвердить'),
+    ('awaiting_signature', 'Ожидает подписи клиента'),
+    ('act_review', 'Проверить акт клиента'),
 ]
+
+# Монтаж в работе у монтажника: запланирован или ждёт подписи клиента
+WORK_STATUSES = (InstallationStatus.PLANNED, InstallationStatus.AWAITING_SIGNATURE)
 
 
 def apply_installation_folder(qs, folder):
@@ -42,6 +48,12 @@ def apply_installation_folder(qs, folder):
         return qs.filter(status=InstallationStatus.NOT_READY)
     if folder == 'irrelevant_requested':
         return qs.filter(irrelevant_requested_at__isnull=False).exclude(status=InstallationStatus.IRRELEVANT)
+    if folder == 'awaiting_signature':
+        return qs.filter(status=InstallationStatus.AWAITING_SIGNATURE)
+    if folder == 'act_review':
+        return qs.filter(
+            status=InstallationStatus.AWAITING_SIGNATURE, files__review_status=ActReview.PENDING,
+        ).distinct()
     if folder == 'reschedule_requested':
         return qs.filter(
             status=InstallationStatus.PLANNED, visits__reschedule_requested_at__isnull=False,
@@ -465,11 +477,62 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         inst = self.get_object()
         if (error := self._installer_or_sm(request, inst)):
             return error
-        if inst.status != InstallationStatus.PLANNED:
+        if inst.status not in WORK_STATUSES:
             return _bad('Завершить можно запланированный монтаж.')
         if not services.has_current_act(inst):
+            if inst.files.filter(visit=inst.current_visit, kind='act', review_status=ActReview.PENDING).exists():
+                return _bad('Сначала проверьте подпись в акте, который приложил клиент.')
             return _bad('Сначала прикрепите акт выполненных работ с подписью клиента.')
         services.complete(inst, partial=partial, actor=request.user)
+        return Response(self._detail(inst))
+
+    # ---------- Этап 4: акт на подпись клиенту ----------
+
+    @action(detail=True, methods=['post'], url_path='send_act_to_client')
+    def send_act_to_client(self, request, pk=None):
+        """Работу не приняли: акт без подписи и фото — клиенту по ссылке на подпись."""
+        inst = self.get_object()
+        if (error := self._installer_or_sm(request, inst)):
+            return error
+        if inst.status not in WORK_STATUSES:
+            return _bad('Монтаж не в работе.')
+        if not services.has_unsigned_act(inst):
+            return _bad('Сначала приложите акт без подписи клиента.')
+        if not (inst.contact_phone or inst.order.contact_phone):
+            return _bad('У контактного лица нет телефона.')
+        services.send_act_to_client(inst, request.user)
+        return Response(self._detail(inst))
+
+    def _client_act(self, request, inst):
+        if (error := self._installer_or_sm(request, inst)):
+            return None, error
+        f = inst.files.filter(pk=request.data.get('file') if str(request.data.get('file') or '').isdigit() else None,
+                              kind='act', review_status=ActReview.PENDING).first()
+        if f is None:
+            return None, _bad('Акт, ждущий проверки, не найден.')
+        return f, None
+
+    @action(detail=True, methods=['post'], url_path='approve_act')
+    def approve_act(self, request, pk=None):
+        """Монтажник проверил подпись в акте клиента: {file}."""
+        inst = self.get_object()
+        f, error = self._client_act(request, inst)
+        if error:
+            return error
+        services.approve_act(f, request.user)
+        return Response(self._detail(inst))
+
+    @action(detail=True, methods=['post'], url_path='reject_act')
+    def reject_act(self, request, pk=None):
+        """Подпись не подтверждена: {file, reason} — клиенту снова уходит ссылка."""
+        inst = self.get_object()
+        f, error = self._client_act(request, inst)
+        if error:
+            return error
+        reason = (request.data.get('reason') or '').strip()[:300]
+        if not reason:
+            return _bad('Укажите, что не так с актом — это увидит клиент.')
+        services.reject_act(f, reason, request.user)
         return Response(self._detail(inst))
 
     @action(detail=True, methods=['post'])
@@ -509,8 +572,8 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
             kind not in INSTALLER_FILE_KINDS or not is_installer_of(request.user, inst)
         ):
             return _forbidden('Монтажник прикладывает акт и фото/видео своего монтажа.')
-        if kind in INSTALLER_FILE_KINDS and inst.status != InstallationStatus.PLANNED:
-            return _bad('Акт и фото результата прикладывают к запланированному монтажу.')
+        if kind in INSTALLER_FILE_KINDS and inst.status not in WORK_STATUSES:
+            return _bad('Акт и фото результата прикладывают к монтажу в работе.')
         upload = serializer.validated_data['file']
         f = services.add_file(inst, kind=kind, upload=upload, actor=request.user,
                               name=serializer.validated_data.get('name') or upload.name[:255])
@@ -536,3 +599,91 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
         f.delete()
         inst.log(EventKind.FILE_DELETED, actor=request.user, description=description)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== Публичная страница клиента (без входа) ====================
+
+# Что клиент может приложить и какого размера
+CLIENT_UPLOAD_TYPES = ('image/', 'application/pdf')
+CLIENT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+CLIENT_UPLOAD_MAX_FILES = 10
+
+
+class PublicInstallationActView(viewsets.ViewSet):
+    """
+    Страница подписи акта по короткой ссылке /m/{код}: клиент видит акт и фото
+    работ, подтверждает выполнение и прикладывает подписанный акт. Без входа —
+    доступ по неугадываемому коду из СМС.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    lookup_field = 'code'
+    lookup_value_regex = '[A-Za-z0-9]{4,16}'
+
+    def _get(self, code):
+        from django.http import Http404
+        inst = Installation.objects.select_related('order').filter(client_code=code).first()
+        if inst is None:
+            raise Http404('Ссылка не найдена')
+        return inst
+
+    def _data(self, inst):
+        visit = inst.current_visit
+        files = inst.files.filter(visit=visit) if visit else inst.files.none()
+        client_acts = files.filter(kind='act', uploaded_by__isnull=True).order_by('-id')
+        last = client_acts.first()
+
+        def doc(f):
+            return {'id': f.id, 'kind': f.kind, 'kind_display': f.get_kind_display(), 'name': f.name,
+                    'file_url': f.file.url}
+        return {
+            'id': inst.id,
+            'client_name': inst.order.client_name,
+            'address': inst.order.address,
+            'work_description': inst.work_description,
+            'status': inst.status,
+            'status_display': inst.get_status_display(),
+            # Подписывать можно, пока монтаж ждёт подписи
+            'awaiting_signature': inst.status == InstallationStatus.AWAITING_SIGNATURE,
+            'client_confirmed_at': inst.client_confirmed_at,
+            'documents': [doc(f) for f in files.filter(kind__in=['act_unsigned', 'result']).order_by('id')],
+            'last_upload': {
+                'name': last.name, 'review_status': last.review_status, 'review_comment': last.review_comment,
+                'created_at': last.created_at,
+            } if last else None,
+            'signed': services.has_current_act(inst),
+        }
+
+    def retrieve(self, request, code=None):
+        return Response(self._data(self._get(code)))
+
+    def _check_open(self, inst):
+        if inst.status != InstallationStatus.AWAITING_SIGNATURE:
+            return _bad('Акт по этому монтажу уже не ждёт подписи.')
+        return None
+
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, code=None):
+        inst = self._get(code)
+        if (error := self._check_open(inst)):
+            return error
+        services.client_confirm(inst)
+        return Response(self._data(inst))
+
+    @action(detail=True, methods=['post'])
+    def upload(self, request, code=None):
+        inst = self._get(code)
+        if (error := self._check_open(inst)):
+            return error
+        upload = request.FILES.get('file')
+        if upload is None:
+            return _bad('Приложите фото или скан подписанного акта.')
+        if not (upload.content_type or '').startswith(CLIENT_UPLOAD_TYPES):
+            return _bad('Подойдёт фото или PDF.')
+        if upload.size > CLIENT_UPLOAD_MAX_BYTES:
+            return _bad('Файл больше 25 МБ.')
+        if inst.files.filter(kind='act', uploaded_by__isnull=True).count() >= CLIENT_UPLOAD_MAX_FILES:
+            return _bad('Слишком много файлов — свяжитесь с сервисной службой.')
+        services.client_upload_act(inst, upload)
+        return Response(self._data(inst))

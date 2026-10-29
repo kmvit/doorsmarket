@@ -16,7 +16,7 @@ SCHEDULE_ROLES = frozenset({'service_manager', 'admin'})
 # Монтажник видит монтажи, где он на выезде, и графики коллег (только просмотр)
 INSTALLER_ROLE = 'installer'
 # Виды файлов, которые загружает монтажник
-INSTALLER_FILE_KINDS = frozenset({'act', 'result'})
+INSTALLER_FILE_KINDS = frozenset({'act', 'act_unsigned', 'result'})
 # Решение по неактуальности — за менеджером заказа
 DECIDE_ROLES = CREATE_ROLES
 # «Назначить монтаж» после «Не готов к монтажу» нажимает менеджер или СМ

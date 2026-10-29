@@ -26,7 +26,15 @@ class InstallationFileKind(models.TextChoices):
     VIDEO = 'video', 'Видео'
     # Загружает монтажник по факту работ
     ACT = 'act', 'Акт выполненных работ'
+    # Работу не приняли: акт без подписи уходит клиенту по ссылке на подпись
+    ACT_UNSIGNED = 'act_unsigned', 'Акт без подписи клиента'
     RESULT = 'result', 'Фото/видео результата'
+
+
+class ActReview(models.TextChoices):
+    PENDING = 'pending', 'Ждёт проверки'
+    APPROVED = 'approved', 'Подтверждён'
+    REJECTED = 'rejected', 'Не принят'
 
 
 class EventKind(models.TextChoices):
@@ -48,6 +56,11 @@ class EventKind(models.TextChoices):
     RESCHEDULE_REJECTED = 'reschedule_rejected', 'Перенос отклонён'
     COMPLETED = 'completed', 'Монтаж завершён'
     PARTIALLY_COMPLETED = 'partially_completed', 'Монтаж завершён частично'
+    ACT_SENT = 'act_sent', 'Акт отправлен клиенту на подпись'
+    CLIENT_CONFIRMED = 'client_confirmed', 'Клиент подтвердил выполнение работ'
+    CLIENT_ACT_UPLOADED = 'client_act_uploaded', 'Клиент приложил подписанный акт'
+    ACT_APPROVED = 'act_approved', 'Подпись в акте подтверждена'
+    ACT_REJECTED = 'act_rejected', 'Акт от клиента не принят'
 
 
 class Installation(models.Model):
@@ -93,6 +106,16 @@ class Installation(models.Model):
         related_name='+', verbose_name='Кто пометил неактуальным',
     )
     irrelevant_reason = models.CharField(max_length=500, blank=True, verbose_name='Причина неактуальности')
+
+    # Ссылка клиенту на подпись акта: /m/{код}. Код выдаётся при первой отправке.
+    client_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, verbose_name='Код ссылки для клиента',
+    )
+    act_sent_at = models.DateTimeField(null=True, blank=True, verbose_name='Акт отправлен клиенту')
+    client_confirmed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Клиент подтвердил выполнение',
+        help_text='Подтверждение без подписанного акта сохраняется, но завершить монтаж по нему нельзя.',
+    )
 
     class Meta:
         verbose_name = 'Монтаж'
@@ -172,6 +195,17 @@ class InstallationFile(models.Model):
     )
     file = models.FileField(upload_to='installations/files/', verbose_name='Файл')
     name = models.CharField(max_length=255, blank=True, verbose_name='Имя файла')
+    # Акт, который клиент приложил по ссылке, засчитывается после проверки подписи
+    # монтажником. У актов, загруженных сотрудниками, проверки нет (пусто).
+    review_status = models.CharField(
+        max_length=10, blank=True, choices=ActReview.choices, verbose_name='Проверка подписи',
+    )
+    review_comment = models.CharField(max_length=500, blank=True, verbose_name='Почему не принят')
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name='Кто проверил',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='Когда проверен')
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='Загрузил',

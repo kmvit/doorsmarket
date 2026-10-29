@@ -21,9 +21,10 @@ class InstallationFileSerializer(serializers.ModelSerializer):
         model = InstallationFile
         fields = [
             'id', 'installation', 'kind', 'kind_display', 'visit', 'file', 'file_url', 'file_size',
-            'attachment_type', 'name', 'uploaded_by', 'created_at',
+            'attachment_type', 'name', 'uploaded_by', 'review_status', 'review_comment', 'created_at',
         ]
-        read_only_fields = ['id', 'installation', 'visit', 'uploaded_by', 'created_at']
+        read_only_fields = ['id', 'installation', 'visit', 'uploaded_by', 'review_status', 'review_comment',
+                            'created_at']
         extra_kwargs = {'file': {'write_only': True}}
 
     def get_file_url(self, obj):
@@ -134,6 +135,8 @@ class InstallationEventSerializer(serializers.ModelSerializer):
                   'old_status', 'new_status', 'meta', 'created_at']
 
     def get_actor_name(self, obj):
+        if obj.kind in ('client_confirmed', 'client_act_uploaded'):
+            return 'Клиент'  # действия по ссылке из СМС, без входа
         return _user_name(obj.actor) or 'Система'
 
 
@@ -145,12 +148,18 @@ class InstallationDetailSerializer(InstallationListSerializer):
     visits = InstallationVisitSerializer(many=True, read_only=True)
     installer_notified_at = serializers.SerializerMethodField()
     complaints = serializers.SerializerMethodField()
+    client_link = serializers.SerializerMethodField()
 
     class Meta(InstallationListSerializer.Meta):
         fields = InstallationListSerializer.Meta.fields + [
             'created_by_name', 'order_status_display', 'measurement_blank_required',
             'order_manager_id', 'visits', 'installer_notified_at', 'complaints',
+            'act_sent_at', 'client_confirmed_at', 'client_link',
         ]
+
+    def get_client_link(self, obj):
+        from .sms import client_link
+        return client_link(obj) if obj.client_code else None
 
     def get_installer_notified_at(self, obj):
         """Когда монтажник последний раз отправил «не дозвонился» по текущему выезду."""

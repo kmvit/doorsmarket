@@ -3,7 +3,7 @@ import { withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
-  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, ScheduleVisit,
+  InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer, PublicActPage, ScheduleVisit,
 } from '../types/installations'
 
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -88,7 +88,7 @@ export const installationsAPI = {
 
   // Акт и фото результата монтажник прикладывает и без связи: запрос встаёт в
   // очередь (файл хранится байтами) и уйдёт, когда сеть появится
-  uploadWorkFile: async (installationId: number, kind: 'act' | 'result', file: File): Promise<InstallationFile> => {
+  uploadWorkFile: async (installationId: number, kind: 'act' | 'act_unsigned' | 'result', file: File): Promise<InstallationFile> => {
     const form = new FormData()
     form.append('installation', String(installationId))
     form.append('kind', kind)
@@ -138,7 +138,8 @@ export const installationsAPI = {
   action: async (
     id: number,
     name: 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
-      | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule',
+      | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule'
+      | 'send_act_to_client' | 'approve_act' | 'reject_act',
     body: Record<string, string> = {},
   ): Promise<Installation> => (await apiClient.post(`/installations/${id}/${name}/`, body)).data,
 
@@ -155,4 +156,20 @@ export const apiErrorText = (err: any, fallback: string): string => {
   if (data.detail) return String(data.detail)
   const parts = Object.values(data).flat().filter((v) => typeof v === 'string') as string[]
   return parts.length ? parts.join(' ') : fallback
+}
+
+// Страница клиента по ссылке из СМС — без входа, токен сотрудника не нужен
+const publicUrl = (code: string, action = '') =>
+  `/public/installation-acts/${encodeURIComponent(code)}/${action ? `${action}/` : ''}`
+
+export const publicActAPI = {
+  get: async (code: string): Promise<PublicActPage> => (await apiClient.get(publicUrl(code))).data,
+  confirm: async (code: string): Promise<PublicActPage> => (await apiClient.post(publicUrl(code, 'confirm'))).data,
+  upload: async (code: string, file: File): Promise<PublicActPage> => {
+    const form = new FormData()
+    form.append('file', file)
+    return (await apiClient.post(publicUrl(code, 'upload'), form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })).data
+  },
 }
