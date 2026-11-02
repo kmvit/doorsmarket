@@ -138,7 +138,7 @@ const InstallationDetail = () => {
     <div className="container mx-auto px-4 py-6 max-w-4xl">
       <Link to={isInstaller ? '/orders/installations/installers' : '/orders/installations'}
         className="text-sm text-primary-600 hover:underline">
-        {isInstaller ? '← Мой график' : '← Монтажи'}
+        {isInstaller ? '← Мои монтажи' : '← Монтажи'}
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-6">

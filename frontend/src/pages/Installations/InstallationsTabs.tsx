@@ -4,12 +4,12 @@ import { useAuthStore } from '../../store/authStore'
 /** Переключатель «Список монтажей | Монтажники» */
 const InstallationsTabs = ({ active }: { active: 'list' | 'installers' }) => {
   const user = useAuthStore((state) => state.user)
-  if (user?.role === 'installer') return null
+  const installer = user?.role === 'installer'
   return (
     <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-4 max-w-sm">
     {([
-      ['list', '/orders/installations', '🛠️ Список монтажей'],
-      ['installers', '/orders/installations/installers', '📅 Монтажники'],
+      ['list', '/orders/installations', installer ? '🛠️ Мои монтажи' : '🛠️ Список монтажей'],
+      ['installers', '/orders/installations/installers', installer ? '📅 Мой график' : '📅 Монтажники'],
     ] as const).map(([key, to, label]) => (
       <Link
         key={key}

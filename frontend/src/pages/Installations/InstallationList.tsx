@@ -132,7 +132,9 @@ const InstallationList = () => {
       {user?.role === 'installer' && <OfflinePrefetchButton target="installations" />}
       <div className="flex items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Монтажи</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {user?.role === 'installer' ? 'Мои монтажи' : 'Монтажи'}
+          </h1>
           <p className="text-sm text-gray-500 mt-1">
             {complaintsOnly
               ? `Рекламационные монтажи: ${complaintRows.length}`
