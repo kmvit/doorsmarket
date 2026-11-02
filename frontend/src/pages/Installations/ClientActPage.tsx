@@ -78,8 +78,7 @@ const ClientActPage = () => {
         <h1 className="text-xl font-bold text-gray-900 mb-1">
           {page.rating_open || page.rating ? 'Монтаж завершён' : 'Акт выполненных работ'}
         </h1>
-        <p className="text-sm text-gray-600">Монтаж №{page.id}</p>
-        <p className="text-sm text-gray-600">КП №{page.kp_number || '—'}</p>
+        <p className="text-sm text-gray-600">Монтаж №{page.id} · КП №{page.kp_number || '—'}</p>
         {page.address && <p className="text-sm text-gray-500">{page.address}</p>}
       </div>
 

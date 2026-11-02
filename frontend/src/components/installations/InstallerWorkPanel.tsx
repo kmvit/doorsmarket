@@ -4,6 +4,7 @@ import { installationsAPI, apiErrorText } from '../../api/installations'
 import { QUEUED_MESSAGE } from '../../services/sync'
 import { Installation, formatPeriod } from '../../types/installations'
 import ModalPortal from './ModalPortal'
+import FileViewer from '../common/FileViewer'
 
 interface Props {
   inst: Installation
@@ -31,6 +32,7 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   // приложил акт и должен иметь возможность завершить монтаж
   const [queued, setQueued] = useState<{ kind: WorkKind; name: string }[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null)
 
   const visitFiles = inst.files.filter((f) => f.visit === visit?.id)
   // Акт засчитывается, если его приложил сотрудник или подпись клиента проверена
@@ -198,9 +200,13 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
           <ul className="space-y-2">
             {toReview.map((f) => (
               <li key={f.id} className="flex flex-wrap items-center gap-2">
-                <a href={f.file_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex-1 truncate">
+                <span className="text-sm text-gray-700 flex-1 truncate">
                   {f.name}
-                </a>
+                </span>
+                <button type="button" onClick={() => f.file_url && setViewing({ url: f.file_url, name: f.name })}
+                  disabled={!f.file_url} className={`${btn} border-primary-300 text-primary-700 bg-white hover:bg-primary-50`}>
+                  Посмотреть
+                </button>
                 <button type="button" disabled={busy} onClick={() => review(f.id, true)}
                   className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>Подпись на месте</button>
                 <button type="button" disabled={busy} onClick={() => review(f.id, false)} className={btnPlain}>Не принять</button>
@@ -262,6 +268,11 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
           onDone={(updated) => { setRescheduling(false); onChanged(updated) }}
         />
       )}
+      <FileViewer
+        fileUrl={viewing?.url || null}
+        fileName={viewing?.name}
+        onClose={() => setViewing(null)}
+      />
     </div>
   )
 }
