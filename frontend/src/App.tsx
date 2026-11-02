@@ -45,7 +45,7 @@ import ComplaintsRoute from './components/common/ComplaintsRoute'
 import Layout from './components/layout/Layout'
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading, user } = useAuthStore()
   const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
@@ -244,9 +244,9 @@ function App() {
                 path="/orders/installations"
                 element={
                   <ProtectedRoute>
-                    <Layout>
-                      <InstallationList />
-                    </Layout>
+                    {user?.role === 'installer'
+                      ? <Navigate to="/orders/installations/installers" replace />
+                      : <Layout><InstallationList /></Layout>}
                   </ProtectedRoute>
                 }
               />

@@ -10,6 +10,7 @@ import MonthCalendar, { monthGridRange, monthStart } from '../../components/inst
 import AssignModal from '../../components/installations/AssignModal'
 import InstallationsTabs from './InstallationsTabs'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
+import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
 
 /** Выбор незапланированного монтажа на выбранные в календаре даты */
 const PickInstallationModal = ({ onClose, onPick }: { onClose: () => void; onPick: (inst: Installation) => void }) => {
@@ -68,9 +69,10 @@ const InstallersSchedule = () => {
   const [assigning, setAssigning] = useState<Installation | null>(null)
   const editable = canEditSchedule(user?.role)
 
-  // Монтажник открывает свой график, остальные — первого в списке
-  const own = user?.role === 'installer' ? installers.find((u) => u.id === user.id)?.id : undefined
-  const installerId = Number(searchParams.get('installer')) || own || installers[0]?.id || null
+  // Монтажник всегда видит только свой график; выбор коллег доступен сотрудникам.
+  const installerId = user?.role === 'installer'
+    ? user.id
+    : Number(searchParams.get('installer')) || installers[0]?.id || null
   const current = installers.find((u) => u.id === installerId)
 
   useEffect(() => {
@@ -100,7 +102,10 @@ const InstallersSchedule = () => {
   return (
     <div className="container mx-auto px-4 py-6 max-w-[1600px]">
       <InstallationsTabs active="installers" />
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">Графики монтажников</h1>
+      {user?.role === 'installer' && <OfflinePrefetchButton target="installations" />}
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">
+        {user?.role === 'installer' ? 'Мой график монтажей' : 'Графики монтажников'}
+      </h1>
 
       {installers.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center text-gray-500">
@@ -109,7 +114,7 @@ const InstallersSchedule = () => {
       ) : (
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Список монтажников: на телефоне — лентой над календарём */}
-          <aside className="lg:w-56 shrink-0">
+          {user?.role !== 'installer' && <aside className="lg:w-56 shrink-0">
             <ul className="flex lg:flex-col gap-2 overflow-x-auto pb-1">
               {installers.map((u) => (
                 <li key={u.id} className="shrink-0">
@@ -128,7 +133,7 @@ const InstallersSchedule = () => {
                 </li>
               ))}
             </ul>
-          </aside>
+          </aside>}
 
           <section className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3">
             {current && (

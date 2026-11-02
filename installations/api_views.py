@@ -268,6 +268,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         from django.contrib.auth import get_user_model
         from orders.serializers import user_city_id
         qs = get_user_model().objects.filter(role='installer', is_active=True).select_related('city')
+        if request.user.role == INSTALLER_ROLE:
+            return qs.filter(id=request.user.id)
         if request.user.role == 'admin':
             city = request.query_params.get('city')
             return qs.filter(city_id=city) if str(city or '').isdigit() else qs

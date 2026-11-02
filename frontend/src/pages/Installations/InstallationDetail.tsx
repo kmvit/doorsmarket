@@ -136,7 +136,10 @@ const InstallationDetail = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl">
-      <Link to="/orders/installations" className="text-sm text-primary-600 hover:underline">← Монтажи</Link>
+      <Link to={isInstaller ? '/orders/installations/installers' : '/orders/installations'}
+        className="text-sm text-primary-600 hover:underline">
+        {isInstaller ? '← Мой график' : '← Монтажи'}
+      </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-6">
         <div>
@@ -162,6 +165,28 @@ const InstallationDetail = () => {
           </Link>
         )}
       </div>
+
+      {inst.status === 'done' && inst.client_link && (
+        <div className="rounded-xl border border-primary-200 bg-primary-50 p-4 mb-4">
+          <p className="text-sm font-medium text-primary-900 mb-2">Страница клиента: подпись акта и оценка</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <a href={inst.client_link} target="_blank" rel="noreferrer"
+              className="text-sm text-primary-700 underline break-all">
+              Открыть страницу оценки
+            </a>
+            <button type="button" onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(inst.client_link!)
+                alert('Ссылка скопирована')
+              } catch {
+                window.prompt('Скопируйте ссылку клиента:', inst.client_link!)
+              }
+            }} className="text-sm text-primary-700 hover:underline">
+              Скопировать ссылку
+            </button>
+          </div>
+        </div>
+      )}
 
       {pending && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">

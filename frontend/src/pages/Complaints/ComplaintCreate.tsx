@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { complaintsAPI } from '../../api/complaints'
 import { referencesAPI } from '../../api/references'
@@ -23,6 +23,8 @@ interface DefectiveProductForm {
 
 const ComplaintCreate = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const sourceInstallationId = Number(searchParams.get('installation')) || null
   const { user } = useAuthStore()
   const { register, handleSubmit, control, formState: { errors }, watch, setValue } = useForm<ComplaintCreateData & { complaint_type?: string; installer_id?: number }>()
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
@@ -289,7 +291,6 @@ const ComplaintCreate = () => {
 
   // Рекламация из монтажа (?order=&installation=): заказ подставляется сам,
   // контактное лицо — из монтажа, позиции выбираются галочками как обычно
-  const [searchParams] = useSearchParams()
   const prefillDone = useRef(false)
   useEffect(() => {
     const orderId = Number(searchParams.get('order'))
@@ -492,6 +493,12 @@ const ComplaintCreate = () => {
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="mb-6">
+          {sourceInstallationId && (
+            <Link to={`/orders/installations/${sourceInstallationId}`}
+              className="inline-block text-sm text-primary-600 hover:underline mb-3">
+              ← Вернуться в монтаж #{sourceInstallationId}
+            </Link>
+          )}
           <h1 className="text-3xl font-bold text-gray-900">Создать рекламацию</h1>
           <p className="text-sm text-gray-600 mt-1">
             Заполните все обязательные поля, отмеченные <span className="text-red-500">*</span>
@@ -997,9 +1004,11 @@ const ComplaintCreate = () => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate('/complaints')}
+              onClick={() => navigate(sourceInstallationId
+                ? `/orders/installations/${sourceInstallationId}`
+                : '/complaints')}
             >
-              Отмена
+              {sourceInstallationId ? 'Вернуться в монтаж' : 'Отмена'}
             </Button>
             <Button type="submit" disabled={isLoading}>
               {isLoading ? 'Создание...' : 'Создать рекламацию'}

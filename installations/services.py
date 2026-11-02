@@ -499,6 +499,21 @@ class PaymentEmailError(Exception):
     pass
 
 
+SPB_PAYMENT_EMAILS = ('amtbuh1@yandex.ru', '9111776579@mail.ru')
+SAMARA_PAYMENT_EMAILS = ('gerasimova@dveri-academy.ru',)
+
+
+def payment_recipients(inst):
+    """Адресаты актов на оплату: для Санкт-Петербурга — обе бухгалтерии."""
+    city = inst.order.salon.city
+    city_name = (city.name or '').strip().casefold()
+    if city_name in {'санкт-петербург', 'санкт петербург', 'спб', 'питер'}:
+        return list(SPB_PAYMENT_EMAILS)
+    if city_name in {'самара', 'г. самара'}:
+        return list(SAMARA_PAYMENT_EMAILS)
+    return [city.accountant_email] if city.accountant_email else []
+
+
 def send_to_payment(inst, estimate, actor):
     """
     Акт выполненных работ — бухгалтеру города. Письмо уходит с общего адреса,
@@ -510,8 +525,8 @@ def send_to_payment(inst, estimate, actor):
     from orders.sms_templates import _base_url
     from .sms import staff_name_phone
 
-    to = inst.order.salon.city.accountant_email
-    if not to:
+    recipients = payment_recipients(inst)
+    if not recipients:
         raise PaymentEmailError('У города не указана почта бухгалтера — обратитесь к администратору.')
     acts = list(payment_acts(inst))
     if not acts:
@@ -527,7 +542,7 @@ def send_to_payment(inst, estimate, actor):
     )
     email = EmailMessage(
         subject=payment_subject(inst, actor), body=body, from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[to], reply_to=[actor.email] if actor.email else None,
+        to=recipients, reply_to=[actor.email] if actor.email else None,
     )
     for f in acts:
         with f.file.open('rb') as fh:
@@ -543,4 +558,5 @@ def send_to_payment(inst, estimate, actor):
     visit.payment_sent_at, visit.payment_sent_by = timezone.now(), actor
     visit.save(update_fields=['payment_sent_at', 'payment_sent_by', 'updated_at'])
     inst.log(EventKind.PAYMENT_SENT, actor=actor,
-             description=f'{"Повторно: " if again else ""}акт отправлен на {to}', meta={'estimate': estimate})
+             description=f'{"Повторно: " if again else ""}акт отправлен на {", ".join(recipients)}',
+             meta={'estimate': estimate, 'recipients': recipients})

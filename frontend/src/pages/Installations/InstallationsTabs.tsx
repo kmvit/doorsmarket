@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
 
 /** Переключатель «Список монтажей | Монтажники» */
-const InstallationsTabs = ({ active }: { active: 'list' | 'installers' }) => (
-  <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-4 max-w-sm">
+const InstallationsTabs = ({ active }: { active: 'list' | 'installers' }) => {
+  const user = useAuthStore((state) => state.user)
+  if (user?.role === 'installer') return null
+  return (
+    <div className="flex rounded-xl border border-gray-200 bg-gray-100 p-0.5 text-sm font-medium mb-4 max-w-sm">
     {([
       ['list', '/orders/installations', '🛠️ Список монтажей'],
       ['installers', '/orders/installations/installers', '📅 Монтажники'],
@@ -18,6 +22,7 @@ const InstallationsTabs = ({ active }: { active: 'list' | 'installers' }) => (
       </Link>
     ))}
   </div>
-)
+  )
+}
 
 export default InstallationsTabs

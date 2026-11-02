@@ -59,11 +59,11 @@ const InstallationList = () => {
   const [rawPeople, setPeople] = usePersistedState<PeopleFilterValue>('installations:people', EMPTY_PEOPLE_FILTER)
   const people = normalizePeopleFilter(rawPeople)
   const byPeople = canFilterByPeople(user?.role)
-  // Рекламационные монтажи в общем списке (выделены цветом, планируются в рекламации)
-  const [showComplaints, setShowComplaints] = usePersistedState('installations:complaints', true)
+  // Галочка включает режим только рекламационных монтажей; выключенная — общий список.
+  const [complaintsOnly, setComplaintsOnly] = usePersistedState('installations:complaints_only', false)
   const [complaintRows, setComplaintRows] = useState<ComplaintInstallationRow[]>([])
-  // Статусы, оплата и папки — понятия монтажа: с ними рекламации не показываем
-  const complaintsShown = showComplaints && !folder && !status.length && paid === ''
+  // Статусы, оплата и папки — отдельные фильтры обычных монтажей.
+  const complaintsShown = !folder && !status.length && paid === ''
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -81,7 +81,7 @@ const InstallationList = () => {
         folder: folder || undefined,
       }
       const [list, complaints] = await Promise.all([
-        installationsAPI.getList(filters),
+        complaintsOnly ? Promise.resolve([]) : installationsAPI.getList(filters),
         complaintsShown ? installationsAPI.getComplaintRows(filters).catch(() => []) : Promise.resolve([]),
       ])
       setItems(list)
@@ -92,7 +92,17 @@ const InstallationList = () => {
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder, complaintsShown])
+  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder, complaintsShown, complaintsOnly])
+
+  // Фильтры статуса/оплаты/папки относятся к обычным монтажам. Сбрасываем их,
+  // чтобы режим «только рекламационные» всегда показывал ожидаемый результат.
+  useEffect(() => {
+    if (!complaintsOnly) return
+    if (folder) clearFolder()
+    if (status.length) setStatus([])
+    if (paid) setPaid('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complaintsOnly])
 
   // С главной менеджер приходит с ?mine=1 — плитки считают монтажи по его заказам
   useEffect(() => {
@@ -124,7 +134,9 @@ const InstallationList = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Монтажи</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {items.length} монтаж(ей){complaintRows.length > 0 && `, ${complaintRows.length} по рекламациям`}
+            {complaintsOnly
+              ? `Рекламационные монтажи: ${complaintRows.length}`
+              : <>{items.length} монтаж(ей){complaintRows.length > 0 && `, ${complaintRows.length} по рекламациям`}</>}
           </p>
         </div>
         {canCreateInstallation(user?.role) && (
@@ -159,28 +171,32 @@ const InstallationList = () => {
             className="w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
           />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
-          <MultiSelect
-            options={STATUS_OPTIONS}
-            value={status}
-            onChange={setStatus}
-            placeholder="Все статусы"
-            className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2 focus:border-primary-500 focus:ring-primary-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Оплата</label>
-          <select
-            value={paid}
-            onChange={(e) => setPaid(e.target.value as PaidFilter)}
-            className="rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
-          >
-            <option value="">Все</option>
-            <option value="paid">Оплаченные</option>
-            <option value="unpaid">Неоплаченные</option>
-          </select>
-        </div>
+        {!complaintsOnly && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
+              <MultiSelect
+                options={STATUS_OPTIONS}
+                value={status}
+                onChange={setStatus}
+                placeholder="Все статусы"
+                className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2 focus:border-primary-500 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Оплата</label>
+              <select
+                value={paid}
+                onChange={(e) => setPaid(e.target.value as PaidFilter)}
+                className="rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+              >
+                <option value="">Все</option>
+                <option value="paid">Оплаченные</option>
+                <option value="unpaid">Неоплаченные</option>
+              </select>
+            </div>
+          </>
+        )}
         <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
         {user?.role === 'manager' && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
@@ -193,23 +209,25 @@ const InstallationList = () => {
             Мои заказы
           </label>
         )}
+        {!complaintsOnly && (
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={excludeClosed}
+              onChange={(e) => setExcludeClosed(e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Скрывать выполненные
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input
             type="checkbox"
-            checked={excludeClosed}
-            onChange={(e) => setExcludeClosed(e.target.checked)}
-            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          Скрывать выполненные
-        </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showComplaints}
-            onChange={(e) => setShowComplaints(e.target.checked)}
+            checked={complaintsOnly}
+            onChange={(e) => setComplaintsOnly(e.target.checked)}
             className="rounded border-gray-300 text-rose-600 focus:ring-rose-500"
           />
-          Показывать рекламационные монтажи
+          Только рекламационные монтажи
         </label>
       </div>
 
@@ -224,9 +242,13 @@ const InstallationList = () => {
       ) : items.length === 0 && complaintRows.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
           <div className="text-5xl mb-4">🛠️</div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Монтажей нет</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+            {complaintsOnly ? 'Рекламационных монтажей нет' : 'Монтажей нет'}
+          </h2>
           <p className="text-gray-500">
-            {search || status.length || paid ? 'Ничего не найдено по выбранным фильтрам' : 'Монтажи ещё не оформляли'}
+            {search || status.length || paid
+              ? 'Ничего не найдено по выбранным фильтрам'
+              : complaintsOnly ? 'Сейчас нет рекламаций на этапе монтажа' : 'Монтажи ещё не оформляли'}
           </p>
         </div>
       ) : (

@@ -294,7 +294,7 @@ const Header = () => {
               {/* Монтажи — общий список города; монтажнику — его монтажи и графики; СМ «только замеры» не показываем */}
               {((isOrdersModule && ORDERS_ROLES.includes(user.role) && !measurementsOnly) || user.role === 'installer') && (
                 <Link
-                  to="/orders/installations"
+                  to={user.role === 'installer' ? '/orders/installations/installers' : '/orders/installations'}
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
                     location.pathname.startsWith('/orders/installations')
                       ? 'text-primary-600 bg-primary-50'
@@ -529,7 +529,7 @@ const Header = () => {
 
             {((ORDERS_ROLES.includes(user.role) && !measurementsOnly) || user.role === 'installer') && (
               <Link
-                to="/orders/installations"
+                to={user.role === 'installer' ? '/orders/installations/installers' : '/orders/installations'}
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
               >

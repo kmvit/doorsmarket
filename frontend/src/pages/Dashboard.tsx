@@ -444,12 +444,10 @@ const Dashboard = () => {
         )}
 
         {/* Монтажи: всегда после блока рекламаций */}
-        {(isManager || isLeader || isSM || isInstaller) && (() => {
+        {(isManager || isLeader || isSM) && (() => {
           const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
           const shown = installationFolders
             .filter((f) => !isManager || f.folder === 'irrelevant_requested')
-            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
-            .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
           const mine = isManager ? '&mine=1' : ''
           return (

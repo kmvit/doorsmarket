@@ -181,7 +181,7 @@ class InstallationDetailSerializer(InstallationListSerializer):
 
     def get_payment(self, obj):
         """Акт текущего выезда на оплату: можно ли отправить и когда уже отправляли."""
-        from .services import payment_acts
+        from .services import payment_acts, payment_recipients
         visit = obj.current_visit
         if visit is None:
             return None
@@ -189,7 +189,7 @@ class InstallationDetailSerializer(InstallationListSerializer):
             'available': obj.status in ('done', 'partially_done') and payment_acts(obj).exists(),
             'sent_at': visit.payment_sent_at,
             'sent_by_name': _user_name(visit.payment_sent_by),
-            'accountant_email': obj.order.salon.city.accountant_email,
+            'accountant_email': ', '.join(payment_recipients(obj)),
         }
 
     def get_client_link(self, obj):
