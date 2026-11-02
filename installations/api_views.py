@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from marketingdoors.search import NumberAwareSearchFilter
 from orders.api_views import apply_people_filters, get_orders_queryset_for_user, requested_statuses
@@ -656,7 +657,9 @@ class PublicInstallationActView(viewsets.ViewSet):
     доступ по неугадываемому коду из СМС.
     """
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []
+    # Public link remains usable without login, but a staff JWT is resolved so
+    # employees cannot submit a rating while acting through their account.
+    authentication_classes = [JWTAuthentication]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = 'code'
     lookup_value_regex = '[A-Za-z0-9]{4,16}'
@@ -718,6 +721,8 @@ class PublicInstallationActView(viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def rate(self, request, code=None):
         """Оценка клиента: {scores: {параметр: 1..5}, comments: {параметр: текст}}."""
+        if request.user.is_authenticated:
+            return _forbidden('Оценку может отправить только клиент по ссылке из СМС.')
         inst = self._get(code)
         if inst.status != InstallationStatus.DONE:
             return _bad('Оценить можно завершённый монтаж.')

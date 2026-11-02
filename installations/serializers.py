@@ -194,6 +194,9 @@ class InstallationDetailSerializer(InstallationListSerializer):
 
     def get_client_link(self, obj):
         from .sms import client_link
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user.role == 'installer':
+            return None
         return client_link(obj) if obj.client_code else None
 
     def get_installer_notified_at(self, obj):

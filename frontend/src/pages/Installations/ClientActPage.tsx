@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { publicActAPI, apiErrorText } from '../../api/installations'
 import { PublicActPage } from '../../types/installations'
 import RatingView from '../../components/installations/RatingView'
@@ -11,6 +11,7 @@ import RatingView from '../../components/installations/RatingView'
  */
 const ClientActPage = () => {
   const { code = '' } = useParams()
+  const navigate = useNavigate()
   const [page, setPage] = useState<PublicActPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -83,13 +84,25 @@ const ClientActPage = () => {
       </div>
 
       {page.rating_open ? (
-        <RatingForm page={page} code={code} onDone={(p) => { setPage(p); setMessage('Спасибо за оценку!') }} />
+        <>
+          <RatingForm page={page} code={code} onDone={(p) => { setPage(p); setMessage('Спасибо за оценку!') }} />
+          <button type="button" onClick={() => navigate('/')}
+            className="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
+            Выйти из формы оценки
+          </button>
+        </>
       ) : page.rating ? (
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-2">Ваша оценка</h2>
-          <RatingView rating={page.rating} />
-          <p className="text-sm text-gray-600 mt-3">Спасибо, что выбрали нас!</p>
-        </div>
+        <>
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <h2 className="font-semibold text-gray-900 mb-2">Ваша оценка</h2>
+            <RatingView rating={page.rating} />
+            <p className="text-sm text-gray-600 mt-3">Спасибо, что выбрали нас!</p>
+          </div>
+          <button type="button" onClick={() => navigate('/')}
+            className="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
+            Выйти со страницы
+          </button>
+        </>
       ) : !page.awaiting_signature ? (
         <div className="bg-white rounded-2xl shadow-sm p-5 text-center text-gray-700">
           {page.signed || page.status === 'done'

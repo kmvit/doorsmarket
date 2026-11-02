@@ -166,7 +166,7 @@ const InstallationDetail = () => {
         )}
       </div>
 
-      {inst.status === 'done' && inst.client_link && (
+      {!isInstaller && inst.status === 'done' && inst.client_link && (
         <div className="rounded-xl border border-primary-200 bg-primary-50 p-4 mb-4">
           <p className="text-sm font-medium text-primary-900 mb-2">Страница клиента: подпись акта и оценка</p>
           <div className="flex flex-wrap items-center gap-3">
