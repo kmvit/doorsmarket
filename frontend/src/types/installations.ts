@@ -212,6 +212,7 @@ export interface RatingScores {
 export interface RatingReport {
   params: { key: string; label: string }[]
   months: string[]
+  employees: { id: number; name: string }[]
   rows: {
     key: number
     name: string
@@ -225,9 +226,8 @@ export interface RatingReport {
 /** Страница клиента по ссылке /m/{код} */
 export interface PublicActPage {
   id: number
-  client_name: string
+  kp_number: string
   address: string
-  work_description: string
   status: InstallationStatus
   status_display: string
   awaiting_signature: boolean

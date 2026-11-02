@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { ratingsAPI, apiErrorText } from '../../api/installations'
 import { RatingReport, isoDate } from '../../types/installations'
-import PeopleFilters, {
-  EMPTY_PEOPLE_FILTER, PeopleFilterValue, canFilterByPeople,
-} from '../../components/orders/PeopleFilters'
+import apiClient from '../../api/client'
+import { salonsAPI } from '../../api/salons'
+import { Salon } from '../../types/orders'
+import MultiSelect from '../../components/common/MultiSelect'
 
 const GROUPS = [
   { value: 'all', label: 'В целом' },
@@ -31,18 +32,33 @@ const RatingsReport = () => {
   const [dateFrom, setDateFrom] = useState(isoDate(new Date(today.getFullYear(), 0, 1)))
   const [dateTo, setDateTo] = useState(isoDate(today))
   const [group, setGroup] = useState('all')
-  const [people, setPeople] = useState<PeopleFilterValue>(EMPTY_PEOPLE_FILTER)
+  const [search, setSearch] = useState('')
+  const [cityIds, setCityIds] = useState<string[]>([])
+  const [cities, setCities] = useState<{ id: number; name: string }[]>([])
+  const [salonIds, setSalonIds] = useState<string[]>([])
+  const [employeeIds, setEmployeeIds] = useState<string[]>([])
+  const [salons, setSalons] = useState<Salon[]>([])
   const [report, setReport] = useState<RatingReport | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    salonsAPI.getAll().then(setSalons).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      apiClient.get('/cities/').then((r) => setCities(r.data.results || r.data)).catch(() => {})
+    }
+  }, [user?.role])
+
+  useEffect(() => {
     let cancelled = false
     setError(null)
-    ratingsAPI.report({ date_from: dateFrom, date_to: dateTo, group, ...(canFilterByPeople(user?.role) ? people : {}) })
+    ratingsAPI.report({ date_from: dateFrom, date_to: dateTo, group, search, cities: cityIds, salons: salonIds, employees: employeeIds })
       .then((r) => { if (!cancelled) setReport(r) })
       .catch((err) => { if (!cancelled) setError(apiErrorText(err, 'Не удалось построить отчёт')) })
     return () => { cancelled = true }
-  }, [dateFrom, dateTo, group, people, user?.role])
+  }, [dateFrom, dateTo, group, search, cityIds, salonIds, employeeIds])
 
   const th = 'px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap'
   const td = 'px-3 py-2 text-sm whitespace-nowrap'
@@ -53,6 +69,12 @@ const RatingsReport = () => {
       <p className="text-sm text-gray-500 mb-4">Средние баллы из 5 по оценкам после монтажа</p>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-end">
+        <label className="text-xs font-medium text-gray-600 flex-1 min-w-56">
+          Поиск по заказу, клиенту, номеру заказа или КП
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Например, 40-123456-1 или фамилия клиента"
+            className="block w-full rounded-lg border-gray-300 shadow-sm text-sm" />
+        </label>
         <label className="text-xs font-medium text-gray-600">
           С
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
@@ -70,7 +92,38 @@ const RatingsReport = () => {
             {GROUPS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
           </select>
         </label>
-        <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
+        {user?.role === 'admin' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Город</label>
+            <MultiSelect
+              options={cities.map((city) => ({ value: String(city.id), label: city.name }))}
+              value={cityIds}
+              onChange={setCityIds}
+              placeholder="Все города"
+              className="w-48 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+            />
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Салон</label>
+          <MultiSelect
+            options={salons.map((s) => ({ value: String(s.id), label: s.name }))}
+            value={salonIds}
+            onChange={setSalonIds}
+            placeholder="Все салоны"
+            className="w-48 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Сотрудник</label>
+          <MultiSelect
+            options={(report?.employees || []).map((employee) => ({ value: String(employee.id), label: employee.name }))}
+            value={employeeIds}
+            onChange={setEmployeeIds}
+            placeholder="Все сотрудники"
+            className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
+          />
+        </div>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4">{error}</div>}

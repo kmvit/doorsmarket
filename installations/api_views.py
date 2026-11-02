@@ -4,9 +4,10 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.db.models import Q
 
 from marketingdoors.search import NumberAwareSearchFilter
-from orders.api_views import apply_people_filters, get_orders_queryset_for_user, requested_statuses
+from orders.api_views import apply_people_filters, get_orders_queryset_for_user, requested_ids, requested_statuses
 
 from . import services
 from . import sms
@@ -682,9 +683,8 @@ class PublicInstallationActView(viewsets.ViewSet):
                     'file_url': f.file.url}
         return {
             'id': inst.id,
-            'client_name': inst.order.client_name,
+            'kp_number': inst.order.kp_number,
             'address': inst.order.address,
-            'work_description': inst.work_description,
             'status': inst.status,
             'status_display': inst.get_status_display(),
             # Подписывать можно, пока монтаж ждёт подписи
@@ -794,13 +794,49 @@ class RatingReportView(viewsets.ViewSet):
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to:
             qs = qs.filter(created_at__date__lte=date_to)
+        if cities := requested_ids(request, 'city__in'):
+            qs = qs.filter(installation__order__salon__city_id__in=cities)
+        if salons := requested_ids(request, 'salon__in'):
+            qs = qs.filter(installation__order__salon_id__in=salons)
+        search = (request.query_params.get('search') or '').strip()
+        if search:
+            condition = (
+                Q(installation__order__client_name__icontains=search)
+                | Q(installation__order__kp_number__icontains=search)
+                | Q(installation__order__address__icontains=search)
+                | Q(installation__order__contact_phone__icontains=search)
+                | Q(installation__contact_name__icontains=search)
+                | Q(installation__contact_phone__icontains=search)
+            )
+            order_number = search.removeprefix('№').removeprefix('#').strip()
+            if order_number.isdigit():
+                condition |= Q(installation__order_id=int(order_number))
+                condition |= Q(installation_id=int(order_number))
+            qs = qs.filter(condition)
+
+        # Список вариантов сотрудников строим по текущим периоду, салонам и поиску,
+        # а не по уже выбранному сотруднику — чтобы выбор можно было менять.
+        employees = [
+            {'id': row[0], 'name': f'{row[1]} {row[2]}'.strip() or row[3]}
+            for row in qs.order_by().values_list(
+                'participants__id', 'participants__first_name',
+                'participants__last_name', 'participants__username',
+            ).distinct()
+            if row[0] is not None
+        ]
+        employee_ids = requested_ids(request, 'employee__in')
+        if employee_ids:
+            qs = qs.filter(participants__id__in=employee_ids).distinct()
         qs = apply_people_filters(qs, request, order_path='installation__order__')
 
         def keys(r):
             salon = r.installation.order.salon
             if group == 'staff':
+                participants = r.participants.all()
+                if employee_ids:
+                    participants = participants.filter(id__in=employee_ids)
                 return [(u.id, f'{u.first_name} {u.last_name}'.strip() or u.username, u.get_role_display())
-                        for u in r.participants.all()]
+                        for u in participants]
             if group == 'salon':
                 return [(salon.id, salon.name, salon.city.name)]
             if group == 'city':
@@ -834,5 +870,5 @@ class RatingReportView(viewsets.ViewSet):
         all_months = sorted({m for row in rows for m in row['months']})
         return Response({
             'params': [{'key': k, 'label': label} for k, label in RATING_FIELDS],
-            'months': all_months, 'rows': rows,
+            'months': all_months, 'rows': rows, 'employees': employees,
         })

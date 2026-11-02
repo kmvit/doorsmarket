@@ -194,14 +194,15 @@ export const publicActAPI = {
 
 export const ratingsAPI = {
   report: async (params: {
-    date_from?: string; date_to?: string; group: string; cities?: string[]; salons?: string[]; managers?: string[]
+    date_from?: string; date_to?: string; group: string; search?: string; cities?: string[]; salons?: string[]; employees?: string[]
   }): Promise<RatingReport> => {
     const query: Record<string, string> = { group: params.group }
     if (params.date_from) query.date_from = params.date_from
     if (params.date_to) query.date_to = params.date_to
+    if (params.search) query.search = params.search
     if (params.cities?.length) query.city__in = params.cities.join(',')
     if (params.salons?.length) query.salon__in = params.salons.join(',')
-    if (params.managers?.length) query.manager__in = params.managers.join(',')
+    if (params.employees?.length) query.employee__in = params.employees.join(',')
     return (await apiClient.get('/installation-ratings/report/', { params: query })).data
   },
 }
