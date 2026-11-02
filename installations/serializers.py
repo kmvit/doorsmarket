@@ -233,10 +233,11 @@ EDITABLE_FIELDS = [
 class InstallationWriteSerializer(serializers.ModelSerializer):
     # Оплачен или нет — менеджер обязан ответить явно, без значения по умолчанию
     is_paid = serializers.BooleanField(required=True)
+    address = serializers.CharField(write_only=True, required=False, allow_blank=False, max_length=500)
 
     class Meta:
         model = Installation
-        fields = ['order', *EDITABLE_FIELDS]
+        fields = ['order', 'address', *EDITABLE_FIELDS]
         extra_kwargs = {
             'work_description': {'required': True, 'allow_blank': False},
             'collection_finish': {'required': True, 'allow_blank': False},
@@ -250,6 +251,8 @@ class InstallationWriteSerializer(serializers.ModelSerializer):
         # неотмеченный чекбокс) — а ответ «оплачен или нет» обязателен
         if self.instance is None and 'is_paid' not in self.initial_data:
             raise serializers.ValidationError({'is_paid': ['Укажите, оплачен монтаж или нет.']})
+        if self.instance is None and not (attrs.get('address') or '').strip():
+            raise serializers.ValidationError({'address': ['Укажите адрес монтажа.']})
         return attrs
 
 

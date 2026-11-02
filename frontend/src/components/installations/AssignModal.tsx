@@ -4,6 +4,8 @@ import { installationsAPI, apiErrorText } from '../../api/installations'
 import { Installation, Installer, ScheduleVisit, formatPeriod } from '../../types/installations'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import MonthCalendar, { monthGridRange, monthStart } from './MonthCalendar'
+import { authAPI } from '../../api/auth'
+import { useAuthStore } from '../../store/authStore'
 
 interface Props {
   installation: Pick<Installation, 'id' | 'client_name' | 'address' | 'current_visit' | 'status'>
@@ -21,6 +23,7 @@ const dayInRange = (day: string, from: string, to: string) => day >= from && day
  * несколько, поэтому это подсказка, а не запрет.
  */
 const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
+  const setUser = useAuthStore((state) => state.setUser)
   useBodyScrollLock(true)
   // Запланированный монтаж правим (тот же выезд); частично завершённому — новый выезд
   const visit = installation.status === 'planned' ? installation.current_visit : null
@@ -79,6 +82,14 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
     if (!dateFrom) { setError('Выберите дату монтажа'); return }
     setIsSaving(true)
     try {
+      // Роль в интерфейсе может устареть, если токен заменился в другой вкладке.
+      // Перед назначением сверяем права по текущему токену с сервером.
+      const currentUser = await authAPI.getMe()
+      setUser(currentUser)
+      if (!['service_manager', 'admin'].includes(currentUser.role)) {
+        setError(`Сервер видит текущий аккаунт «${currentUser.username}» с ролью «${currentUser.role}». Для назначения нужен сервис-менеджер.`)
+        return
+      }
       onDone(await installationsAPI.assign(installation.id, selected, dateFrom, dateTo || dateFrom))
     } catch (err) {
       setError(apiErrorText(err, 'Не удалось назначить монтаж'))

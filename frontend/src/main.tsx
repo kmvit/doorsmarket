@@ -61,6 +61,14 @@ const checkInitialAuth = async () => {
   }
 }
 
+// Токен общий для вкладок одного домена. Если в другой вкладке сменили аккаунт,
+// обновляем профиль здесь, чтобы интерфейс не показывал старую роль.
+window.addEventListener('storage', (event) => {
+  if (event.key === 'access_token') {
+    void useAuthStore.getState().checkAuth()
+  }
+})
+
 // Рендерим приложение сразу, проверка аутентификации идет параллельно
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

@@ -326,38 +326,6 @@ const Dashboard = () => {
           )
         })()}
 
-        {/* Монтажи: заказы на складе / отгруженные без оформленного монтажа */}
-        {(isManager || isLeader || isSM || isInstaller) && (() => {
-          const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
-          // Менеджеру — оформить и решить по неактуальности; СМ и руководителю — весь пайплайн
-          // Монтажнику — его запланированные монтажи
-          const shown = installationFolders
-            .filter((f) => !isManager || f.folder === 'irrelevant_requested')
-            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
-            .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
-          if (!due && shown.length === 0) return null
-          const mine = isManager ? '&mine=1' : ''
-          return (
-            <div className="mb-8">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">Монтажи</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {due && (
-                  <FolderCard to={`/orders?folder=installation_needed${mine}`} label={due.label} count={due.count} />
-                )}
-                {shown.map((f) => (
-                  <FolderCard
-                    key={f.folder}
-                    to={`/orders/installations?folder=${f.folder}${mine}`}
-                    label={f.label}
-                    count={f.count}
-                    overdue={['irrelevant_requested', 'reschedule_requested', 'act_review'].includes(f.folder)}
-                  />
-                ))}
-              </div>
-            </div>
-          )
-        })()}
-
         {/* Фаза 6: Замеры СМ — только его пайплайн (без «Замер выполнен» и «Не обработан») */}
         {isSM && orderFolders.length > 0 && (
           <div className="mb-8">
@@ -474,6 +442,29 @@ const Dashboard = () => {
             ))}
           </div>
         )}
+
+        {/* Монтажи: всегда после блока рекламаций */}
+        {(isManager || isLeader || isSM || isInstaller) && (() => {
+          const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
+          const shown = installationFolders
+            .filter((f) => !isManager || f.folder === 'irrelevant_requested')
+            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
+            .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
+          if (!due && shown.length === 0) return null
+          const mine = isManager ? '&mine=1' : ''
+          return (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Монтажи</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {due && <FolderCard to={`/orders?folder=installation_needed${mine}`} label={due.label} count={due.count} />}
+                {shown.map((f) => (
+                  <FolderCard key={f.folder} to={`/orders/installations?folder=${f.folder}${mine}`} label={f.label}
+                    count={f.count} overdue={['irrelevant_requested', 'reschedule_requested', 'act_review'].includes(f.folder)} />
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100 p-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Быстрые действия</h3>

@@ -18,6 +18,7 @@ import OrderPickerModal from './OrderPickerModal'
 import InstallationsTabs from './InstallationsTabs'
 import AssignModal from '../../components/installations/AssignModal'
 import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
+import HScrollSync from '../../components/common/HScrollSync'
 
 // Папки с главной (?folder=)
 const FOLDER_LABELS: Record<string, string> = {
@@ -199,7 +200,7 @@ const InstallationList = () => {
             onChange={(e) => setExcludeClosed(e.target.checked)}
             className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
-          Кроме выполненных
+          Скрывать выполненные
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input
@@ -208,8 +209,7 @@ const InstallationList = () => {
             onChange={(e) => setShowComplaints(e.target.checked)}
             className="rounded border-gray-300 text-rose-600 focus:ring-rose-500"
           />
-          <span className="inline-block w-3 h-3 rounded-sm bg-rose-100 border border-rose-300" />
-          Рекламации
+          Показывать рекламационные монтажи
         </label>
       </div>
 
@@ -230,8 +230,8 @@ const InstallationList = () => {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <HScrollSync>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -379,7 +379,9 @@ const InstallationList = () => {
                       {c.contact_phone && <PhoneLink phone={c.contact_phone} className="text-xs" stopPropagation />}
                     </td>
                     <td className={td}>{c.manager_name || '—'}</td>
-                    <td className={`${td} max-w-[240px]`}>{c.products || 'Рекламация'}</td>
+                    <td className={`${td} max-w-[240px]`}>
+                      <div className="line-clamp-3 break-words" title={c.products || 'Рекламация'}>{c.products || 'Рекламация'}</div>
+                    </td>
                     <td className={td}>—</td>
                     <td className={td}>—</td>
                     <td className={td}>—</td>
@@ -388,7 +390,7 @@ const InstallationList = () => {
                 ))}
               </tbody>
             </table>
-          </div>
+          </HScrollSync>
         </div>
       )}
 

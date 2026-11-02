@@ -170,6 +170,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = {k: v for k, v in serializer.validated_data.items() if k != 'order'}
+        address = data.pop('address').strip()
 
         files_by_kind = {k: request.FILES.getlist(k) for k in services.UPLOAD_KINDS}
         missing = services.missing_required_files(order, files_by_kind)
@@ -178,6 +179,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 {'files': [f'Приложите: {", ".join(missing)}.']},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        order.address = address
+        order.save(update_fields=['address', 'updated_at'])
         inst = services.create_installation(
             order=order, data=data, files_by_kind=files_by_kind, actor=request.user,
         )
@@ -195,6 +198,9 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(inst, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        if 'address' in serializer.validated_data:
+            inst.order.address = serializer.validated_data.pop('address').strip()
+            inst.order.save(update_fields=['address', 'updated_at'])
         before = {f: getattr(inst, f) for f in EDITABLE_FIELDS}
         for field, value in serializer.validated_data.items():
             if field in EDITABLE_FIELDS:
@@ -315,7 +321,10 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def assign(self, request, pk=None):
         """СМ назначает монтаж: {installers: [id], date_from, date_to}."""
         if request.user.role not in SCHEDULE_ROLES:
-            return _forbidden('Назначает монтажи сервис-менеджер.')
+            return _forbidden(
+                f'Назначать монтажи может сервис-менеджер. Текущий запрос распознан как '
+                f'«{request.user.get_role_display()}» ({request.user.role}), аккаунт {request.user.username}.'
+            )
         inst = self.get_object()
         allowed = (InstallationStatus.NOT_PLANNED, InstallationStatus.PLANNED, InstallationStatus.PARTIALLY_DONE)
         if inst.status not in allowed:

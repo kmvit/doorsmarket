@@ -263,6 +263,7 @@ export interface InstallationPrefill {
 }
 
 export interface InstallationFields {
+  address: string
   is_paid: boolean
   work_description: string
   collection_finish: string

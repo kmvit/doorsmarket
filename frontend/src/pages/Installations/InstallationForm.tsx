@@ -7,6 +7,7 @@ import {
 import PhoneInput from '../../components/common/PhoneInput'
 
 const EMPTY: InstallationFields = {
+  address: '',
   is_paid: false,
   work_description: '',
   collection_finish: '',
@@ -31,6 +32,7 @@ const InstallationForm = () => {
   const orderId = Number(searchParams.get('order')) || null
 
   const [fields, setFields] = useState<InstallationFields>(EMPTY)
+  const [address, setAddress] = useState('')
   // При оформлении «оплачен / не оплачен» не выбрано, пока менеджер не ответит
   const [paidAnswer, setPaidAnswer] = useState<'' | 'yes' | 'no'>('')
   const [header, setHeader] = useState<{ order: number; client: string; address: string; count: number } | null>(null)
@@ -46,6 +48,7 @@ const InstallationForm = () => {
         if (isEdit) {
           const inst = await installationsAPI.getById(Number(id))
           setFields({
+            address: inst.address || '',
             is_paid: inst.is_paid,
             work_description: inst.work_description,
             collection_finish: inst.collection_finish,
@@ -55,11 +58,13 @@ const InstallationForm = () => {
             contact_phone: inst.contact_phone,
           })
           setPaidAnswer(inst.is_paid ? 'yes' : 'no')
+          setAddress(inst.address || '')
           setHeader({ order: inst.order, client: inst.client_name, address: inst.address, count: 0 })
         } else if (orderId) {
           const p = await installationsAPI.prefill(orderId)
-          setFields({ ...EMPTY, contact_name: p.contact_name, contact_phone: p.contact_phone })
+          setFields({ ...EMPTY, address: p.address || '', contact_name: p.contact_name, contact_phone: p.contact_phone })
           setBlankRequired(p.measurement_blank_required)
+          setAddress(p.address || '')
           setHeader({ order: p.order, client: p.client_name, address: p.address, count: p.installations_count })
         } else {
           setError('Не выбран заказ')
@@ -98,6 +103,10 @@ const InstallationForm = () => {
       setError('Укажите, оплачен монтаж или нет')
       return
     }
+    if (!address.trim()) {
+      setError('Укажите адрес монтажа')
+      return
+    }
     if (!isEdit) {
       const missing = requiredKinds.filter((k) => !files[k]?.length)
       if (missing.length) {
@@ -105,7 +114,7 @@ const InstallationForm = () => {
         return
       }
     }
-    const payload = { ...fields, is_paid: paidAnswer === 'yes' }
+    const payload = { ...fields, address: address.trim(), is_paid: paidAnswer === 'yes' }
     setIsSaving(true)
     try {
       const inst = isEdit
@@ -148,6 +157,10 @@ const InstallationForm = () => {
       {(files[kind] || []).map((f, i) => (
         <div key={i} className="flex items-center gap-2 text-xs text-gray-600 mt-1">
           <span className="truncate flex-1">{f.name}</span>
+          <button type="button" onClick={() => window.open(URL.createObjectURL(f), '_blank', 'noopener,noreferrer')}
+            className="text-primary-600 hover:underline whitespace-nowrap">
+            посмотреть
+          </button>
           <button type="button" onClick={() => removeFile(kind, i)} className="text-red-500 hover:underline">
             убрать
           </button>
@@ -162,7 +175,7 @@ const InstallationForm = () => {
       {header && (
         <p className="text-sm text-gray-500 mb-6">
           Заказ <Link to={`/orders/${header.order}`} className="text-primary-600 hover:underline">#{header.order}</Link>
-          {' · '}{header.client}{header.address && ` · ${header.address}`}
+          {' · '}{header.client}
         </p>
       )}
       {!isEdit && header && header.count > 0 && (
@@ -178,6 +191,11 @@ const InstallationForm = () => {
       {(header || isEdit) && (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4">
+            <div>
+              <label className={labelClass}>Адрес монтажа <span className="text-red-500">*</span></label>
+              <input required type="text" value={address}
+                onChange={(e) => { setAddress(e.target.value); set('address', e.target.value) }} className={inputClass} />
+            </div>
             <div>
               <span className={labelClass}>Монтаж оплачен? <span className="text-red-500">*</span></span>
               <div className="flex gap-2">

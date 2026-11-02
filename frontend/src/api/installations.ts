@@ -71,6 +71,7 @@ export const installationsAPI = {
   ): Promise<Installation> => {
     const form = new FormData()
     form.append('order', String(orderId))
+    form.append('address', fields.address)
     form.append('is_paid', fields.is_paid ? 'true' : 'false')
     form.append('work_description', fields.work_description)
     form.append('collection_finish', fields.collection_finish)
