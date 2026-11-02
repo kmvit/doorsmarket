@@ -464,6 +464,17 @@ const OrderDetail = () => {
         <OrderStatusWorkflow order={order} canManage={canManage} onChanged={reloadOrder} />
       </div>
 
+      {/* Статус и дата монтажа из ТЗ — отдельно от статуса жизненного цикла заказа */}
+      {canSeeInstallations(user?.role) && !user?.measurements_only && (
+        <OrderInstallationsBlock
+          orderId={order.id}
+          orderStatus={order.status}
+          notNeededAt={order.installation_not_needed_at}
+          canCreate={canCreateInstallation(user?.role)}
+          onChanged={reloadOrder}
+        />
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* Основная информация */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -641,17 +652,6 @@ const OrderDetail = () => {
           )}
         </div>
       </div>
-
-      {/* Монтажи заказа: оформить, «Монтаж не нужен» */}
-      {canSeeInstallations(user?.role) && !user?.measurements_only && (
-        <OrderInstallationsBlock
-          orderId={order.id}
-          orderStatus={order.status}
-          notNeededAt={order.installation_not_needed_at}
-          canCreate={canCreateInstallation(user?.role)}
-          onChanged={reloadOrder}
-        />
-      )}
 
       {/* Документы и фото/видео по заказу (лист «Заказ» в ТЗ) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
