@@ -31,11 +31,12 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
   const [startDate, setStartDate] = useState(order.production_start_date || '')
   const [deadline, setDeadline] = useState(order.production_deadline || '')
 
-  const isOverdue = order.is_overdue || OVERDUE_STATUSES.includes(order.status)
-  const hint = ORDER_STATUS_HINT[order.status]
-  const next = NEXT_STEPS[order.status]
-  const canCancel = !['completed', 'cancelled'].includes(order.status)
-  const canRestore = order.status === 'cancelled'
+  const workflowStatus = order.status_before_installation || order.status
+  const isOverdue = order.is_overdue || OVERDUE_STATUSES.includes(workflowStatus)
+  const hint = ORDER_STATUS_HINT[workflowStatus]
+  const next = NEXT_STEPS[workflowStatus]
+  const canCancel = !['completed', 'installation_completed', 'cancelled'].includes(workflowStatus)
+  const canRestore = workflowStatus === 'cancelled'
 
   const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString('ru-RU') : '—')
 
@@ -98,7 +99,7 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Статус заказа</h2>
         <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${ORDER_STATUS_COLOR[order.status]}`}>
-          {ORDER_STATUS_DISPLAY[order.status]}
+          {order.status_display}
         </span>
       </div>
 
@@ -119,7 +120,7 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
       )}
 
       {/* Даты производства */}
-      {PRODUCTION_STATUSES.includes(order.status) && (
+      {PRODUCTION_STATUSES.includes(workflowStatus) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-sm">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Дата запуска</label>

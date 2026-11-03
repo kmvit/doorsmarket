@@ -181,7 +181,7 @@ const Workshop = () => {
                       </td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[o.status]}`}>
-                          {ORDER_STATUS_DISPLAY[o.status]}
+                          {o.status_display}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.manager?.full_name}>{o.manager?.full_name || '—'}</td>

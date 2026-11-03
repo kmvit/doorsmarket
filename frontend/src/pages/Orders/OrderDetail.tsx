@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
-import { Order, MeasurementRequest, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
+import { Order, MeasurementRequest, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
 import OrderStatusWorkflow from './OrderStatusWorkflow'
 import MeasurementRequestForm from './MeasurementRequestForm'
@@ -359,7 +359,7 @@ const OrderDetail = () => {
           <h1 className="text-2xl font-bold text-gray-900">{order.client_name}</h1>
           <div className="flex items-center gap-3 mt-2">
             <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${ORDER_STATUS_COLOR[order.status]}`}>
-              {ORDER_STATUS_DISPLAY[order.status]}
+              {order.status_display}
             </span>
             {order.kp_number && (
               <span className="text-sm text-gray-500">КП: {order.kp_number}</span>

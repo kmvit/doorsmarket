@@ -318,7 +318,7 @@ const OrderList = () => {
                     <td className="px-4 py-3 text-sm text-gray-600">{order.manager.full_name}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[order.status]}`}>
-                        {ORDER_STATUS_DISPLAY[order.status]}
+                        {order.status_display}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDate(order.created_at)}</td>

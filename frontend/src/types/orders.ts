@@ -12,6 +12,8 @@ export type OrderStatus =
   | 'draft' | 'active' | 'measurement_requested'
   | 'measurement_scheduled' | 'measurement_done' | 'measurement_processed'
   | 'paid' | 'in_production' | 'on_warehouse' | 'shipped' | 'completed'
+  | 'installation_scheduled' | 'installation_partially_completed'
+  | 'installation_awaiting_signature' | 'installation_completed'
   | 'cancelled'
   | 'measurement_not_planned' | 'measurement_not_done' | 'measurement_not_processed'
 
@@ -27,6 +29,10 @@ export const ORDER_STATUS_DISPLAY: Record<OrderStatus, string> = {
   on_warehouse: 'На складе',
   shipped: 'Отгружен',
   completed: 'Выполнен',
+  installation_scheduled: 'Монтаж запланирован',
+  installation_partially_completed: 'Монтаж завершён частично',
+  installation_awaiting_signature: 'Монтаж ожидает подписи клиента',
+  installation_completed: 'Монтаж завершён',
   cancelled: 'Не актуален',
   measurement_not_planned: 'Замер не запланирован',
   measurement_not_done: 'Замер не выполнен',
@@ -38,7 +44,8 @@ export const ORDER_STATUS_ORDER: OrderStatus[] = [
   'draft', 'active',
   'measurement_requested', 'measurement_scheduled', 'measurement_done', 'measurement_processed',
   'measurement_not_planned', 'measurement_not_done', 'measurement_not_processed',
-  'paid', 'in_production', 'on_warehouse', 'shipped', 'completed', 'cancelled',
+  'paid', 'in_production', 'on_warehouse', 'shipped', 'completed',
+  'installation_scheduled', 'installation_partially_completed', 'installation_awaiting_signature', 'installation_completed', 'cancelled',
 ]
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
@@ -53,6 +60,10 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   on_warehouse: 'bg-cyan-100 text-cyan-700',
   shipped: 'bg-indigo-100 text-indigo-700',
   completed: 'bg-green-200 text-green-800',
+  installation_scheduled: 'bg-blue-100 text-blue-800',
+  installation_partially_completed: 'bg-cyan-100 text-cyan-800',
+  installation_awaiting_signature: 'bg-purple-100 text-purple-800',
+  installation_completed: 'bg-green-200 text-green-800',
   cancelled: 'bg-red-100 text-red-700',
   measurement_not_planned: 'bg-red-100 text-red-700',
   measurement_not_done: 'bg-red-100 text-red-700',
@@ -366,6 +377,7 @@ export interface Order {
   comment: string
   status: OrderStatus
   status_display: string
+  status_before_installation?: OrderStatus | ''
   is_overdue?: boolean
   production_start_date: string | null
   production_deadline: string | null

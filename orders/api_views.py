@@ -318,7 +318,9 @@ def apply_people_filters(qs, request, order_path=''):
 
 # Завершённые статусы заказа: по умолчанию скрыты в общем списке
 # («Кроме выполненных и неактуальных»)
-ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
+ORDER_FINISHED_STATUSES = [
+    OrderStatus.COMPLETED, OrderStatus.INSTALLATION_COMPLETED, OrderStatus.CANCELLED,
+]
 
 
 # Статусы заказа, при которых заявка на замер не в работе. Любой другой статус
@@ -326,6 +328,8 @@ ORDER_FINISHED_STATUSES = [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
 # заказ дальше, а замер всё ещё нужен.
 MEASUREMENT_PARKED_ORDER_STATUSES = [
     OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.COMPLETED, OrderStatus.CANCELLED,
+    OrderStatus.INSTALLATION_SCHEDULED, OrderStatus.INSTALLATION_PARTIALLY_COMPLETED,
+    OrderStatus.INSTALLATION_AWAITING_SIGNATURE, OrderStatus.INSTALLATION_COMPLETED,
 ]
 
 
@@ -632,7 +636,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         if not (order.has_designer and order.designer_id):
             return Response({'detail': 'В заказе нет дизайнера.'}, status=status.HTTP_400_BAD_REQUEST)
-        if order.status not in DESIGNER_PAYOUT_STATUSES:
+        payout_status = order.status_before_installation or order.status
+        if payout_status not in DESIGNER_PAYOUT_STATUSES:
             return Response(
                 {'detail': 'Выплату отмечают, когда заказ в производстве, на складе, отгружен или выполнен.'},
                 status=status.HTTP_400_BAD_REQUEST,

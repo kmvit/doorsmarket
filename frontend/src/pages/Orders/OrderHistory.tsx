@@ -119,7 +119,7 @@ const OrderHistory = () => {
           <div>
             <p className="text-gray-500">Текущий статус</p>
             <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[order.status]}`}>
-              {ORDER_STATUS_DISPLAY[order.status]}
+              {order.status_display}
             </span>
           </div>
           <div>

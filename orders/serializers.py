@@ -329,7 +329,8 @@ class OrderSalesFieldsSerializer(serializers.ModelSerializer):
 class OrderListSerializer(serializers.ModelSerializer):
     manager = OrderManagerSerializer(read_only=True)
     salon_name = serializers.CharField(source='salon.name', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display_for_ui', read_only=True)
+    status_before_installation = serializers.CharField(read_only=True)
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     is_overdue = serializers.SerializerMethodField()
     measurement_date = serializers.SerializerMethodField()
@@ -341,7 +342,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'created_at', 'updated_at', 'manager', 'salon', 'salon_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
-            'status', 'status_display', 'is_overdue',
+            'status', 'status_display', 'status_before_installation', 'is_overdue',
             'measurement_date', 'service_manager_name',
             # Для папки «Выплаты дизайнерам»
             'has_designer', 'designer', 'designer_paid_amount', 'designer_paid_at',
@@ -397,7 +398,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     addons = OrderAddonSerializer(many=True, read_only=True)
     attachments = serializers.SerializerMethodField()
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display_for_ui', read_only=True)
+    status_before_installation = serializers.CharField(read_only=True)
     commercial_offer_url = serializers.SerializerMethodField()
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     lift_impossible_warning = serializers.SerializerMethodField()
@@ -422,7 +424,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'floor_readiness', 'comment',
             'goods_amount', 'glass_amount', 'products_amount', 'services_amount',
             'total_amount', 'discount_amount', 'total_with_discount',
-            'status', 'status_display', 'commercial_offer_url', 'items', 'addons',
+            'status', 'status_display', 'status_before_installation', 'commercial_offer_url', 'items', 'addons',
             'attachments',
             'production_start_date', 'production_deadline', 'is_overdue',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
@@ -695,7 +697,7 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
     """Сериализатор для списка наработок (Workshop) — Лист 3 в ТЗ."""
     manager = OrderManagerSerializer(read_only=True)
     salon_name = serializers.CharField(source='salon.name', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display_for_ui', read_only=True)
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     next_action_at = serializers.SerializerMethodField()
     next_action_text = serializers.SerializerMethodField()
@@ -1021,7 +1023,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
     payer_display = serializers.CharField(source='request.get_payer_display', read_only=True)
     service_manager_name = serializers.SerializerMethodField()
     order_status = serializers.CharField(source='request.order.status', read_only=True)
-    order_status_display = serializers.CharField(source='request.order.get_status_display', read_only=True)
+    order_status_display = serializers.CharField(source='request.order.get_status_display_for_ui', read_only=True)
     manager_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -1066,7 +1068,7 @@ class PendingMeasurementRequestListSerializer(serializers.ModelSerializer):
     address = serializers.CharField(source='order.address', read_only=True)
     payer_display = serializers.CharField(source='get_payer_display', read_only=True)
     order_status = serializers.CharField(source='order.status', read_only=True)
-    order_status_display = serializers.CharField(source='order.get_status_display', read_only=True)
+    order_status_display = serializers.CharField(source='order.get_status_display_for_ui', read_only=True)
     manager_name = serializers.SerializerMethodField()
     # Поля замера, которых у заявки нет — отдаём пустыми, чтобы форма списка не падала
     measurement_date = serializers.SerializerMethodField()

@@ -64,6 +64,7 @@ def create_installation(*, order, data, files_by_kind, actor):
         order.installation_not_needed_at = None
         order.installation_not_needed_by = None
         order.save(update_fields=['installation_not_needed_at', 'installation_not_needed_by', 'updated_at'])
+    sync_order_status(order, actor=actor)
     return inst
 
 
@@ -100,6 +101,37 @@ def _set_status(inst, new_status, actor, kind, description, extra_fields=()):
     inst.status = new_status
     inst.save(update_fields=['status', 'updated_at', *extra_fields])
     inst.log(kind, actor=actor, description=description, old_status=old, new_status=new_status)
+    sync_order_status(inst.order, actor=actor)
+
+
+def sync_order_status(order, actor=None):
+    """Сохраняет монтажный статус в самом заказе, пока монтажи в работе."""
+    from orders.models import OrderStatus
+
+    statuses = list(order.installations.exclude(status=InstallationStatus.IRRELEVANT)
+                    .values_list('status', flat=True))
+    if not statuses:
+        order.set_installation_status(None, actor=actor)
+        return
+
+    if InstallationStatus.PARTIALLY_DONE in statuses:
+        target = OrderStatus.INSTALLATION_PARTIALLY_COMPLETED
+    elif all(value == InstallationStatus.DONE for value in statuses):
+        target = OrderStatus.INSTALLATION_COMPLETED
+    elif InstallationStatus.PLANNED in statuses:
+        target = OrderStatus.INSTALLATION_SCHEDULED
+    elif InstallationStatus.AWAITING_SIGNATURE in statuses:
+        target = (
+            OrderStatus.INSTALLATION_PARTIALLY_COMPLETED
+            if InstallationStatus.DONE in statuses
+            else OrderStatus.INSTALLATION_AWAITING_SIGNATURE
+        )
+    elif InstallationStatus.DONE in statuses:
+        target = OrderStatus.INSTALLATION_PARTIALLY_COMPLETED
+    else:
+        target = None
+
+    order.set_installation_status(target, actor=actor)
 
 
 def city_installers(city_id):
@@ -146,6 +178,7 @@ def assign(inst, *, installers, date_from, date_to, actor):
         _set_status(inst, InstallationStatus.PLANNED, actor, EventKind.ASSIGNED, description)
     else:
         inst.log(EventKind.ASSIGNED, actor=actor, description=f'Изменено назначение: {description}')
+        sync_order_status(inst.order, actor=actor)
 
     url = f'/orders/installations/{inst.id}'
     for user in installers:
@@ -313,6 +346,7 @@ def confirm_reschedule(inst, actor):
     date_changed = visit.previous_date_from != visit.date_from
     _clear_reschedule(visit)
     visit.save()
+    sync_order_status(inst.order, actor=actor)
     inst.log(EventKind.RESCHEDULE_CONFIRMED, actor=actor, description=f'Монтаж на {_period(visit)}')
     _push(requested_by, f'Перенос монтажа #{inst.id} подтверждён', _period(visit),
           f'/orders/installations/{inst.id}', actor)
@@ -328,6 +362,7 @@ def reject_reschedule(inst, comment, actor):
     visit.date_from, visit.date_to = visit.previous_date_from, visit.previous_date_to
     _clear_reschedule(visit)
     visit.save()
+    sync_order_status(inst.order, actor=actor)
     inst.log(EventKind.RESCHEDULE_REJECTED, actor=actor,
              description=f'Остаётся {_period(visit)}' + (f'. {comment}' if comment else ''))
     _push(requested_by, f'Перенос монтажа #{inst.id} отклонён',

@@ -93,6 +93,10 @@ class OrderStatus(models.TextChoices):
     ON_WAREHOUSE = 'on_warehouse', 'На складе'
     SHIPPED = 'shipped', 'Отгружен'
     COMPLETED = 'completed', 'Выполнен'
+    INSTALLATION_SCHEDULED = 'installation_scheduled', 'Монтаж запланирован'
+    INSTALLATION_PARTIALLY_COMPLETED = 'installation_partially_completed', 'Монтаж завершён частично'
+    INSTALLATION_AWAITING_SIGNATURE = 'installation_awaiting_signature', 'Монтаж ожидает подписи клиента'
+    INSTALLATION_COMPLETED = 'installation_completed', 'Монтаж завершён'
     CANCELLED = 'cancelled', 'Не актуален'
     # Просрочки (выставляются кронами, отображаются красным)
     MEASUREMENT_NOT_PLANNED = 'measurement_not_planned', 'Замер не запланирован'
@@ -105,6 +109,13 @@ OVERDUE_STATUSES = frozenset({
     OrderStatus.MEASUREMENT_NOT_PLANNED,
     OrderStatus.MEASUREMENT_NOT_DONE,
     OrderStatus.MEASUREMENT_NOT_PROCESSED,
+})
+
+INSTALLATION_ORDER_STATUSES = frozenset({
+    OrderStatus.INSTALLATION_SCHEDULED,
+    OrderStatus.INSTALLATION_PARTIALLY_COMPLETED,
+    OrderStatus.INSTALLATION_AWAITING_SIGNATURE,
+    OrderStatus.INSTALLATION_COMPLETED,
 })
 
 
@@ -162,10 +173,14 @@ class Order(models.Model):
     floor_readiness = models.TextField(blank=True, verbose_name='Готовность пола')
     comment = models.TextField(blank=True, verbose_name='Комментарий')
     status = models.CharField(
-        max_length=30,
+        max_length=40,
         choices=OrderStatus.choices,
         default=OrderStatus.DRAFT,
         verbose_name='Статус',
+    )
+    status_before_installation = models.CharField(
+        max_length=40, blank=True, verbose_name='Статус до монтажа',
+        help_text='Сохраняет этап заказа, пока поле «Статус» отражает состояние монтажа.',
     )
     # Итоговые суммы, как они посчитаны в самом КП. Хранятся отдельными
     # полями, а не одной суммой, потому что красивое КП показывает их
@@ -325,10 +340,34 @@ class Order(models.Model):
         """
         from django.utils import timezone
         old_status = self.status
+        if old_status in INSTALLATION_ORDER_STATUSES and new_status != OrderStatus.CANCELLED:
+            # Этап продажи/производства обновляется под монтажным статусом,
+            # чтобы после снятия монтажа восстановить актуальное значение.
+            old_base_status = self.status_before_installation or OrderStatus.ACTIVE
+            self.status_before_installation = new_status
+            fields = ['status_before_installation', 'last_activity_at', 'last_activity_kind', 'updated_at']
+            if extra_update_fields:
+                fields.extend(f for f in extra_update_fields if f not in fields)
+            from django.utils import timezone
+            self.last_activity_at = timezone.now()
+            self.last_activity_kind = ActivityKind.STATUS_CHANGED
+            self.save(update_fields=fields)
+            self.log_activity(
+                ActivityKind.STATUS_CHANGED, actor=actor, description=description,
+                old_status=old_base_status, new_status=new_status,
+            )
+            if notify:
+                self._notify_status_change(old_status, old_status, actor=actor)
+            return old_status
+
         self.status = new_status
+        if new_status == OrderStatus.CANCELLED:
+            self.status_before_installation = ''
         self.last_activity_at = timezone.now()
         self.last_activity_kind = ActivityKind.STATUS_CHANGED
         fields = ['status', 'last_activity_at', 'last_activity_kind', 'updated_at']
+        if new_status == OrderStatus.CANCELLED:
+            fields.append('status_before_installation')
         if extra_update_fields:
             fields.extend(f for f in extra_update_fields if f not in fields)
         self.save(update_fields=fields)
@@ -342,6 +381,49 @@ class Order(models.Model):
         if notify:
             self._notify_status_change(old_status, new_status, actor=actor)
         return old_status
+
+    def set_installation_status(self, new_status, actor=None, description=''):
+        """Синхронизирует поле статуса заказа с текущим состоянием монтажей."""
+        from django.utils import timezone
+
+        old_status = self.status
+        if new_status == old_status:
+            return
+        fields = ['status', 'status_before_installation', 'last_activity_at', 'last_activity_kind', 'updated_at']
+        if new_status:
+            if old_status not in INSTALLATION_ORDER_STATUSES:
+                self.status_before_installation = old_status
+            self.status = new_status
+        else:
+            if old_status not in INSTALLATION_ORDER_STATUSES:
+                return
+            self.status = self.status_before_installation or OrderStatus.ACTIVE
+            self.status_before_installation = ''
+
+        self.last_activity_at = timezone.now()
+        self.last_activity_kind = ActivityKind.STATUS_CHANGED
+        self.save(update_fields=fields)
+        self.log_activity(
+            ActivityKind.STATUS_CHANGED, actor=actor,
+            description=description or f'Статус заказа изменён на «{self.get_status_display()}»',
+            old_status=old_status, new_status=self.status,
+        )
+        self._notify_status_change(old_status, self.status, actor=actor)
+
+    def get_status_display_for_ui(self):
+        """Отображаемую подпись с датой для статуса запланированного монтажа."""
+        if self.status == OrderStatus.INSTALLATION_SCHEDULED:
+            from installations.models import Installation, InstallationStatus
+            from django.utils import timezone
+
+            visit = Installation.objects.filter(
+                order_id=self.pk, status=InstallationStatus.PLANNED,
+                visits__date_from__isnull=False,
+            ).order_by('visits__date_from').values_list('visits__date_from', flat=True).first()
+            if visit:
+                date = timezone.localtime(visit).strftime('%d.%m.%Y')
+                return f'Монтаж запланирован на {date}'
+        return self.get_status_display()
 
     def mark_paid(self, actor=None):
         return self.change_status(OrderStatus.PAID, actor=actor, description='Заказ оплачен')
@@ -432,7 +514,9 @@ class OpeningType(models.TextChoices):
 
 
 # Заказ закрыт: задачи («Следующее действие») по нему не ведутся и не напоминаются
-CLOSED_ORDER_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+CLOSED_ORDER_STATUSES = frozenset({
+    OrderStatus.COMPLETED, OrderStatus.INSTALLATION_COMPLETED, OrderStatus.CANCELLED,
+})
 
 
 # Двустворчатой двери доступны только эти открывания, сдвижной — только вправо/влево,

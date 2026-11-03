@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import ModalPortal from '../../components/installations/ModalPortal'
 import { ordersAPI } from '../../api/orders'
-import { OrderListItem, ORDER_STATUS_DISPLAY } from '../../types/orders'
+import { OrderListItem } from '../../types/orders'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 
 /**
@@ -68,7 +68,7 @@ const OrderPickerModal = ({ onClose, onPick }: { onClose: () => void; onPick: (o
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-gray-900">#{o.id} · {o.client_name}</span>
-                      <span className="text-xs text-gray-500 whitespace-nowrap">{ORDER_STATUS_DISPLAY[o.status]}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap">{o.status_display}</span>
                     </div>
                     <div className="text-xs text-gray-500 truncate">
                       {[o.address, o.kp_number && `КП ${o.kp_number}`, o.salon_name].filter(Boolean).join(' · ')}
