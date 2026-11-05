@@ -86,6 +86,7 @@ class Installation(models.Model):
         null=True, blank=True, verbose_name='Плановая дата доставки',
         help_text='Менеджер ставит примерно при оформлении, уточняет при составлении реестра на доставку.',
     )
+    already_on_site = models.BooleanField(default=False, verbose_name='Заказ уже на объекте')
     desired_date_comment = models.TextField(
         blank=True, verbose_name='Желаемая дата монтажа и прочие комментарии',
     )

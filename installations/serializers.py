@@ -120,7 +120,7 @@ class InstallationListSerializer(serializers.ModelSerializer):
             'current_visit', 'irrelevant_requested_at', 'irrelevant_requested_by_name', 'irrelevant_reason',
             'client_name', 'address', 'kp_number', 'salon_name', 'city_name', 'manager_name',
             'contact_name', 'contact_phone',
-            'work_description', 'collection_finish', 'planned_delivery_date', 'desired_date_comment',
+            'work_description', 'collection_finish', 'planned_delivery_date', 'already_on_site', 'desired_date_comment',
             'files', 'order_documents', 'rating_overall', 'created_at', 'updated_at',
         ]
 
@@ -228,7 +228,7 @@ class InstallationDetailSerializer(InstallationListSerializer):
 
 # Поля, которые правят после оформления (статус меняется отдельными действиями)
 EDITABLE_FIELDS = [
-    'is_paid', 'work_description', 'collection_finish', 'planned_delivery_date',
+    'is_paid', 'work_description', 'collection_finish', 'planned_delivery_date', 'already_on_site',
     'desired_date_comment', 'contact_name', 'contact_phone',
 ]
 
@@ -256,6 +256,21 @@ class InstallationWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'is_paid': ['Укажите, оплачен монтаж или нет.']})
         if self.instance is None and not (attrs.get('address') or '').strip():
             raise serializers.ValidationError({'address': ['Укажите адрес монтажа.']})
+        delivery_date = attrs.get(
+            'planned_delivery_date',
+            self.instance.planned_delivery_date if self.instance else None,
+        )
+        already_on_site = attrs.get(
+            'already_on_site',
+            self.instance.already_on_site if self.instance else False,
+        )
+        delivery_choice_changed = (
+            self.instance is None or 'planned_delivery_date' in attrs or 'already_on_site' in attrs
+        )
+        if delivery_choice_changed and not delivery_date and not already_on_site:
+            raise serializers.ValidationError({
+                'planned_delivery_date': ['Укажите дату доставки или отметьте, что заказ уже на объекте.'],
+            })
         return attrs
 
 

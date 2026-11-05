@@ -347,7 +347,7 @@ const InstallationList = () => {
                       </td>
                       <td className={`${td} max-w-[240px] whitespace-pre-line`}>{it.work_description}</td>
                       <td className={`${td} max-w-[200px]`}>{it.collection_finish}</td>
-                      <td className={`${td} whitespace-nowrap`}>{formatDate(it.planned_delivery_date)}</td>
+                      <td className={`${td} whitespace-nowrap`}>{it.already_on_site ? 'На объекте' : formatDate(it.planned_delivery_date)}</td>
                       <td className={`${td} max-w-[220px] whitespace-pre-line text-xs`}>{it.desired_date_comment || '—'}</td>
                       <td className={td}>
                         <ul className="space-y-0.5">

@@ -306,7 +306,7 @@ const InstallationDetail = () => {
           {row('Менеджер', `${inst.manager_name} · ${inst.salon_name}`)}
           {row('Что нужно смонтировать', inst.work_description)}
           {row('Коллекция, покрытие', inst.collection_finish)}
-          {row('Плановая дата доставки', formatDate(inst.planned_delivery_date))}
+          {row('Плановая дата доставки', inst.already_on_site ? 'Заказ уже на объекте' : formatDate(inst.planned_delivery_date))}
           {row('Желаемая дата монтажа и комментарии', inst.desired_date_comment)}
           {row('Оформил', `${inst.created_by_name || '—'}, ${formatDateTime(inst.created_at)}`)}
           {(inst.visits?.length || 0) > 0 && row('Выезды', (

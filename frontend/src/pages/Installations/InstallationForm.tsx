@@ -12,6 +12,7 @@ const EMPTY: InstallationFields = {
   work_description: '',
   collection_finish: '',
   planned_delivery_date: null,
+  already_on_site: false,
   desired_date_comment: '',
   contact_name: '',
   contact_phone: '',
@@ -53,6 +54,7 @@ const InstallationForm = () => {
             work_description: inst.work_description,
             collection_finish: inst.collection_finish,
             planned_delivery_date: inst.planned_delivery_date,
+            already_on_site: inst.already_on_site,
             desired_date_comment: inst.desired_date_comment,
             contact_name: inst.contact_name,
             contact_phone: inst.contact_phone,
@@ -237,13 +239,28 @@ const InstallationForm = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Плановая дата доставки</label>
+                <label className={labelClass}>Плановая дата доставки {!fields.already_on_site && <span className="text-red-500">*</span>}</label>
                 <input
+                  required={!fields.already_on_site}
+                  disabled={fields.already_on_site}
                   type="date"
                   value={fields.planned_delivery_date || ''}
                   onChange={(e) => set('planned_delivery_date', e.target.value || null)}
-                  className={inputClass}
+                  className={`${inputClass} disabled:bg-gray-100 disabled:text-gray-400`}
                 />
+                <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={fields.already_on_site}
+                    onChange={(e) => setFields((current) => ({
+                      ...current,
+                      already_on_site: e.target.checked,
+                      planned_delivery_date: e.target.checked ? null : current.planned_delivery_date,
+                    }))}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Заказ уже на объекте
+                </label>
               </div>
             </div>
             <div>

@@ -177,6 +177,7 @@ export interface Installation {
   work_description: string
   collection_finish: string
   planned_delivery_date: string | null
+  already_on_site: boolean
   desired_date_comment: string
   files: InstallationFile[]
   order_documents: OrderDocument[]
@@ -268,6 +269,7 @@ export interface InstallationFields {
   work_description: string
   collection_finish: string
   planned_delivery_date: string | null
+  already_on_site: boolean
   desired_date_comment: string
   contact_name: string
   contact_phone: string

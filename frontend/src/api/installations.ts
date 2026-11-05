@@ -76,6 +76,7 @@ export const installationsAPI = {
     form.append('work_description', fields.work_description)
     form.append('collection_finish', fields.collection_finish)
     if (fields.planned_delivery_date) form.append('planned_delivery_date', fields.planned_delivery_date)
+    form.append('already_on_site', fields.already_on_site ? 'true' : 'false')
     form.append('desired_date_comment', fields.desired_date_comment)
     form.append('contact_name', fields.contact_name)
     form.append('contact_phone', fields.contact_phone)
