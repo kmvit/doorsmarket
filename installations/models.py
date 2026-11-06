@@ -84,7 +84,10 @@ class Installation(models.Model):
     collection_finish = models.CharField(max_length=500, verbose_name='Коллекция, покрытие')
     planned_delivery_date = models.DateField(
         null=True, blank=True, verbose_name='Плановая дата доставки',
-        help_text='Менеджер ставит примерно при оформлении, уточняет при составлении реестра на доставку.',
+        help_text='Начало плановой даты доставки или единственная дата.',
+    )
+    planned_delivery_date_end = models.DateField(
+        null=True, blank=True, verbose_name='Плановая дата доставки по',
     )
     already_on_site = models.BooleanField(default=False, verbose_name='Заказ уже на объекте')
     desired_date_comment = models.TextField(

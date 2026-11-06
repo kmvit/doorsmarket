@@ -4,7 +4,8 @@ import { useAuthStore } from '../../store/authStore'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import {
   CLOSED_INSTALLATION_STATUSES, Installation, InstallationEvent, InstallationFileKind,
-  INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR, formatDate, formatPeriod,
+  INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR,
+  formatDate, formatDeliveryDateRange, formatPeriod,
   canDecideIrrelevant, canEditSchedule, canSeeInstallations, INSTALLER_FILE_KINDS,
 } from '../../types/installations'
 import AssignModal from '../../components/installations/AssignModal'
@@ -306,7 +307,9 @@ const InstallationDetail = () => {
           {row('Менеджер', `${inst.manager_name} · ${inst.salon_name}`)}
           {row('Что нужно смонтировать', inst.work_description)}
           {row('Коллекция, покрытие', inst.collection_finish)}
-          {row('Плановая дата доставки', inst.already_on_site ? 'Заказ уже на объекте' : formatDate(inst.planned_delivery_date))}
+          {row('Плановая дата доставки', inst.already_on_site
+            ? 'Заказ уже на объекте'
+            : formatDeliveryDateRange(inst.planned_delivery_date, inst.planned_delivery_date_end))}
           {row('Желаемая дата монтажа и комментарии', inst.desired_date_comment)}
           {row('Оформил', `${inst.created_by_name || '—'}, ${formatDateTime(inst.created_at)}`)}
           {(inst.visits?.length || 0) > 0 && row('Выезды', (

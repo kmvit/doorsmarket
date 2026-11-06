@@ -4,8 +4,8 @@ import { useAuthStore } from '../../store/authStore'
 import { installationsAPI } from '../../api/installations'
 import {
   Installation, InstallationStatus, INSTALLATION_STATUS_COLOR, INSTALLATION_STATUS_DISPLAY,
-  INSTALLATION_STATUS_ORDER, ComplaintInstallationRow, canCreateInstallation, canEditSchedule, formatDate,
-  formatPeriod,
+  INSTALLATION_STATUS_ORDER, ComplaintInstallationRow, canCreateInstallation, canEditSchedule,
+  formatDeliveryDateRange, formatPeriod,
 } from '../../types/installations'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
@@ -347,7 +347,9 @@ const InstallationList = () => {
                       </td>
                       <td className={`${td} max-w-[240px] whitespace-pre-line`}>{it.work_description}</td>
                       <td className={`${td} max-w-[200px]`}>{it.collection_finish}</td>
-                      <td className={`${td} whitespace-nowrap`}>{it.already_on_site ? 'На объекте' : formatDate(it.planned_delivery_date)}</td>
+                      <td className={`${td} whitespace-nowrap`}>{it.already_on_site
+                        ? 'На объекте'
+                        : formatDeliveryDateRange(it.planned_delivery_date, it.planned_delivery_date_end)}</td>
                       <td className={`${td} max-w-[220px] whitespace-pre-line text-xs`}>{it.desired_date_comment || '—'}</td>
                       <td className={td}>
                         <ul className="space-y-0.5">

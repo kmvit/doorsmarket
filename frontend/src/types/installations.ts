@@ -177,6 +177,7 @@ export interface Installation {
   work_description: string
   collection_finish: string
   planned_delivery_date: string | null
+  planned_delivery_date_end: string | null
   already_on_site: boolean
   desired_date_comment: string
   files: InstallationFile[]
@@ -269,6 +270,7 @@ export interface InstallationFields {
   work_description: string
   collection_finish: string
   planned_delivery_date: string | null
+  planned_delivery_date_end: string | null
   already_on_site: boolean
   desired_date_comment: string
   contact_name: string
@@ -298,6 +300,11 @@ export const canCreateInstallation = (role?: string) =>
 
 export const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+
+export const formatDeliveryDateRange = (from: string | null, to: string | null) => {
+  if (!from) return '—'
+  return to && to !== from ? `${formatDate(from)} — ${formatDate(to)}` : formatDate(from)
+}
 
 /** Графики монтажников правит СМ */
 export const canEditSchedule = (role?: string) => role === 'service_manager' || role === 'admin'

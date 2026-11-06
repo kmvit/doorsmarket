@@ -12,6 +12,7 @@ const EMPTY: InstallationFields = {
   work_description: '',
   collection_finish: '',
   planned_delivery_date: null,
+  planned_delivery_date_end: null,
   already_on_site: false,
   desired_date_comment: '',
   contact_name: '',
@@ -54,6 +55,7 @@ const InstallationForm = () => {
             work_description: inst.work_description,
             collection_finish: inst.collection_finish,
             planned_delivery_date: inst.planned_delivery_date,
+            planned_delivery_date_end: inst.planned_delivery_date_end,
             already_on_site: inst.already_on_site,
             desired_date_comment: inst.desired_date_comment,
             contact_name: inst.contact_name,
@@ -239,15 +241,33 @@ const InstallationForm = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Плановая дата доставки {!fields.already_on_site && <span className="text-red-500">*</span>}</label>
+                <label className={labelClass}>Доставка с {!fields.already_on_site && <span className="text-red-500">*</span>}</label>
                 <input
                   required={!fields.already_on_site}
                   disabled={fields.already_on_site}
                   type="date"
                   value={fields.planned_delivery_date || ''}
-                  onChange={(e) => set('planned_delivery_date', e.target.value || null)}
+                  onChange={(e) => setFields((current) => ({
+                    ...current,
+                    planned_delivery_date: e.target.value || null,
+                    planned_delivery_date_end: current.planned_delivery_date_end && e.target.value
+                      && current.planned_delivery_date_end < e.target.value ? null : current.planned_delivery_date_end,
+                  }))}
                   className={`${inputClass} disabled:bg-gray-100 disabled:text-gray-400`}
                 />
+                {!fields.already_on_site && (
+                  <div className="mt-3">
+                    <label className={labelClass}>Доставка по <span className="text-gray-400">(необязательно)</span></label>
+                    <input
+                      type="date"
+                      min={fields.planned_delivery_date || undefined}
+                      disabled={!fields.planned_delivery_date}
+                      value={fields.planned_delivery_date_end || ''}
+                      onChange={(e) => set('planned_delivery_date_end', e.target.value || null)}
+                      className={`${inputClass} disabled:bg-gray-100 disabled:text-gray-400`}
+                    />
+                  </div>
+                )}
                 <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
@@ -256,6 +276,7 @@ const InstallationForm = () => {
                       ...current,
                       already_on_site: e.target.checked,
                       planned_delivery_date: e.target.checked ? null : current.planned_delivery_date,
+                      planned_delivery_date_end: e.target.checked ? null : current.planned_delivery_date_end,
                     }))}
                     className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   />
