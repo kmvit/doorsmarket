@@ -7,10 +7,12 @@
 """
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
+from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.test import APIClient
 
-from orders.models import Measurement, MeasurementRequest, Order, OrderStatus, Salon
+from orders.models import Measurement, MeasurementRequest, Order, OrderActionReminder, OrderStatus, Salon
 from projects.models import Complaint, ReturnRegistry, ShippingRegistry
 from projects.api_views import ComplaintViewSet, ReturnRegistryViewSet, ShippingRegistryViewSet
 from users.models import City
@@ -201,6 +203,20 @@ class CitySalonFilterTest(TestCase):
         params = {'salon__in': f'{self.s1.id},{self.s3.id}'}
         self.assertEqual(self.ids('/api/v1/orders/', params), self.order_ids(self.s1, self.s3))
         self.assertEqual(self.ids('/api/v1/workshop/', params), self.order_ids(self.s1, self.s3))
+
+    def test_admin_overdue_workshop_includes_all_cities(self):
+        self.client.force_authenticate(self.admin)
+        for salon in (self.s1, self.s3):
+            OrderActionReminder.objects.create(
+                order=self.orders[salon], due_at=timezone.now() - timedelta(days=1),
+                action_text='Позвонить', created_by=self.managers[salon],
+            )
+        params = {'with_overdue_reminder': 'true'}
+        self.assertEqual(self.ids('/api/v1/workshop/', params), self.order_ids(self.s1, self.s3))
+        self.assertEqual(
+            self.ids('/api/v1/workshop/', {**params, 'city__in': str(self.samara.id)}),
+            self.order_ids(self.s3),
+        )
 
     def test_leader_salon_filter_and_city_cannot_widen_access(self):
         self.client.force_authenticate(self.leader)

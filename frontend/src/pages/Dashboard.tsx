@@ -95,9 +95,9 @@ const Dashboard = () => {
         // по всему салону/городу, а в списке с «Мои» — одна. Руководителю — все.
         const mine = isManager || undefined
         const [today, tomorrow, overdue] = await Promise.all([
-          workshopAPI.list({ mine, with_reminder_today: true }).catch(() => []),
-          workshopAPI.list({ mine, with_reminder_tomorrow: true }).catch(() => []),
-          workshopAPI.list({ mine, with_overdue_reminder: true }).catch(() => []),
+          workshopAPI.list({ userId: user?.id, mine, with_reminder_today: true }).catch(() => []),
+          workshopAPI.list({ userId: user?.id, mine, with_reminder_tomorrow: true }).catch(() => []),
+          workshopAPI.list({ userId: user?.id, mine, with_overdue_reminder: true }).catch(() => []),
         ])
         setReminderTodayCount(today.length)
         setReminderTomorrowCount(tomorrow.length)
@@ -105,7 +105,7 @@ const Dashboard = () => {
       } catch {}
     }
     load()
-  }, [showWorkshopCard, isManager])
+  }, [showWorkshopCard, isManager, user?.id])
 
   useEffect(() => {
     const fetchStats = async () => {

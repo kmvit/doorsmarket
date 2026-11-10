@@ -341,7 +341,7 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; salons?: string[]; cities?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { userId?: number; mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; salons?: string[]; cities?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
@@ -353,7 +353,7 @@ export const workshopAPI = {
     if (params?.cities?.length) queryParams.city__in = params.cities.join(',')
     if (params?.search) queryParams.search = params.search
     return withOfflineFallback({
-      cacheKey: `workshop_list_${JSON.stringify(queryParams)}`,
+      cacheKey: `workshop_list_user_${params?.userId ?? 'unknown'}_${JSON.stringify(queryParams)}`,
       request: async () => {
         const response = await apiClient.get('/workshop/', { params: queryParams })
         return Array.isArray(response.data) ? response.data : (response.data.results || [])

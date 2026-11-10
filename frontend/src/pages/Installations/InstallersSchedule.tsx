@@ -8,6 +8,7 @@ import {
 } from '../../types/installations'
 import MonthCalendar, { monthGridRange, monthStart } from '../../components/installations/MonthCalendar'
 import AssignModal from '../../components/installations/AssignModal'
+import ScheduleVisitContent, { scheduleVisitTitle } from '../../components/installations/ScheduleVisitContent'
 import InstallationsTabs from './InstallationsTabs'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import OfflinePrefetchButton from '../../components/common/OfflinePrefetchButton'
@@ -177,12 +178,9 @@ const InstallersSchedule = () => {
                               ? 'bg-rose-100 text-rose-900 border-l-2 border-rose-500'
                               : INSTALLATION_STATUS_COLOR[v.status as keyof typeof INSTALLATION_STATUS_COLOR]
                           }`}
-                          title={`${v.kind === 'complaint' ? `Рекламация #${v.complaint_id}, ${v.window}\n` : ''}${v.client_name}\n${v.address}\n${v.work_description}`}
+                          title={scheduleVisitTitle(v)}
                         >
-                          {v.kind === 'complaint' && <span className="block font-semibold">Рекламация</span>}
-                          <span className="font-semibold block truncate">{v.client_name}</span>
-                          <span className="block truncate">{v.address}</span>
-                          <span className="block truncate opacity-80">{v.work_description}</span>
+                          <ScheduleVisitContent visit={v} />
                         </Link>
                       ))}
                     </div>

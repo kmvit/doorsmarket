@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from './ModalPortal'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { Installation, Installer, ScheduleVisit, formatPeriod } from '../../types/installations'
+import { Installation, Installer, ScheduleVisit, formatPeriod, INSTALLATION_STATUS_COLOR } from '../../types/installations'
+import ScheduleVisitContent, { scheduleVisitTitle } from './ScheduleVisitContent'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import MonthCalendar, { monthGridRange, monthStart } from './MonthCalendar'
 import { authAPI } from '../../api/auth'
@@ -157,6 +158,8 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
           <span className="text-xs text-gray-500 pb-2">или выберите дни в календаре</span>
         </div>
 
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
         <MonthCalendar
           compact
           month={month}
@@ -167,10 +170,19 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
             return busyOn(day).length ? 'bg-amber-100' : ''
           }}
           renderDay={(day) => {
-            const n = busyOn(day).length
-            return n ? <div className="text-[10px] text-center text-amber-800 leading-tight">занят{n > 1 ? ` ×${n}` : ''}</div> : null
+            return <div className="space-y-1 mt-0.5">{busyOn(day).map((v) => (
+              <div key={v.id} title={scheduleVisitTitle(v)} className={`rounded-md px-1.5 py-1 text-[11px] leading-tight ${
+                v.kind === 'complaint'
+                  ? 'bg-rose-100 text-rose-900 border-l-2 border-rose-500'
+                  : INSTALLATION_STATUS_COLOR[v.status as keyof typeof INSTALLATION_STATUS_COLOR]
+              }`}>
+                <ScheduleVisitContent visit={v} />
+              </div>
+            ))}</div>
           }}
         />
+        </div>
+        </div>
         <p className="text-xs text-gray-500 mt-1">
           <span className="inline-block w-3 h-3 bg-amber-100 align-middle mr-1 rounded-sm" />
           у выбранных монтажников уже есть монтаж

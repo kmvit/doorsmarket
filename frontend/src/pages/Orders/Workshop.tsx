@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
 import MultiSelect from '../../components/common/MultiSelect'
@@ -38,11 +38,14 @@ const Workshop = () => {
   const [withReminderTomorrow, setWithReminderTomorrow] = useState(reminderParam === 'tomorrow')
   const [withOverdue, setWithOverdue] = useState(reminderParam === 'overdue')
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
     setIsLoading(true)
     setError(null)
     try {
       const data = await workshopAPI.list({
+        userId: user?.id,
         mine: mine || undefined,
         with_reminder_today: withReminderToday || undefined,
         with_reminder_tomorrow: withReminderTomorrow || undefined,
@@ -53,18 +56,16 @@ const Workshop = () => {
         cities: canFilterByManager ? people.cities : undefined,
         search: search || undefined,
       })
-      setOrders(data)
+      if (!cancelled) setOrders(data)
     } catch (err: any) {
-      setError(err.message || 'Ошибка загрузки')
+      if (!cancelled) setError(err.message || 'Ошибка загрузки')
     } finally {
-      setIsLoading(false)
+      if (!cancelled) setIsLoading(false)
     }
-  }, [search, statusFilter, people, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue])
-
-  useEffect(() => {
+    }
     const t = setTimeout(load, 300)
-    return () => clearTimeout(t)
-  }, [load])
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [search, statusFilter, people, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue, user?.id])
 
   const formatDate = (d: string | null) => {
     if (!d) return '—'
