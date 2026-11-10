@@ -414,14 +414,13 @@ class Order(models.Model):
         """Отображаемую подпись с датой для статуса запланированного монтажа."""
         if self.status == OrderStatus.INSTALLATION_SCHEDULED:
             from installations.models import Installation, InstallationStatus
-            from django.utils import timezone
 
             visit = Installation.objects.filter(
                 order_id=self.pk, status=InstallationStatus.PLANNED,
                 visits__date_from__isnull=False,
             ).order_by('visits__date_from').values_list('visits__date_from', flat=True).first()
             if visit:
-                date = timezone.localtime(visit).strftime('%d.%m.%Y')
+                date = visit.strftime('%d.%m.%Y')
                 return f'Монтаж запланирован на {date}'
         return self.get_status_display()
 

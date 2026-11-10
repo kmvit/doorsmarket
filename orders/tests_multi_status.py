@@ -218,6 +218,27 @@ class CitySalonFilterTest(TestCase):
             self.order_ids(self.s3),
         )
 
+    def test_workshop_with_scheduled_installation_formats_date(self):
+        from datetime import date
+        from installations.models import Installation, InstallationStatus, InstallationVisit
+
+        order = self.orders[self.s3]
+        order.status = OrderStatus.INSTALLATION_SCHEDULED
+        order.save(update_fields=['status'])
+        installation = Installation.objects.create(order=order, status=InstallationStatus.PLANNED)
+        InstallationVisit.objects.create(
+            installation=installation, date_from=date(2026, 11, 17), date_to=date(2026, 11, 19),
+        )
+        OrderActionReminder.objects.create(
+            order=order, due_at=timezone.now() - timedelta(days=1), action_text='Позвонить',
+        )
+        self.client.force_authenticate(self.admin)
+        for params in ({}, {'with_overdue_reminder': 'true'}):
+            response = self.client.get('/api/v1/workshop/', params)
+            self.assertEqual(response.status_code, 200)
+            row = next(row for row in rows(response) if row['id'] == order.id)
+            self.assertEqual(row['status_display'], 'Монтаж запланирован на 17.11.2026')
+
     def test_leader_salon_filter_and_city_cannot_widen_access(self):
         self.client.force_authenticate(self.leader)
         self.assertEqual(self.ids('/api/v1/orders/', {'salon__in': str(self.s2.id)}), self.order_ids(self.s2))
