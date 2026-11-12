@@ -5,7 +5,7 @@ import { installationsAPI, apiErrorText } from '../../api/installations'
 import {
   CLOSED_INSTALLATION_STATUSES, Installation, InstallationEvent, InstallationFileKind,
   INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR,
-  formatDate, formatDeliveryDateRange, formatPeriod,
+  formatDate, formatDeliveryDateRange, formatPeriod, formatVisitAssignments, formatPeriodForInstaller,
   canDecideIrrelevant, canEditSchedule, canSeeInstallations, INSTALLER_FILE_KINDS,
 } from '../../types/installations'
 import AssignModal from '../../components/installations/AssignModal'
@@ -215,7 +215,7 @@ const InstallationDetail = () => {
           <p className="text-sm text-amber-900">
             <span className="font-semibold">{visit!.reschedule_requested_by_name || 'Монтажник'}</span> перенёс монтаж
             {visit!.previous_date_from && <> с {formatPeriod(visit!.previous_date_from, visit!.previous_date_to || visit!.previous_date_from)}</>}
-            {' '}на <span className="font-semibold">{formatPeriod(visit!.date_from, visit!.date_to)}</span>.
+            {' '}на <span className="font-semibold">{formatPeriodForInstaller(visit!, visit!.reschedule_requested_by)}</span>.
             Причина: «{visit!.reschedule_reason}». Клиенту СМС уйдёт после подтверждения.
           </p>
           {sm && (
@@ -244,8 +244,7 @@ const InstallationDetail = () => {
 
       {inst.status === 'planned' && inst.current_visit && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-900">
-          Монтаж назначен на <span className="font-semibold">{formatPeriod(inst.current_visit.date_from, inst.current_visit.date_to)}</span>
-          {' · '}монтажник: {inst.current_visit.installers.map((u) => u.full_name).join(', ')}
+          Монтаж назначен: <span className="font-semibold">{formatVisitAssignments(inst.current_visit)}</span>
         </div>
       )}
 
@@ -315,7 +314,7 @@ const InstallationDetail = () => {
           {(inst.visits?.length || 0) > 0 && row('Выезды', (
             <ul>
               {inst.visits!.map((v) => (
-                <li key={v.id}>{formatPeriod(v.date_from, v.date_to)} · {v.installers.map((u) => u.full_name).join(', ')}</li>
+                <li key={v.id}>{formatVisitAssignments(v)}</li>
               ))}
             </ul>
           ))}

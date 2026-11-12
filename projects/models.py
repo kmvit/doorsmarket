@@ -1030,6 +1030,15 @@ class Complaint(models.Model):
                     exc_info=True,
             )
     
+    def completion_error(self):
+        if self.status not in (
+            ComplaintStatus.INSTALLATION_PLANNED, ComplaintStatus.BOTH_PLANNED, ComplaintStatus.INSTALLER_OVERDUE,
+        ):
+            return 'Отметить выполнение можно только для запланированного монтажа'
+        if not self.planned_installation_date or self.planned_installation_date > timezone.now():
+            return 'Отметить выполнение можно после наступления запланированной даты и времени монтажа'
+        return None
+
     def mark_completed(self):
         """Монтажник отмечает работу выполненной"""
         self.status = ComplaintStatus.UNDER_SM_REVIEW

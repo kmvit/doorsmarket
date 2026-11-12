@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { Installation, INSTALLATION_STATUS_COLOR, formatDate, formatPeriod } from '../../types/installations'
+import { Installation, INSTALLATION_STATUS_COLOR, formatDate, formatVisitAssignments } from '../../types/installations'
 
 interface Props {
   orderId: number
@@ -99,12 +99,12 @@ const OrderInstallationsBlock = ({ orderId, orderStatus, notNeededAt, canCreate,
                   {it.status === 'done' ? 'Монтаж завершён'
                     : it.status === 'partially_done' ? 'Монтаж завершён частично'
                       : it.status === 'planned'
-                        ? `Монтаж запланирован${it.current_visit ? ` на ${formatPeriod(it.current_visit.date_from, it.current_visit.date_to)}` : ''}`
+                        ? 'Монтаж запланирован'
                         : it.status_display}
                 </span>
                 {it.status === 'planned' && it.current_visit && (
                   <span className="text-xs text-gray-700">
-                    {it.current_visit.installers.map((u) => u.full_name).join(', ')}
+                    {formatVisitAssignments(it.current_visit)}
                   </span>
                 )}
                 <span className={`text-xs ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>

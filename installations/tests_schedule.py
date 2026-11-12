@@ -199,6 +199,31 @@ class StatusFlowTest(ScheduleTestBase):
 
 
 class ScheduleViewTest(ScheduleTestBase):
+    def test_individual_dates_in_schedule_and_after_rejected_reschedule(self):
+        assignments = [
+            {'installer_id': self.inst1.id, 'date_from': '2026-11-15', 'date_to': '2026-11-16'},
+            {'installer_id': self.inst2.id, 'date_from': '2026-11-18', 'date_to': '2026-11-18'},
+        ]
+        response = self.post(self.sm, 'assign', {'assignments': assignments})
+        self.assertEqual(response.status_code, 200, response.data)
+        visit = response.data['current_visit']
+        self.assertEqual(visit['installer_dates'][str(self.inst1.id)]['date_to'], '2026-11-16')
+        self.assertEqual(InstallationVisit.objects.count(), 1)
+        client = self.client_for(self.sm)
+        url = '/api/v1/installations/schedule/'
+        params = {'date_from': '2026-11-15', 'date_to': '2026-11-16'}
+        rows = client.get(url, params).data
+        self.assertEqual(len(rows), 1)
+        self.assertEqual([user['id'] for user in rows[0]['installers']], [self.inst1.id])
+        response = self.post(self.inst2, 'reschedule', {
+            'date_from': '2026-11-20', 'date_to': '2026-11-20', 'reason': 'Перенос',
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['current_visit']['date_from'], '2026-11-15')
+        response = self.post(self.sm, 'reject_reschedule')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['current_visit']['installer_dates'], visit['installer_dates'])
+
     def test_installers_of_city(self):
         response = self.client_for(self.manager).get('/api/v1/installations/installers/')
         self.assertEqual({u['id'] for u in response.data}, {self.inst1.id, self.inst2.id})

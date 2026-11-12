@@ -713,6 +713,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        if error := complaint.completion_error():
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+
         complaint.mark_completed()
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)

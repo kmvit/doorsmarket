@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from './ModalPortal'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { Installation, Installer, ScheduleVisit, formatPeriod, INSTALLATION_STATUS_COLOR } from '../../types/installations'
+import { Installation, Installer, ScheduleVisit, InstallationPeriod, installerPeriod, formatPeriod, INSTALLATION_STATUS_COLOR } from '../../types/installations'
 import ScheduleVisitContent, { scheduleVisitTitle } from './ScheduleVisitContent'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import MonthCalendar, { monthGridRange, monthStart } from './MonthCalendar'
@@ -29,11 +29,18 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
   // Запланированный монтаж правим (тот же выезд); частично завершённому — новый выезд
   const visit = installation.status === 'planned' ? installation.current_visit : null
   const [installers, setInstallers] = useState<Installer[]>([])
-  const [selected, setSelected] = useState<number[]>(
-    preset?.installers || visit?.installers.map((u) => u.id) || [],
-  )
-  const [dateFrom, setDateFrom] = useState(preset?.dateFrom || visit?.date_from || '')
-  const [dateTo, setDateTo] = useState(preset?.dateTo || visit?.date_to || '')
+  const [assignments, setAssignments] = useState(() => {
+    if (visit) return visit.installers.map((u) => ({ installer_id: u.id, ...installerPeriod(visit, u.id) }))
+    return (preset?.installers ?? []).map((id) => ({
+      installer_id: id,
+      date_from: preset?.dateFrom ?? '',
+      date_to: preset?.dateTo ?? '',
+    }))
+  })
+  const [activeId, setActiveId] = useState<number | null>(() => assignments[0]?.installer_id ?? null)
+  const active = assignments.find((row) => row.installer_id === activeId)
+  const dateFrom = active?.date_from ?? ''
+  const dateTo = active?.date_to ?? ''
   const [month, setMonth] = useState(() => monthStart(dateFrom ? new Date(`${dateFrom}T00:00:00`) : new Date()))
   const [busy, setBusy] = useState<ScheduleVisit[]>([])
   const [isSaving, setIsSaving] = useState(false)
@@ -43,18 +50,17 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
     installationsAPI.getInstallers().then(setInstallers).catch(() => setError('Не удалось загрузить монтажников'))
   }, [])
 
-  // Занятость выбранных монтажников на видимый месяц
-  const selectedKey = selected.join(',')
+  // Занятость монтажника, для которого сейчас выбирают даты.
   useEffect(() => {
-    if (!selected.length) { setBusy([]); return }
+    setBusy([])
+    if (activeId === null) return
     let cancelled = false
     const [from, to] = monthGridRange(month)
-    installationsAPI.getSchedule(from, to, selected)
+    installationsAPI.getSchedule(from, to, [activeId])
       .then((rows) => { if (!cancelled) setBusy(rows.filter((v) => v.installation_id !== installation.id)) })
       .catch(() => { if (!cancelled) setBusy([]) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, month, installation.id])
+  }, [activeId, month, installation.id])
 
   const busyOn = (day: string) => busy.filter((v) => dayInRange(day, v.date_from, v.date_to))
 
@@ -64,23 +70,46 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
     return busy.filter((v) => v.date_from <= to && v.date_to >= dateFrom)
   }, [busy, dateFrom, dateTo])
 
-  // Клик по дню: первый — начало, второй — конец интервала, дальше — заново
+  const updatePeriod = (period: InstallationPeriod) => {
+    setAssignments((rows) => rows.map((row) => row.installer_id === activeId ? { ...row, ...period } : row))
+  }
+
   const pickDay = (day: string) => {
+    if (!active) return
     if (!dateFrom || (dateTo && dateTo !== dateFrom) || day < dateFrom) {
-      setDateFrom(day)
-      setDateTo(day)
+      updatePeriod({ date_from: day, date_to: day })
     } else {
-      setDateTo(day)
+      updatePeriod({ date_from: dateFrom, date_to: day })
     }
   }
 
-  const toggle = (id: number) =>
-    setSelected((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]))
+  const editPeriod = (id: number, from: string) => {
+    setActiveId(id)
+    if (from) setMonth(monthStart(new Date(`${from}T00:00:00`)))
+  }
+
+  const toggle = (id: number) => {
+    if (assignments.some((row) => row.installer_id === id)) {
+      const remaining = assignments.filter((row) => row.installer_id !== id)
+      setAssignments(remaining)
+      if (activeId === id) {
+        const next = remaining[0]
+        if (next) editPeriod(next.installer_id, next.date_from)
+        else setActiveId(null)
+      }
+    } else {
+      setAssignments([...assignments, { installer_id: id, date_from: '', date_to: '' }])
+      setActiveId(id)
+    }
+  }
 
   const save = async () => {
     setError(null)
-    if (!selected.length) { setError('Выберите монтажника'); return }
-    if (!dateFrom) { setError('Выберите дату монтажа'); return }
+    if (!assignments.length) { setError('Выберите монтажника'); return }
+    if (assignments.some((row) => !row.date_from || (row.date_to && row.date_to < row.date_from))) {
+      setError('Укажите корректные даты для каждого монтажника')
+      return
+    }
     setIsSaving(true)
     try {
       // Роль в интерфейсе может устареть, если токен заменился в другой вкладке.
@@ -91,7 +120,9 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         setError(`Сервер видит текущий аккаунт «${currentUser.username}» с ролью «${currentUser.role}». Для назначения нужен сервис-менеджер.`)
         return
       }
-      onDone(await installationsAPI.assign(installation.id, selected, dateFrom, dateTo || dateFrom))
+      onDone(await installationsAPI.assign(installation.id, assignments.map((row) => ({
+        ...row, date_to: row.date_to || row.date_from,
+      }))))
     } catch (err) {
       setError(apiErrorText(err, 'Не удалось назначить монтаж'))
     } finally {
@@ -99,7 +130,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
     }
   }
 
-  const installerName = (id: number) => installers.find((u) => u.id === id)?.full_name || ''
+  const installerName = (id: number) => installers.find((u) => u.id === id)?.full_name || visit?.installers.find((u) => u.id === id)?.full_name || ''
 
   return (
     <ModalPortal>
@@ -130,7 +161,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
                   type="button"
                   onClick={() => toggle(u.id)}
                   className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${
-                    selected.includes(u.id)
+                    assignments.some((row) => row.installer_id === u.id)
                       ? 'bg-primary-600 border-primary-600 text-white'
                       : 'bg-white border-gray-300 text-gray-700 hover:border-primary-400'
                   }`}
@@ -142,17 +173,33 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
           )}
         </div>
 
+        {assignments.length > 0 && (
+          <div className="mb-3 space-y-1">
+            {assignments.map((row) => (
+              <button key={row.installer_id} type="button" aria-pressed={row.installer_id === activeId}
+                onClick={() => editPeriod(row.installer_id, row.date_from)}
+                className={`flex w-full flex-wrap justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  row.installer_id === activeId ? 'border-primary-400 bg-primary-50' : 'border-gray-200'
+                }`}>
+                <span className="font-medium">{installerName(row.installer_id)}</span>
+                <span>{row.date_from ? formatPeriod(row.date_from, row.date_to || row.date_from) : 'Выбрать даты'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {active && <>
         <div className="mb-2 flex flex-wrap items-end gap-3">
           <label className="text-sm text-gray-700">
             С
             <input type="date" value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); if (!dateTo || dateTo < e.target.value) setDateTo(e.target.value) }}
+              onChange={(e) => { updatePeriod({ date_from: e.target.value, date_to: dateTo < e.target.value ? e.target.value : dateTo }) }}
               className="block rounded-lg border-gray-300 shadow-sm text-sm" />
           </label>
           <label className="text-sm text-gray-700">
             По
             <input type="date" value={dateTo} min={dateFrom || undefined}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => updatePeriod({ date_from: dateFrom, date_to: e.target.value })}
               className="block rounded-lg border-gray-300 shadow-sm text-sm" />
           </label>
           <span className="text-xs text-gray-500 pb-2">или выберите дни в календаре</span>
@@ -185,7 +232,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         </div>
         <p className="text-xs text-gray-500 mt-1">
           <span className="inline-block w-3 h-3 bg-amber-100 align-middle mr-1 rounded-sm" />
-          у выбранных монтажников уже есть монтаж
+          у этого монтажника уже есть монтаж
         </p>
 
         {conflicts.length > 0 && (
@@ -194,13 +241,15 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
             <ul className="space-y-0.5">
               {conflicts.map((v) => (
                 <li key={v.id}>
-                  {formatPeriod(v.date_from, v.date_to)} · {v.installers.filter((u) => selected.includes(u.id)).map((u) => u.full_name || installerName(u.id)).join(', ')}
+                  {formatPeriod(v.date_from, v.date_to)} · {installerName(active.installer_id)}
                   {' — '}{v.client_name}{v.address && `, ${v.address}`}
                 </li>
               ))}
             </ul>
           </div>
         )}
+
+        </>}
 
         {error && <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>}
 

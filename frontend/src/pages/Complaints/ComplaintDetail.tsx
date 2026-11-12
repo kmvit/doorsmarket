@@ -312,6 +312,7 @@ const ComplaintDetail = () => {
           setInstallationWindow(emptyInstallationWindow)
           break
         case 'complete':
+          if (!confirm('Работы по рекламации выполнены? Рекламация будет отправлена на проверку сервис-менеджеру.')) return
           await complaintsAPI.complete(Number(id))
           break
         case 'request_reorder':

@@ -21,7 +21,7 @@ from .models import (
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
-    InstallationFileSerializer, InstallationListSerializer, InstallationWriteSerializer,
+    InstallationFileSerializer, InstallationListSerializer, InstallationWriteSerializer, InstallerAssignmentSerializer,
     ScheduleVisitSerializer, StaffSerializer, rating_scores,
 )
 
@@ -309,7 +309,25 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         ).exclude(installation__status=InstallationStatus.IRRELEVANT).select_related(
             'installation', 'installation__order',
         ).prefetch_related('installers').distinct().order_by('date_from', 'id')
-        rows = [{**row, 'kind': 'installation'} for row in ScheduleVisitSerializer(visits, many=True).data]
+        rows = []
+        for visit in visits:
+            groups = {}
+            for installer in visit.installers.all():
+                if installer.id not in installer_ids:
+                    continue
+                start, end = visit.dates_for(installer.id)
+                if start <= date_to and end >= date_from:
+                    groups.setdefault((start, end), []).append(installer)
+            if not groups:
+                continue
+            row = ScheduleVisitSerializer(visit).data
+            for (start, end), installers in groups.items():
+                rows.append({
+                    **row, 'kind': 'installation',
+                    'id': f'{visit.id}:{start}:{end}' if visit.installer_dates else visit.id,
+                    'date_from': start.isoformat(), 'date_to': end.isoformat(),
+                    'installers': StaffSerializer(installers, many=True).data,
+                })
         # Рекламационные выезды — в тех же графиках, выделены цветом на фронте
         from .complaints import complaint_visits
         rows += complaint_visits(installer_ids, date_from, date_to)
@@ -323,7 +341,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
-        """СМ назначает монтаж: {installers: [id], date_from, date_to}."""
+        """СМ назначает монтаж: assignments с периодом каждого монтажника или общий период."""
         if request.user.role not in SCHEDULE_ROLES:
             return _forbidden(
                 f'Назначать монтажи может сервис-менеджер. Текущий запрос распознан как '
@@ -333,17 +351,30 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         allowed = (InstallationStatus.NOT_PLANNED, InstallationStatus.PLANNED, InstallationStatus.PARTIALLY_DONE)
         if inst.status not in allowed:
             return _bad(f'Монтаж в статусе «{inst.get_status_display()}» назначить нельзя.')
-        date_from = _parse_date(request.data.get('date_from'))
-        date_to = _parse_date(request.data.get('date_to')) or date_from
-        if not date_from:
-            return _bad('Укажите дату монтажа.')
-        if date_to < date_from:
-            return _bad('Дата окончания раньше даты начала.')
-        installer_ids = _ids(request.data.get('installers'))
-        installers = list(services.city_installers(inst.order.salon.city_id).filter(id__in=installer_ids))
-        if not installers or len(installers) != len(set(installer_ids)):
+        if 'assignments' in request.data:
+            assignments = InstallerAssignmentSerializer(data=request.data['assignments'], many=True, allow_empty=False)
+            assignments.is_valid(raise_exception=True)
+            periods = {
+                row['installer_id']: (row['date_from'], row['date_to'])
+                for row in assignments.validated_data
+            }
+            if len(periods) != len(assignments.validated_data):
+                return _bad('Укажите один период для каждого монтажника.')
+        else:
+            date_from = _parse_date(request.data.get('date_from'))
+            date_to = _parse_date(request.data.get('date_to')) or date_from
+            if not date_from:
+                return _bad('Укажите дату монтажа.')
+            if date_to < date_from:
+                return _bad('Дата окончания раньше даты начала.')
+            periods = {pk: (date_from, date_to) for pk in _ids(request.data.get('installers'))}
+        installers = list(services.city_installers(inst.order.salon.city_id).filter(id__in=periods))
+        if not installers or len(installers) != len(periods):
             return _bad('Выберите монтажников города, где монтаж.')
-        services.assign(inst, installers=installers, date_from=date_from, date_to=date_to, actor=request.user)
+        services.assign(
+            inst, installers=installers, periods=periods, actor=request.user,
+            individual_dates='assignments' in request.data,
+        )
         return Response(self._detail(inst))
 
     @action(detail=True, methods=['post'])
@@ -465,7 +496,11 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         if not reason:
             return _bad('Укажите причину переноса.')
         visit = inst.current_visit
-        if (visit.date_from, visit.date_to) == (date_from, date_to):
+        if visit.installer_dates and str(request.user.id) not in visit.installer_dates:
+            return _bad('Измените даты монтажников в окне назначения.')
+        if visit.reschedule_requested_at and visit.reschedule_requested_by_id != request.user.id:
+            return _bad('Дождитесь решения по предыдущему переносу.')
+        if visit.dates_for(request.user.id) == (date_from, date_to):
             return _bad('Даты не изменились.')
         services.reschedule_by_installer(inst, date_from=date_from, date_to=date_to, reason=reason,
                                          actor=request.user)

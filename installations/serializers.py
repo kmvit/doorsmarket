@@ -90,13 +90,24 @@ class InstallationVisitSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallationVisit
         fields = [
-            'id', 'date_from', 'date_to', 'installers',
-            'reschedule_requested_at', 'reschedule_requested_by_name', 'reschedule_reason',
+            'id', 'date_from', 'date_to', 'installers', 'installer_dates',
+            'reschedule_requested_at', 'reschedule_requested_by', 'reschedule_requested_by_name', 'reschedule_reason',
             'previous_date_from', 'previous_date_to',
         ]
 
     def get_reschedule_requested_by_name(self, obj):
         return _user_name(obj.reschedule_requested_by)
+
+
+class InstallerAssignmentSerializer(serializers.Serializer):
+    installer_id = serializers.IntegerField(min_value=1)
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+
+    def validate(self, attrs):
+        if attrs['date_to'] < attrs['date_from']:
+            raise serializers.ValidationError('Дата окончания раньше даты начала.')
+        return attrs
 
 
 class InstallationListSerializer(serializers.ModelSerializer):

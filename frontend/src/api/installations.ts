@@ -150,8 +150,8 @@ export const installationsAPI = {
     })
   },
 
-  assign: async (id: number, installers: number[], dateFrom: string, dateTo: string): Promise<Installation> =>
-    (await apiClient.post(`/installations/${id}/assign/`, { installers, date_from: dateFrom, date_to: dateTo })).data,
+  assign: async (id: number, assignments: { installer_id: number; date_from: string; date_to: string }[]): Promise<Installation> =>
+    (await apiClient.post(`/installations/${id}/assign/`, { assignments })).data,
 
   action: async (
     id: number,

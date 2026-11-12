@@ -102,17 +102,27 @@ export interface Installer extends Staff {
 }
 
 /** Выезд: монтаж в графике монтажников на интервал дат */
+export interface InstallationPeriod {
+  date_from: string
+  date_to: string
+}
+
 export interface InstallationVisit {
   id: number
   date_from: string
   date_to: string
   installers: Staff[]
+  installer_dates?: Record<string, InstallationPeriod>
   reschedule_requested_at?: string | null
+  reschedule_requested_by?: number | null
   reschedule_requested_by_name?: string
   reschedule_reason?: string
   previous_date_from?: string | null
   previous_date_to?: string | null
 }
+
+export const installerPeriod = (visit: InstallationVisit, installerId?: number | null): InstallationPeriod =>
+  visit.installer_dates?.[String(installerId)] ?? { date_from: visit.date_from, date_to: visit.date_to }
 
 /** Выезд в календаре монтажника: монтаж или рекламация (kind) */
 export interface ScheduleVisit extends Omit<InstallationVisit, 'id'> {
@@ -321,3 +331,11 @@ export const formatPeriod = (from: string, to: string) => {
   const short = (v: string) => `${v.slice(8, 10)}.${v.slice(5, 7)}`
   return from === to ? short(from) : `${short(from)}–${short(to)}`
 }
+
+export const formatPeriodForInstaller = (visit: InstallationVisit, installerId?: number | null): string => {
+  const { date_from, date_to } = installerPeriod(visit, installerId)
+  return formatPeriod(date_from, date_to)
+}
+
+export const formatVisitAssignments = (visit: InstallationVisit): string =>
+  visit.installers.map((u) => `${u.full_name} · ${formatPeriodForInstaller(visit, u.id)}`).join('; ')

@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.conf import settings
 from django.db import models
 
@@ -161,6 +163,7 @@ class InstallationVisit(models.Model):
     installers = models.ManyToManyField(
         settings.AUTH_USER_MODEL, related_name='installation_visits', verbose_name='Монтажники',
     )
+    installer_dates = models.JSONField(default=dict, blank=True)
     assigned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='+', verbose_name='Кто назначил',
@@ -192,6 +195,20 @@ class InstallationVisit(models.Model):
 
     def __str__(self):
         return f'Монтаж #{self.installation_id}: {self.date_from}–{self.date_to}'
+
+    def dates_for(self, installer_id):
+        dates = self.installer_dates.get(str(installer_id))
+        if dates:
+            return date.fromisoformat(dates['date_from']), date.fromisoformat(dates['date_to'])
+        return self.date_from, self.date_to
+
+    def set_installer_dates(self, periods):
+        self.date_from = min(start for start, end in periods.values())
+        self.date_to = max(end for start, end in periods.values())
+        self.installer_dates = {
+            str(installer_id): {'date_from': start.isoformat(), 'date_to': end.isoformat()}
+            for installer_id, (start, end) in periods.items()
+        }
 
 
 class InstallationFile(models.Model):

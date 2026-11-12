@@ -63,6 +63,17 @@ class InstallationWindowTest(TestCase):
         self.complaint.refresh_from_db()
         self.assertEqual(self.complaint.installation_window_text, '14.05.2030 с 09:00 до 11:00')
 
+    def test_cannot_complete_before_planned_visit(self, *_):
+        self._plan(self.installer, installation_date='2030-05-14T10:00')
+        url = f'/api/v1/complaints/{self.complaint.id}/complete/'
+        self.assertEqual(self.api.post(url).status_code, 400)
+        self.complaint.refresh_from_db()
+        self.assertEqual(self.complaint.status, ComplaintStatus.INSTALLATION_PLANNED)
+        with patch('projects.models.timezone.now', return_value=self.complaint.planned_installation_date):
+            self.assertEqual(self.api.post(url).status_code, 200)
+        self.complaint.refresh_from_db()
+        self.assertEqual(self.complaint.status, ComplaintStatus.UNDER_SM_REVIEW)
+
     def test_bad_intervals_rejected(self, *_):
         for end in ('2030-05-14T10:00', '2030-05-14T09:00', '2030-05-15T11:00'):
             response = self._plan(self.installer, installation_date='2030-05-14T10:00', installation_end=end)

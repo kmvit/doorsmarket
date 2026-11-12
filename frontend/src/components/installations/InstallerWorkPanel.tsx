@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import { QUEUED_MESSAGE } from '../../services/sync'
-import { Installation, formatPeriod } from '../../types/installations'
+import { Installation, formatPeriod, formatPeriodForInstaller, installerPeriod } from '../../types/installations'
+import { useAuthStore } from '../../store/authStore'
 import ModalPortal from './ModalPortal'
 import FileViewer from '../common/FileViewer'
 
@@ -26,6 +27,7 @@ const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50
  */
 const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const visit = inst.current_visit
+  const installerId = useAuthStore((state) => state.user?.id)
   const [busy, setBusy] = useState(false)
   const [rescheduling, setRescheduling] = useState(false)
   // Файлы, ушедшие в офлайн-очередь: сервер их ещё не видит, но монтажник
@@ -155,7 +157,7 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
 
       {visit?.reschedule_requested_at && (
         <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Перенос на {formatPeriod(visit.date_from, visit.date_to)} ждёт подтверждения сервис-менеджера.
+          Перенос на {formatPeriodForInstaller(visit, visit.reschedule_requested_by)} ждёт подтверждения сервис-менеджера.
           Клиенту СМС о новой дате уйдёт после подтверждения.
         </p>
       )}
@@ -264,6 +266,7 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
       {rescheduling && visit && (
         <RescheduleModal
           inst={inst}
+          installerId={installerId}
           onClose={() => setRescheduling(false)}
           onDone={(updated) => { setRescheduling(false); onChanged(updated) }}
         />
@@ -277,12 +280,13 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   )
 }
 
-const RescheduleModal = ({ inst, onClose, onDone }: {
+const RescheduleModal = ({ inst, installerId, onClose, onDone }: {
   inst: Installation
+  installerId?: number
   onClose: () => void
   onDone: (inst: Installation) => void
 }) => {
-  const visit = inst.current_visit!
+  const visit = installerPeriod(inst.current_visit!, installerId)
   const [dateFrom, setDateFrom] = useState(visit.date_from)
   const [dateTo, setDateTo] = useState(visit.date_to)
   const [reason, setReason] = useState('')

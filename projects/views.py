@@ -1139,6 +1139,9 @@ def installer_complete(request, pk):
     complaint = get_object_or_404(Complaint, pk=pk)
     
     if request.method == 'POST':
+        if error := complaint.completion_error():
+            messages.error(request, error)
+            return redirect('projects:complaint_detail', pk=complaint.id)
         complaint.mark_completed()
         messages.success(request, 'Работа отмечена как выполненная')
         return redirect('projects:complaint_detail', pk=complaint.id)

@@ -5,7 +5,7 @@ import { installationsAPI } from '../../api/installations'
 import {
   Installation, InstallationStatus, INSTALLATION_STATUS_COLOR, INSTALLATION_STATUS_DISPLAY,
   INSTALLATION_STATUS_ORDER, ComplaintInstallationRow, canCreateInstallation, canEditSchedule,
-  formatDeliveryDateRange, formatPeriod,
+  formatDeliveryDateRange, formatVisitAssignments,
 } from '../../types/installations'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
@@ -308,8 +308,7 @@ const InstallationList = () => {
                         </span>
                         {it.status === 'planned' && it.current_visit && (
                           <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
-                            <span className="font-semibold">{formatPeriod(it.current_visit.date_from, it.current_visit.date_to)}</span>
-                            {' · '}{it.current_visit.installers.map((u) => u.full_name).join(', ')}
+                            {formatVisitAssignments(it.current_visit)}
                           </div>
                         )}
                         <div className={`mt-1 text-xs font-medium ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>

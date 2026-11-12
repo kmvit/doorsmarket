@@ -141,11 +141,15 @@ def city_installers(city_id):
     ).order_by('first_name', 'last_name', 'username')
 
 
-def _period(visit):
+def _format_period(date_from, date_to):
     from .sms import _format_date
-    if visit.date_from == visit.date_to:
-        return _format_date(visit.date_from)
-    return f'{_format_date(visit.date_from)}–{_format_date(visit.date_to)}'
+    if date_from == date_to:
+        return _format_date(date_from)
+    return f'{_format_date(date_from)}–{_format_date(date_to)}'
+
+
+def _period(visit):
+    return _format_period(visit.date_from, visit.date_to)
 
 
 def _installer_names(installers):
@@ -153,7 +157,7 @@ def _installer_names(installers):
 
 
 @transaction.atomic
-def assign(inst, *, installers, date_from, date_to, actor):
+def assign(inst, *, installers, periods, actor, individual_dates=False):
     """
     Назначить монтаж (или поправить назначение). Монтаж «не запланирован» или
     «частично завершён» получает новый выезд, запланированный — правится текущий.
@@ -165,15 +169,21 @@ def assign(inst, *, installers, date_from, date_to, actor):
     visit = inst.current_visit if inst.status == InstallationStatus.PLANNED else None
     old_from = visit.date_from if visit else None
     old_installers = set(visit.installers.values_list('id', flat=True)) if visit else set()
+    old_periods = {pk: visit.dates_for(pk) for pk in old_installers}
     if visit is None:
         visit = InstallationVisit(installation=inst)
-    visit.date_from, visit.date_to, visit.assigned_by = date_from, date_to, actor
+    visit.set_installer_dates(periods)
+    if not individual_dates or len(periods) == 1:
+        visit.installer_dates = {}
+    visit.assigned_by = actor
     # СМ сам выставил даты — запрос монтажника на перенос этим решён
     _clear_reschedule(visit)
     visit.save()
     visit.installers.set(installers)
 
-    description = f'{_period(visit)}, монтажник: {_installer_names(installers)}'
+    description = '; '.join(
+        f'{_installer_names([user])}: {_format_period(*periods[user.id])}' for user in installers
+    )
     if inst.status != InstallationStatus.PLANNED:
         _set_status(inst, InstallationStatus.PLANNED, actor, EventKind.ASSIGNED, description)
     else:
@@ -182,8 +192,8 @@ def assign(inst, *, installers, date_from, date_to, actor):
 
     url = f'/orders/installations/{inst.id}'
     for user in installers:
-        if user.id not in old_installers or old_from != date_from:
-            _push(user, f'Монтаж #{inst.id} на {_period(visit)}',
+        if old_periods.get(user.id) != periods[user.id]:
+            _push(user, f'Монтаж #{inst.id} на {_format_period(*periods[user.id])}',
                   f'{inst.order.client_name}, {inst.order.address}', url, actor)
     for user_id in old_installers - {u.id for u in installers}:
         from django.contrib.auth import get_user_model
@@ -191,9 +201,9 @@ def assign(inst, *, installers, date_from, date_to, actor):
               f'Монтаж #{inst.id} снят с вашего графика', inst.order.client_name, url, actor)
 
     if old_from is None:
-        sms.send(inst, sms.installation_scheduled(date_from, actor), actor=actor, purpose='scheduled')
-    elif old_from != date_from:
-        sms.send(inst, sms.installation_rescheduled(date_from, actor), actor=actor, purpose='rescheduled')
+        sms.send(inst, sms.installation_scheduled(visit.date_from, actor), actor=actor, purpose='scheduled')
+    elif old_from != visit.date_from:
+        sms.send(inst, sms.installation_rescheduled(visit.date_from, actor), actor=actor, purpose='rescheduled')
     return visit
 
 
@@ -315,18 +325,28 @@ def installer_call_failed(inst, actor):
 def reschedule_by_installer(inst, *, date_from, date_to, reason, actor):
     visit = inst.current_visit
     if visit.reschedule_requested_at is None:
-        visit.previous_date_from, visit.previous_date_to = visit.date_from, visit.date_to
-    visit.date_from, visit.date_to = date_from, date_to
+        visit.previous_date_from, visit.previous_date_to = visit.dates_for(actor.id)
+    _move_installer_dates(visit, actor.id, date_from, date_to)
     visit.reschedule_requested_at = timezone.now()
     visit.reschedule_requested_by = actor
     visit.reschedule_reason = reason
     visit.save()
+    period = _format_period(date_from, date_to)
     inst.log(EventKind.RESCHEDULE_REQUESTED, actor=actor,
-             description=f'Новая дата {_period(visit)}. Причина: {reason}',
+             description=f'Новая дата {period}. Причина: {reason}',
              meta={'previous_from': str(visit.previous_date_from), 'previous_to': str(visit.previous_date_to)})
     for sm in city_service_managers(inst):
-        _push(sm, f'Монтаж #{inst.id}: перенос на {_period(visit)}',
+        _push(sm, f'Монтаж #{inst.id}: перенос на {period}',
               f'Подтвердите перенос. Причина: {reason}', f'/orders/installations/{inst.id}', actor)
+
+
+def _move_installer_dates(visit, installer_id, date_from, date_to):
+    if visit.installer_dates:
+        periods = {int(pk): visit.dates_for(pk) for pk in visit.installer_dates}
+        periods[installer_id] = (date_from, date_to)
+        visit.set_installer_dates(periods)
+    else:
+        visit.date_from, visit.date_to = date_from, date_to
 
 
 def _clear_reschedule(visit):
@@ -343,12 +363,17 @@ def confirm_reschedule(inst, actor):
     from . import sms
     visit = inst.current_visit
     requested_by = visit.reschedule_requested_by
-    date_changed = visit.previous_date_from != visit.date_from
+    other_starts = [
+        visit.dates_for(pk)[0] for pk in visit.installer_dates
+        if pk != str(visit.reschedule_requested_by_id)
+    ]
+    date_changed = min([visit.previous_date_from, *other_starts]) != visit.date_from
+    period = _format_period(*visit.dates_for(visit.reschedule_requested_by_id))
     _clear_reschedule(visit)
     visit.save()
     sync_order_status(inst.order, actor=actor)
-    inst.log(EventKind.RESCHEDULE_CONFIRMED, actor=actor, description=f'Монтаж на {_period(visit)}')
-    _push(requested_by, f'Перенос монтажа #{inst.id} подтверждён', _period(visit),
+    inst.log(EventKind.RESCHEDULE_CONFIRMED, actor=actor, description=f'Монтаж на {period}')
+    _push(requested_by, f'Перенос монтажа #{inst.id} подтверждён', period,
           f'/orders/installations/{inst.id}', actor)
     if date_changed:
         sms.send(inst, sms.installation_rescheduled(visit.date_from, actor), actor=actor, purpose='rescheduled')
@@ -359,14 +384,15 @@ def reject_reschedule(inst, comment, actor):
     """СМ отклоняет перенос — в графике возвращаются прежние даты."""
     visit = inst.current_visit
     requested_by = visit.reschedule_requested_by
-    visit.date_from, visit.date_to = visit.previous_date_from, visit.previous_date_to
+    period = _format_period(visit.previous_date_from, visit.previous_date_to)
+    _move_installer_dates(visit, visit.reschedule_requested_by_id, visit.previous_date_from, visit.previous_date_to)
     _clear_reschedule(visit)
     visit.save()
     sync_order_status(inst.order, actor=actor)
     inst.log(EventKind.RESCHEDULE_REJECTED, actor=actor,
-             description=f'Остаётся {_period(visit)}' + (f'. {comment}' if comment else ''))
+             description=f'Остаётся {period}' + (f'. {comment}' if comment else ''))
     _push(requested_by, f'Перенос монтажа #{inst.id} отклонён',
-          comment or f'Монтаж остаётся на {_period(visit)}', f'/orders/installations/{inst.id}', actor)
+          comment or f'Монтаж остаётся на {period}', f'/orders/installations/{inst.id}', actor)
 
 
 def has_current_act(inst):
