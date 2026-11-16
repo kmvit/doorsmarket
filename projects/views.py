@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
@@ -483,6 +484,8 @@ def complaint_edit(request, pk):
 @login_required(login_url='/api/v1/login/')
 def complaint_create(request):
     """Создание новой рекламации"""
+    if not request.user.can_create_complaint:
+        raise PermissionDenied('Создавать рекламации может только сервис-менеджер.')
     
     if request.method == 'POST':
         def get_service_manager_for_city(city):

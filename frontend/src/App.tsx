@@ -104,7 +104,7 @@ function App() {
           path="/complaints/create"
           element={
             <ProtectedRoute>
-              <ComplaintsRoute><Layout>
+              <ComplaintsRoute creationOnly><Layout>
                 <ComplaintCreate />
               </Layout></ComplaintsRoute>
             </ProtectedRoute>

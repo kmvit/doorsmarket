@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import { QUEUED_MESSAGE } from '../../services/sync'
 import { Installation, formatPeriod, formatPeriodForInstaller, installerPeriod } from '../../types/installations'
-import { useAuthStore } from '../../store/authStore'
+import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 import ModalPortal from './ModalPortal'
 import FileViewer from '../common/FileViewer'
 
@@ -28,6 +28,7 @@ const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50
 const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const visit = inst.current_visit
   const installerId = useAuthStore((state) => state.user?.id)
+  const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
   const [busy, setBusy] = useState(false)
   const [rescheduling, setRescheduling] = useState(false)
   // Файлы, ушедшие в офлайн-очередь: сервер их ещё не видит, но монтажник
@@ -252,12 +253,14 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
         <button type="button" disabled={busy || !hasAct} onClick={() => complete(true)} className={btnPlain}>
           Монтаж завершён частично
         </button>
-        <Link
-          to={`/complaints/create?order=${inst.order}&installation=${inst.id}`}
-          className={`${btn} border-red-200 text-red-700 bg-white hover:bg-red-50`}
-        >
-          Создать рекламацию
-        </Link>
+        {canCreateComplaint ? (
+          <Link
+            to={`/complaints/create?order=${inst.order}&installation=${inst.id}`}
+            className={`${btn} border-red-200 text-red-700 bg-white hover:bg-red-50`}
+          >
+            Создать рекламацию
+          </Link>
+        ) : null}
       </div>
       {!hasAct && <p className="text-xs text-gray-500">Завершить монтаж можно после того, как приложен акт.</p>}
 

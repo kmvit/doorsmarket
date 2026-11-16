@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -415,6 +416,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Создание рекламации с установкой типа (если указан СМ)"""
+        if not request.user.can_create_complaint:
+            raise PermissionDenied('Создавать рекламации может только сервис-менеджер.')
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         complaint = serializer.save()

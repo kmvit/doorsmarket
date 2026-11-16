@@ -16,7 +16,7 @@ type CreateTab = 'manual' | 'kp'
 
 const OrderCreate = () => {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const userSalonId = useAuthStore((state) => state.user?.salon_id)
   const [salons, setSalons] = useState<Salon[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,15 +48,14 @@ const OrderCreate = () => {
   useEffect(() => {
     salonsAPI.getAll().then((data) => {
       setSalons(data)
-      if (data.length === 1) {
-        setForm((f) => ({ ...f, salon: data[0].id }))
-      }
-      // Если у пользователя есть салон — предзаполняем
-      if (user && (user as any).salon_id) {
-        setForm((f) => ({ ...f, salon: (user as any).salon_id }))
-      }
+      setForm((f) => ({
+        ...f,
+        salon: data.find((salon) => salon.id === f.salon)?.id
+          ?? data.find((salon) => salon.id === userSalonId)?.id
+          ?? (data.length === 1 ? data[0].id : 0),
+      }))
     }).catch(() => {})
-  }, [user])
+  }, [userSalonId])
 
   const setField = (field: keyof CreateOrderData, value: any) => {
     setForm((f) => ({ ...f, [field]: value }))
@@ -106,7 +105,8 @@ const OrderCreate = () => {
 
   const inputCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 
-  const defaultSalonId = (user as any)?.salon_id || (salons.length === 1 ? salons[0].id : 0)
+  const defaultSalonId = salons.find((salon) => salon.id === userSalonId)?.id
+    ?? (salons.length === 1 ? salons[0].id : 0)
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl">

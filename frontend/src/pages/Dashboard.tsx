@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
+import { selectCanCreateComplaint, useAuthStore } from '../store/authStore'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
 import { ordersAPI, workshopAPI } from '../api/orders'
@@ -53,6 +53,7 @@ const FolderCard = ({ to, label, count, overdue }: { to: string; label: string; 
 
 const Dashboard = () => {
   const { user, setUser } = useAuthStore()
+  const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
   const [stats, setStats] = useState<DashboardStat[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isEditingPhone, setIsEditingPhone] = useState(false)
@@ -488,22 +489,24 @@ const Dashboard = () => {
               </div>
             </Link>
 
-            <Link
-              to="/complaints/create"
-              className="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl hover:shadow-lg transition-all duration-200 group"
-            >
-              <div className="flex-shrink-0">
-                <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
+            {canCreateComplaint ? (
+              <Link
+                to="/complaints/create"
+                className="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl hover:shadow-lg transition-all duration-200 group"
+              >
+                <div className="flex-shrink-0">
+                  <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </div>
                 </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-semibold text-gray-900">Создать рекламацию</p>
-                <p className="text-xs text-gray-600">Новая заявка</p>
-              </div>
-            </Link>
+                <div className="ml-4">
+                  <p className="text-sm font-semibold text-gray-900">Создать рекламацию</p>
+                  <p className="text-xs text-gray-600">Новая заявка</p>
+                </div>
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>

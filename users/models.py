@@ -90,6 +90,10 @@ class User(AbstractUser):
     def is_leader(self):
         return self.role in LEADER_ROLES
 
+    @property
+    def can_create_complaint(self):
+        return self.role == Role.SERVICE_MANAGER and not self.measurements_only
+
     def managed_salon_ids(self):
         """Салоны руководителя группы (кешируется на объекте до конца запроса)."""
         if not hasattr(self, '_managed_salon_ids'):

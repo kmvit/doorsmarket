@@ -147,6 +147,9 @@ class ComplaintAdmin(admin.ModelAdmin):
         ComplaintAttachmentInline,
         ComplaintCommentInline,
     ]
+
+    def has_add_permission(self, request):
+        return request.user.can_create_complaint and super().has_add_permission(request)
     
     def get_queryset(self, request):
         qs = super().get_queryset(request)

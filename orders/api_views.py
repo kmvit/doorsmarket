@@ -1,5 +1,6 @@
 from rest_framework import mixins, viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -697,6 +698,17 @@ class OrderViewSet(viewsets.ModelViewSet):
         ctx['request'] = self.request
         return ctx
 
+    def _check_creation_salon(self, salon):
+        user = self.request.user
+        if user.role == 'group_leader' and (
+            not salon.is_active or salon.pk not in user.managed_salon_ids()
+        ):
+            raise PermissionDenied('Создавать заказы можно только в закреплённых активных салонах.')
+
+    def perform_create(self, serializer):
+        self._check_creation_salon(serializer.validated_data['salon'])
+        super().perform_create(serializer)
+
     # ---------- Phase 2: парсинг КП ----------
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
@@ -730,6 +742,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         salon_id = data.pop('salon', None)
         if not salon_id:
             return Response({'detail': 'Не указан салон'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            salon = Salon.objects.select_related('city').get(pk=salon_id)
+        except (Salon.DoesNotExist, TypeError, ValueError):
+            raise ValidationError({'salon': 'Укажите существующий салон.'})
+        self._check_creation_salon(salon)
 
         # Обязательное «следующее действие»
         next_action_text = (data.pop('next_action_text', None) or '').strip()
@@ -759,12 +776,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         sales = OrderSalesFieldsSerializer(
             data={f: data.get(f) for f in ORDER_SALES_FIELDS if f in data},
             # Салон — чтобы не дать выбрать дизайнера из другого города
-            context={'salon': Salon.objects.filter(pk=salon_id).select_related('city').first()},
+            context={'salon': salon},
         )
         sales.is_valid(raise_exception=True)
 
         order_kwargs = {
-            'salon_id': salon_id,
+            'salon': salon,
             'client_name': (data.get('client_name') or '').strip()[:255] or 'Не указан',
             'contact_phone': (data.get('contact_phone') or '')[:50],
             'address': (data.get('address') or '')[:500],

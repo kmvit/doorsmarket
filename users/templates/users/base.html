@@ -122,12 +122,14 @@
                             Фабричные рекламации
                         </a>
                         {% endif %}
+                        {% if user.can_create_complaint %}
                         <a href="{% url 'projects:complaint_create' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-xl transition-all shadow-md">
                             <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                             </svg>
                             Создать
                         </a>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -235,12 +237,14 @@
                     Производство
                 </a>
                 {% endif %}
+                {% if user.can_create_complaint %}
                 <a href="{% url 'projects:complaint_create' %}" class="flex items-center px-3 py-2 text-base font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-lg transition-all shadow-md">
                     <svg class="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
                     Создать рекламацию
                 </a>
+                {% endif %}
 
                 <!-- Выход -->
                 <a href="{% url 'users:web_logout' %}" class="flex items-center px-3 py-2 text-base font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all border-t border-gray-200 mt-2 pt-3">

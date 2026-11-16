@@ -49,7 +49,7 @@ const OrderList = () => {
   // «Кроме выполненных и неактуальных» — по умолчанию включено
   const [excludeFinished, setExcludeFinished] = usePersistedState('orders:exclude_finished', true)
 
-  const canCreate = user?.role === 'manager' || user?.role === 'admin'
+  const canCreate = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'group_leader'
   const canFilterByManager = canFilterByPeople(user?.role)
 
   const showMeasurementTime = MEASUREMENT_DAY_FOLDERS.includes(folder)

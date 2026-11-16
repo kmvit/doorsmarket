@@ -33,7 +33,8 @@ const KpUploadTab = ({
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedKpData | null>(null)
-  const [salonId, setSalonId] = useState<number>(defaultSalonId || 0)
+  const [selectedSalonId, setSelectedSalonId] = useState<number>()
+  const salonId = selectedSalonId ?? defaultSalonId
   const [comment, setComment] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isParsing, setIsParsing] = useState(false)
@@ -266,7 +267,7 @@ const KpUploadTab = ({
               {!replaceOrderId && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Салон *</label>
-                  <select value={salonId} onChange={(e) => setSalonId(Number(e.target.value))} className={inputCls} required>
+                  <select value={salonId} onChange={(e) => setSelectedSalonId(Number(e.target.value))} className={inputCls} required>
                     <option value={0}>— Выберите салон —</option>
                     {salons.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.city_name})</option>)}
                   </select>

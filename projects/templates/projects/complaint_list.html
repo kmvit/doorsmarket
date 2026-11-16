@@ -381,6 +381,7 @@
                     </svg>
                     <h3 class="mt-2 text-sm font-medium text-gray-900">Рекламации не найдены</h3>
                     <p class="mt-1 text-sm text-gray-500">Попробуйте изменить параметры фильтрации</p>
+                    {% if user.can_create_complaint %}
                     <div class="mt-6">
                         <a href="{% url 'projects:complaint_create' %}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                             <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -389,6 +390,7 @@
                             Создать первую рекламацию
                         </a>
                     </div>
+                    {% endif %}
                 </div>
             {% endif %}
         </div>

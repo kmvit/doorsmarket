@@ -216,6 +216,7 @@
                     </a>
                     {% endif %}
 
+                    {% if user.can_create_complaint %}
                     <a href="{% url 'projects:complaint_create' %}" class="flex items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl hover:shadow-lg transition-all duration-200 group">
                         <div class="flex-shrink-0">
                             <div class="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -229,6 +230,7 @@
                             <p class="text-xs text-gray-600">Новая заявка</p>
                         </div>
                     </a>
+                    {% endif %}
                 </div>
         </div>
     </div>

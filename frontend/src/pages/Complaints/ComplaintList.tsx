@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore, stripFolderScope } from '../../store/complaintsStore'
-import { useAuthStore } from '../../store/authStore'
+import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 import { ComplaintFilters, ComplaintStatus } from '../../types/complaints'
 import { referencesAPI } from '../../api/references'
 import { ComplaintReason } from '../../types/complaints'
@@ -39,6 +39,7 @@ const ComplaintList = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
+  const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
   const {
     complaints, isLoading, error, fetchComplaints,
     filters, setFilters, replaceFilters, clearFilters,
@@ -329,14 +330,16 @@ const ComplaintList = () => {
             <h1 className="text-3xl font-bold text-gray-900">Список рекламаций</h1>
             <p className="text-sm text-gray-600 mt-1">Управление заявками на рекламацию</p>
           </div>
-          <Link to="/complaints/create">
-            <Button>
-              <svg className="h-5 w-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Создать рекламацию
-            </Button>
-          </Link>
+          {canCreateComplaint ? (
+            <Link to="/complaints/create">
+              <Button>
+                <svg className="h-5 w-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Создать рекламацию
+              </Button>
+            </Link>
+          ) : null}
         </div>
 
         {/* Фильтры и поиск */}
@@ -479,17 +482,19 @@ const ComplaintList = () => {
               </svg>
               <h3 className="mt-2 text-sm font-medium text-gray-900">Рекламации не найдены</h3>
               <p className="mt-1 text-sm text-gray-500">Попробуйте изменить параметры фильтрации</p>
-              <div className="mt-6">
-                <Link
-                  to="/complaints/create"
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-xl text-white bg-primary-600 hover:bg-primary-700"
-                >
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Создать первую рекламацию
-                </Link>
-              </div>
+              {canCreateComplaint ? (
+                <div className="mt-6">
+                  <Link
+                    to="/complaints/create"
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-xl text-white bg-primary-600 hover:bg-primary-700"
+                  >
+                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Создать первую рекламацию
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : (
             <>

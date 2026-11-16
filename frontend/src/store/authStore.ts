@@ -22,6 +22,9 @@ interface AuthStore {
   checkAuth: () => Promise<void>
 }
 
+export const selectCanCreateComplaint = ({ user }: AuthStore) =>
+  user?.role === 'service_manager' && !user.measurements_only
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set) => ({

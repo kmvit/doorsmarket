@@ -8,6 +8,7 @@
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from orders.models import Measurement, MeasurementRequest, Order, OrderStatus, Salon
@@ -84,6 +85,28 @@ class GroupLeaderScopeTest(TestCase):
         self.assertEqual(self._ids('/api/v1/measurements/', {'folder': ''}), {self.own_m.id})
         self.assertEqual(self.client.get(f'/api/v1/orders/{self.other_order.id}/').status_code, 404)
         self.assertEqual(self._ids('/api/v1/salons/'), {self.own_salon.id})
+
+    def test_can_create_order_manually_and_from_kp_in_managed_salon(self):
+        payload = {
+            'salon': self.own_salon.pk,
+            'client_name': 'Новый клиент',
+            'has_designer': False,
+            'next_action_text': 'Позвонить клиенту',
+            'next_action_due_at': timezone.now().isoformat(),
+        }
+        for url in ('/api/v1/orders/', '/api/v1/orders/create_from_parsed/'):
+            with self.subTest(url=url):
+                response = self.client.post(url, payload, format='json')
+                self.assertEqual(response.status_code, 201, response.data)
+                order_id = response.data['id']
+                order = Order.objects.get(pk=order_id)
+                self.assertEqual(order.salon, self.own_salon)
+                self.assertEqual(order.manager, self.gl)
+                self.assertEqual(self.client.get(f'/api/v1/orders/{order_id}/').status_code, 200)
+
+                response = self.client.post(url, {**payload, 'salon': self.other_salon.pk}, format='json')
+                self.assertEqual(response.status_code, 403, response.data)
+                self.assertFalse(Order.objects.filter(salon=self.other_salon, manager=self.gl).exists())
 
     def test_complaints_and_registry_only_own_salons(self):
         self.assertEqual(self._ids('/api/v1/complaints/'), {self.own_complaint.id})

@@ -1,8 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useAuthStore } from '../../store/authStore'
+import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 
 const Navigation = () => {
   const { user } = useAuthStore()
+  const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
   const location = useLocation()
 
   if (!user) return null
@@ -72,15 +73,17 @@ const Navigation = () => {
     <div className="hidden md:ml-8 md:flex md:space-x-2 bg-white/90 backdrop-blur-md border-b border-gray-200 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto flex space-x-2 py-2">
         {navItems}
-        <Link
-          to="/complaints/create"
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-xl transition-all shadow-md"
-        >
-          <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Создать
-        </Link>
+        {canCreateComplaint ? (
+          <Link
+            to="/complaints/create"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 rounded-xl transition-all shadow-md"
+          >
+            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Создать
+          </Link>
+        ) : null}
       </div>
     </div>
   )
