@@ -148,8 +148,11 @@ class ComplaintAdmin(admin.ModelAdmin):
         ComplaintCommentInline,
     ]
 
-    def has_add_permission(self, request):
-        return request.user.can_create_complaint and super().has_add_permission(request)
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if not request.user.can_assign_complaint_installer:
+            return (*fields, 'installer_assigned')
+        return fields
     
     def get_queryset(self, request):
         qs = super().get_queryset(request)

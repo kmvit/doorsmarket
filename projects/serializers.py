@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model
 from .access import in_manager_salon
 from .models import (
@@ -18,6 +19,14 @@ from users.serializers import UserSerializer, CitySerializer
 from orders.models import Order
 
 User = get_user_model()
+
+
+def validate_installer_assignment(serializer, user, field='installer_assigned'):
+    actor = getattr(serializer.context.get('request'), 'user', None)
+    current_id = getattr(serializer.instance, f'{field}_id', None)
+    if actor and not actor.can_assign_complaint_installer and getattr(user, 'pk', None) != current_id:
+        raise PermissionDenied('Назначать и менять монтажника может только сервис-менеджер.')
+    return keep_or_active(serializer, user, field)
 
 
 def keep_or_active(serializer, user, attr):
@@ -251,6 +260,8 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
     )
 
     def validate_recipient_id(self, user):
+        if user.role == 'installer':
+            return validate_installer_assignment(self, user, 'recipient')
         return keep_or_active(self, user, 'recipient')
 
     def validate_manager_id(self, user):
@@ -258,6 +269,10 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         actor = getattr(self.context.get('request'), 'user', None)
+        if (actor and not actor.can_assign_complaint_installer
+                and attrs.get('complaint_type') == ComplaintType.INSTALLER
+                and getattr(self.instance, 'complaint_type', None) != ComplaintType.INSTALLER):
+            raise PermissionDenied('Направлять рекламацию монтажнику может только сервис-менеджер.')
         if actor and actor.combines_service_roles and 'source_order' in attrs:
             manager = attrs.get('manager', getattr(self.instance, 'manager', None))
             if not in_manager_salon(actor, manager, attrs['source_order']):
@@ -265,7 +280,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_installer_assigned_id(self, user):
-        return keep_or_active(self, user, 'installer_assigned')
+        return validate_installer_assignment(self, user)
     
     # Display fields
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -397,13 +412,15 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
     )
 
     def validate_recipient_id(self, user):
+        if user.role == 'installer':
+            return validate_installer_assignment(self, user, 'recipient')
         return keep_or_active(self, user, 'recipient')
 
     def validate_manager_id(self, user):
         return validate_complaint_manager(self, user)
 
     def validate_installer_assigned_id(self, user):
-        return keep_or_active(self, user, 'installer_assigned')
+        return validate_installer_assignment(self, user)
     production_site_id = serializers.PrimaryKeyRelatedField(
         queryset=ProductionSite.objects.all(),
         source='production_site',
@@ -449,6 +466,8 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         """Валидация: для монтажников обязательно описание проблемы (additional_info)"""
         request = self.context.get('request')
         actor = getattr(request, 'user', None)
+        if actor and not actor.can_assign_complaint_installer and attrs.get('complaint_type') == ComplaintType.INSTALLER:
+            raise PermissionDenied('Направлять рекламацию монтажнику может только сервис-менеджер.')
         source_order = attrs.get('source_order')
         if (actor and actor.combines_service_roles and source_order
                 and not in_manager_salon(actor, attrs.get('manager'), source_order)):
@@ -474,7 +493,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                 complaint_type = validated_data.get('complaint_type')
                 
                 # Если СМ создает рекламацию и указан тип
-                if request.user.can_manage_service and complaint_type:
+                if request.user.can_assign_complaint_installer and complaint_type:
                     if complaint_type == 'manager':
                         # Получатель - менеджер заказа
                         if 'manager' in validated_data and validated_data['manager']:
@@ -501,19 +520,14 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                                 'recipient': 'Не найден отдел рекламаций'
                             })
                 # Если инициатор - менеджер или монтажник, получатель - сервис-менеджер
-                elif request.user.combines_service_roles:
+                elif request.user.can_assign_complaint_installer:
                     validated_data['recipient'] = request.user
-                elif request.user.role in ['manager', 'installer']:
+                elif complaint_type != ComplaintType.FACTORY:
                     # Найти первого доступного сервис-менеджера (можно по городу)
                     service_manager = Complaint.service_manager_for(
                         validated_data.get('manager'), request.user.city_id, validated_data.get('source_order'),
                     )
-                    if service_manager:
-                        validated_data['recipient'] = service_manager
-                    else:
-                        raise serializers.ValidationError({
-                            'recipient': 'Не найден сервис-менеджер для назначения получателя'
-                        })
+                    validated_data['recipient'] = service_manager or validated_data.get('manager')
                 # admin/leader создают с типом "Фабрика" — получатель ОР
                 elif complaint_type == 'factory' and request.user.role in ['admin', 'leader', 'group_leader']:
                     complaint_dept = User.objects.filter(role='complaint_department', is_active=True).first()

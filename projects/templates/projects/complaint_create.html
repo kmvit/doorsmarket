@@ -28,7 +28,7 @@
             <div class="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
                 <h2 class="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {% if user.can_manage_service %}
+                    {% if user.can_assign_complaint_installer %}
                     <!-- Для СМ - выбор типа рекламации -->
                     <div class="md:col-span-2">
                         <label class="block text-sm font-semibold text-gray-700 mb-2">

@@ -297,7 +297,7 @@ class WebRegisterView(View):
         password2 = request.POST.get('password2')
         first_name = request.POST.get('first_name', '')
         last_name = request.POST.get('last_name', '')
-        role = request.POST.get('role', 'service_manager')
+        role = request.POST.get('role', 'manager')
         city_id = request.POST.get('city_id')
         phone_number = request.POST.get('phone_number', '')
         
@@ -307,8 +307,8 @@ class WebRegisterView(View):
             return render(request, 'users/register.html', {'cities': cities})
         
         # Запрет создания администраторов через регистрацию
-        if role == 'admin':
-            messages.error(request, 'Невозможно зарегистрироваться с ролью администратора')
+        if role in ('admin', 'service_manager'):
+            messages.error(request, 'Эту роль назначают в админке.')
             return render(request, 'users/register.html', {'cities': cities})
         
         if password != password2:

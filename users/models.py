@@ -97,7 +97,7 @@ class User(AbstractUser):
 
     @property
     def can_create_complaint(self):
-        return self.role in (Role.MANAGER, Role.SERVICE_MANAGER) and not self.measurements_only
+        return self.is_authenticated
 
     @property
     def combines_service_roles(self):
@@ -106,6 +106,10 @@ class User(AbstractUser):
     @property
     def can_manage_service(self):
         return self.role == Role.SERVICE_MANAGER or self.combines_service_roles
+
+    @property
+    def can_assign_complaint_installer(self):
+        return self.can_manage_service and not self.measurements_only
 
     def managed_salon_ids(self):
         """Салоны руководителя группы (кешируется на объекте до конца запроса)."""

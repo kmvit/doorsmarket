@@ -345,7 +345,7 @@ def complaint_detail(request, pk):
                     messages.error(request, 'Укажите дату отгрузки')
         
         # Действия СМ
-        elif request.user.can_manage_service:
+        elif request.user.can_assign_complaint_installer:
             if action == 'plan-installation' and complaint.status in ['on_warehouse', 'shipping_planned']:
                 # Планирование монтажа
                 installation_date = request.POST.get('installation_date')
@@ -405,6 +405,8 @@ def complaint_detail(request, pk):
 @complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True, allow_manager_all=True)
 def complaint_edit(request, pk):
     """Редактирование рекламации сервис-менеджером."""
+    if request.user.role == 'installer':
+        raise PermissionDenied('Монтажник меняет дату выезда через планирование.')
     complaints = Complaint.objects.select_related(
         'initiator', 'recipient', 'manager', 'production_site', 'reason',
     )
@@ -491,9 +493,6 @@ def complaint_edit(request, pk):
 @login_required(login_url='/api/v1/login/')
 def complaint_create(request):
     """Создание новой рекламации"""
-    if not request.user.can_create_complaint:
-        raise PermissionDenied('Создавать рекламации могут менеджеры и сервис-менеджеры с доступом к рекламациям.')
-    
     if request.method == 'POST':
         try:
             with transaction.atomic():
@@ -529,9 +528,13 @@ def complaint_create(request):
                 # Обработка типа рекламации для СМ
                 complaint_type = request.POST.get('complaint_type')
                 installer_id = request.POST.get('installer')
+                if (complaint_type == 'installer' or installer_id
+                        or (recipient_id and User.objects.filter(pk=recipient_id, role='installer').exists())):
+                    if not request.user.can_assign_complaint_installer:
+                        raise PermissionDenied('Назначать монтажника может только сервис-менеджер.')
                 
                 # Определяем получателя
-                if request.user.can_manage_service and complaint_type:
+                if request.user.can_assign_complaint_installer and complaint_type:
                     # СМ выбрал тип рекламации сразу
                     if complaint_type == 'manager':
                         # Получатель - менеджер заказа
@@ -541,7 +544,7 @@ def complaint_create(request):
                         if not installer_id:
                             messages.error(request, 'Для типа "Монтажник" нужно выбрать монтажника')
                             raise ValueError('Installer required for installer type')
-                        recipient = User.objects.get(id=installer_id)
+                        recipient = User.objects.get(id=installer_id, role='installer', is_active=True)
                     elif complaint_type == 'factory':
                         # Получатель - первый ОР
                         recipient = User.objects.filter(role='complaint_department', is_active=True).first()
@@ -552,15 +555,13 @@ def complaint_create(request):
                     recipient = User.objects.get(id=recipient_id)
                 else:
                     # Если инициатор - менеджер или монтажник, получатель - первый СМ
-                    if request.user.combines_service_roles:
+                    if request.user.can_assign_complaint_installer:
                         recipient = request.user
-                    elif request.user.role in ['manager', 'installer']:
-                        recipient = Complaint.service_manager_for(manager, request.user.city_id)
+                    else:
+                        recipient = Complaint.service_manager_for(manager, request.user.city_id) or manager
                         if not recipient:
                             messages.error(request, 'Не найден сервис-менеджер для назначения')
                             raise ValueError('No service manager found')
-                    else:
-                        recipient = User.objects.get(id=recipient_id)
                 
                 # Определяем менеджера заказа (все инициаторы выбирают вручную)
                 # Валидация: менеджер заказа обязателен для всех
@@ -631,7 +632,7 @@ def complaint_create(request):
                     )
                 
                 # Если СМ выбрал тип рекламации сразу, применяем соответствующую логику
-                if request.user.can_manage_service and complaint_type:
+                if request.user.can_assign_complaint_installer and complaint_type:
                     if complaint_type == 'manager':
                         complaint.set_type_manager()
                         messages.success(request, f'Рекламация #{complaint.id} создана и отправлена менеджеру!')
@@ -651,6 +652,8 @@ def complaint_create(request):
                 
                 return redirect('projects:complaint_detail', pk=complaint.id)
                 
+        except PermissionDenied:
+            raise
         except ValueError:
             pass  # Сообщение об ошибке уже выведено
         except Exception as e:
@@ -827,6 +830,8 @@ def complaint_process(request, pk):
     
     if request.method == 'POST':
         action = request.POST.get('action')
+        if action in ('set_type_installer', 'change_installer') and not request.user.can_assign_complaint_installer:
+            raise PermissionDenied('Назначать и менять монтажника может только сервис-менеджер.')
         
         if action == 'update_assignee_comment':
             new_comment = request.POST.get('assignee_comment', '').strip()
@@ -838,7 +843,7 @@ def complaint_process(request, pk):
         if action == 'set_type_installer':
             installer_id = request.POST.get('installer')
             if installer_id:
-                installer = User.objects.get(id=installer_id)
+                installer = get_object_or_404(User, id=installer_id, role='installer', is_active=True)
                 complaint.installer_assigned = installer
                 complaint.save()
                 complaint.set_type_installer(installer=installer)
@@ -948,7 +953,7 @@ def complaint_process(request, pk):
             new_installer_id = request.POST.get('new_installer')
             if new_installer_id:
                 old_installer = complaint.installer_assigned
-                new_installer = User.objects.get(id=new_installer_id)
+                new_installer = get_object_or_404(User, id=new_installer_id, role='installer', is_active=True)
                 
                 complaint.installer_assigned = new_installer
                 complaint.save()

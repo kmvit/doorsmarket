@@ -54,7 +54,7 @@ class UserSerializer(serializers.ModelSerializer):
             'can_manage_service',
             'date_joined',
         ]
-        read_only_fields = ['id', 'date_joined', 'measurements_only', 'can_manage_service']
+        read_only_fields = ['id', 'date_joined', 'role', 'measurements_only', 'can_manage_service']
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -99,9 +99,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             })
         
         # Запрет создания администраторов через API регистрации
-        if attrs.get('role') == 'admin':
+        if attrs.get('role') in ('admin', 'service_manager'):
             raise serializers.ValidationError({
-                "role": "Невозможно зарегистрироваться с ролью администратора"
+                "role": "Эту роль назначают в админке."
             })
         
         return attrs
@@ -114,7 +114,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            role=validated_data.get('role', User._meta.get_field('role').default),
+            role=validated_data.get('role', 'manager'),
             city=validated_data.get('city'),
             phone_number=validated_data.get('phone_number', '')
         )

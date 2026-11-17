@@ -8,7 +8,7 @@ import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 const ComplaintsRoute = ({ children, creationOnly = false }: { children: ReactNode; creationOnly?: boolean }) => {
   const measurementsOnly = useAuthStore((state) => state.user?.measurements_only)
   const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
-  if (measurementsOnly) return <Navigate to="/orders" replace />
+  if (measurementsOnly && !creationOnly) return <Navigate to="/orders" replace />
   if (creationOnly && !canCreateComplaint) return <Navigate to="/complaints" replace />
   return <>{children}</>
 }

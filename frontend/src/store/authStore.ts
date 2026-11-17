@@ -23,7 +23,7 @@ interface AuthStore {
 }
 
 export const selectCanCreateComplaint = ({ user }: AuthStore) =>
-  (user?.role === 'manager' || user?.role === 'service_manager') && !user.measurements_only
+  !!user
 
 export const useAuthStore = create<AuthStore>()(
   persist(

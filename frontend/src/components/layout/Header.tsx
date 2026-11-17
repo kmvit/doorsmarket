@@ -367,6 +367,11 @@ const Header = () => {
 
           {/* Профиль, бургер и выход */}
           <div className="flex items-center space-x-2">
+            {measurementsOnly && (
+              <Link to="/complaints/create" className="px-2 py-2 text-sm font-medium text-primary-700">
+                Создать рекламацию
+              </Link>
+            )}
             {/* Информация о пользователе (Desktop) */}
             <div className="hidden xl:flex items-center space-x-2">
               {/* Кнопка уведомлений */}

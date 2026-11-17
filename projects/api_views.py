@@ -104,7 +104,8 @@ class ComplaintsAccess(IsAuthenticated):
     message = 'У вас доступ только к замерам.'
 
     def has_permission(self, request, view):
-        return super().has_permission(request, view) and not getattr(request.user, 'measurements_only', False)
+        creation_allowed = getattr(view, 'allow_measurement_only_creation', False) and view.action == 'create'
+        return super().has_permission(request, view) and (creation_allowed or not request.user.measurements_only)
 
 
 def _parse_installation_window(request):
@@ -184,6 +185,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     partial_update: Частичное обновление рекламации
     """
     permission_classes = [ComplaintsAccess]
+    allow_measurement_only_creation = True
     filter_backends = [DjangoFilterBackend, NumberAwareSearchFilter, OrderingFilter]
     # id — номер рекламации, как он показан в списке («#189»); решётку срезает фильтр
     search_fields = ['id', 'order_number', 'client_name', 'address', 'contact_person', 'contact_phone']
@@ -421,9 +423,6 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Создание рекламации с установкой типа (если указан СМ)"""
-        if not request.user.can_create_complaint:
-            raise PermissionDenied('Создавать рекламации могут менеджеры и сервис-менеджеры с доступом к рекламациям.')
-
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         complaint = serializer.save()
@@ -460,7 +459,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint_type = request.data.get('complaint_type')
         
         # Типы "менеджер" и "монтажник" — только для СМ (требуют назначения получателя)
-        if request.user.can_manage_service and complaint_type in ('manager', 'installer'):
+        if request.user.can_assign_complaint_installer and complaint_type in ('manager', 'installer'):
             if complaint_type == 'manager':
                 complaint.set_type_manager()
             elif complaint_type == 'installer':
@@ -480,8 +479,20 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    def update(self, request, *args, **kwargs):
+        if request.user.role == 'installer':
+            raise PermissionDenied('Монтажник меняет дату выезда через планирование.')
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role == 'installer':
+            raise PermissionDenied('Монтажник не может удалять рекламации.')
+        return super().destroy(request, *args, **kwargs)
+
     def partial_update(self, request, *args, **kwargs):
         """Частичное обновление рекламации с поддержкой файлов (attachments, commercial_offers)"""
+        if request.user.role == 'installer':
+            raise PermissionDenied('Монтажник меняет дату выезда через планирование.')
         import logging
         logger = logging.getLogger(__name__)
 
@@ -683,6 +694,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint_type = request.data.get('complaint_type')
         
         if complaint_type == 'installer':
+            if not user.can_assign_complaint_installer:
+                raise PermissionDenied('Назначать монтажника может только сервис-менеджер.')
             installer = complaint.installer_assigned
             complaint.set_type_installer(installer=installer)
         elif complaint_type == 'manager':
@@ -753,6 +766,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def plan_installation(self, request, pk=None):
         """Планирование монтажа"""
         complaint = self.get_object()
@@ -760,6 +774,14 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         
         installer_id = request.data.get('installer_id')
         date_by_installer = str(request.data.get('date_by_installer', '')).lower() in ('true', '1', 'yes', 'on')
+        if user.role == 'installer':
+            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
+            if (complaint.installer_assigned_id != user.pk or date_by_installer
+                    or (installer_id is not None and str(installer_id) != str(user.pk))):
+                raise PermissionDenied('Монтажник может выбрать дату только своего выезда.')
+            installer_id = user.pk
+        elif not user.can_assign_complaint_installer:
+            raise PermissionDenied('Назначать монтажника может только сервис-менеджер.')
 
         if not installer_id:
             return Response(
@@ -776,7 +798,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
 
         # Вариант: СМ назначает монтажника, а дату/время определит сам монтажник.
-        if date_by_installer and (user.can_manage_service or user.role == 'admin'):
+        if date_by_installer:
             complaint.plan_installation_assign_only(installer)
             serializer = self.get_serializer(complaint)
             return Response(serializer.data)
@@ -794,14 +816,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if user.role == 'installer':
             # Монтажник планирует сам
             complaint.plan_installation(installer, installation_date, installation_end)
-        elif user.can_manage_service or user.role == 'admin':
+        else:
             # СМ планирует для монтажника
             complaint.plan_installation_by_sm(installer, installation_date, installation_end)
-        else:
-            return Response(
-                {'error': 'У вас нет прав для планирования монтажа'},
-                status=status.HTTP_403_FORBIDDEN
-            )
 
         serializer = self.get_serializer(complaint)
         return Response(serializer.data)
@@ -1158,7 +1175,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if not user.can_manage_service and user.role != 'admin':
+        if not user.can_assign_complaint_installer:
             return Response(
                 {'error': 'Только сервис-менеджер может заменять монтажника'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1229,9 +1246,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def reschedule_installation(self, request, pk=None):
         """Монтажник переносит дату монтажа"""
         complaint = self.get_object()
+        complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
         user = request.user
 
         if user.role != 'installer' or complaint.installer_assigned != user:
@@ -1919,6 +1938,7 @@ class DefectiveProductViewSet(ComplaintRelatedViewSet):
     """ViewSet для бракованных изделий"""
     serializer_class = DefectiveProductSerializer
     permission_classes = [ComplaintsAccess]
+    allow_measurement_only_creation = True
     
     def get_queryset(self):
         """Фильтрация по рекламации"""
@@ -1937,6 +1957,9 @@ class DefectiveProductViewSet(ComplaintRelatedViewSet):
 
     def perform_create(self, serializer):
         complaint = serializer.validated_data['complaint']
+        user = self.request.user
+        if user.measurements_only and (complaint.initiator_id != user.pk or complaint.status != ComplaintStatus.NEW):
+            raise PermissionDenied('Можно добавить изделие только в свою новую рекламацию.')
         self._check_complaint_access(complaint)
         serializer.save()
 

@@ -352,10 +352,12 @@ const ComplaintCreate = () => {
   }
 
   const onSubmit = async (data: ComplaintCreateData & { complaint_type?: string; installer_id?: number }) => {
+    const returnToList = user?.measurements_only || user?.role === 'complaint_department'
+    const listPath = user?.measurements_only ? '/orders' : '/complaints'
     // Если рекламация уже была создана в этой сессии формы — просто переходим к ней,
     // а не создаём дубликат при повторных кликах "Создать рекламацию".
     if (createdComplaintIdRef.current) {
-      navigate(`/complaints/${createdComplaintIdRef.current}`)
+      navigate(returnToList ? listPath : `/complaints/${createdComplaintIdRef.current}`)
       return
     }
 
@@ -476,9 +478,15 @@ const ComplaintCreate = () => {
         `Откройте рекламацию и добавьте их вручную.`
       )
     }
-    navigate(`/complaints/${complaint.id}`)
+    if (returnToList) {
+      alert(`Рекламация №${complaint.id} создана`)
+      navigate(listPath)
+    } else {
+      navigate(`/complaints/${complaint.id}`)
+    }
   }
 
+  const canAssignInstaller = canManageService(user) && !user?.measurements_only
   const showRecipient = user && !['manager', 'installer', 'service_manager'].includes(user.role)
   const showManagerField = user && ['service_manager', 'installer', 'admin', 'leader', 'group_leader', 'complaint_department', 'manager'].includes(user.role)
 
@@ -547,25 +555,25 @@ const ComplaintCreate = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(canManageService(user) || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
+              {(canAssignInstaller || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
                 <>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Тип рекламации {canManageService(user) && <span className="text-red-500">*</span>}
+                      Тип рекламации {canAssignInstaller && <span className="text-red-500">*</span>}
                     </label>
                     <select
-                      {...register('complaint_type', { required: canManageService(user) })}
+                      {...register('complaint_type', { required: canAssignInstaller })}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     >
                       <option value="">Выберите тип рекламации</option>
                       <option value="manager">Менеджер</option>
-                      <option value="installer">Монтажник</option>
+                      {canAssignInstaller && <option value="installer">Монтажник</option>}
                       <option value="factory">Фабрика</option>
                     </select>
                     <p className="text-xs text-gray-500 mt-1">Выберите, кто будет обрабатывать рекламацию</p>
                   </div>
 
-                  {complaintType === 'installer' && (
+                  {canAssignInstaller && complaintType === 'installer' && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Монтажник <span className="text-red-500">*</span>

@@ -923,7 +923,7 @@ const ComplaintDetail = () => {
                   </Link>
                 )}
 
-                {(canEdit || user?.id === currentComplaint.initiator.id) && (
+                {user?.role !== 'installer' && (canEdit || user?.id === currentComplaint.initiator.id) && (
                   <Link to={`/complaints/${id}/edit`}>
                     <Button variant="outline" className="w-full">
                       <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

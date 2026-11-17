@@ -292,7 +292,7 @@ const ComplaintProcess = () => {
                 <h4 className="text-md font-medium text-gray-900 mb-3">Выберите тип рекламации и назначьте исполнителя:</h4>
 
                 {/* Тип: Монтажник */}
-                <div className="mb-4 p-4 border border-blue-200 rounded-xl bg-blue-50">
+                {canManageService(user) && <div className="mb-4 p-4 border border-blue-200 rounded-xl bg-blue-50">
                   <div className="flex items-center mb-3">
                     <svg className="h-6 w-6 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -304,7 +304,7 @@ const ComplaintProcess = () => {
                     onSelect={(installerId) => handleSetType('installer', installerId)}
                     disabled={isProcessing}
                   />
-                </div>
+                </div>}
 
                 {/* Тип: Менеджер */}
                 <div className="mb-4 p-4 border border-green-200 rounded-xl bg-green-50">
@@ -367,7 +367,7 @@ const ComplaintProcess = () => {
             )}
 
             {/* Заменить монтажника */}
-            {currentComplaint.installer_assigned && 
+            {canManageService(user) && currentComplaint.installer_assigned &&
              !['completed', 'closed', 'resolved'].includes(currentComplaint.status) && (
               <div className="mb-6 p-4 border-2 border-blue-200 rounded-xl bg-blue-50">
                 <h4 className="text-md font-medium text-gray-900 mb-3">
