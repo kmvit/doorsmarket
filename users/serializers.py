@@ -51,9 +51,10 @@ class UserSerializer(serializers.ModelSerializer):
             'salon',
             'salon_id',
             'measurements_only',
+            'can_manage_service',
             'date_joined',
         ]
-        read_only_fields = ['id', 'date_joined', 'measurements_only']
+        read_only_fields = ['id', 'date_joined', 'measurements_only', 'can_manage_service']
 
 
 class RegisterSerializer(serializers.ModelSerializer):

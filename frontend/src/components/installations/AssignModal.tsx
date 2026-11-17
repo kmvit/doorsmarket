@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from './ModalPortal'
 import { installationsAPI, apiErrorText } from '../../api/installations'
@@ -116,7 +117,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
       // Перед назначением сверяем права по текущему токену с сервером.
       const currentUser = await authAPI.getMe()
       setUser(currentUser)
-      if (!['service_manager', 'admin'].includes(currentUser.role)) {
+      if (!canManageService(currentUser) && currentUser.role !== 'admin') {
         setError(`Сервер видит текущий аккаунт «${currentUser.username}» с ролью «${currentUser.role}». Для назначения нужен сервис-менеджер.`)
         return
       }

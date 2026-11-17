@@ -7,6 +7,7 @@ export interface User {
   role: string
   // СМ, который делает только замеры: без рекламаций, отгрузки и возвратов
   measurements_only?: boolean
+  can_manage_service?: boolean
   city?: {
     id: number
     name: string
@@ -21,6 +22,9 @@ export interface User {
   salon_id?: number
   date_joined: string
 }
+
+export const canManageService = (user?: User | null) =>
+  user?.role === 'service_manager' || user?.can_manage_service === true
 
 export interface LoginResponse {
   access: string

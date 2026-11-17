@@ -12,8 +12,8 @@ from orders.api_views import apply_people_filters, get_orders_queryset_for_user,
 from . import services
 from . import sms
 from .access import (
-    CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES, SCHEDULE_ROLES,
-    can_see_installations, installations_for_user, is_installer_of,
+    CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
+    can_schedule_installations, can_see_installations, installations_for_user, is_installer_of, manager_installations_scope,
 )
 from .models import (
     CLOSED_INSTALLATION_STATUSES, RATING_FIELDS, ActReview, EventKind, Installation, InstallationFile,
@@ -85,6 +85,15 @@ def _forbidden(message):
 
 def _bad(message):
     return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _busy_schedule_row(row, index):
+    return {
+        'id': f'busy-{index}', 'kind': 'busy', 'installation_id': None, 'order': None,
+        'date_from': row['date_from'], 'date_to': row['date_to'], 'installers': row['installers'],
+        'status': InstallationStatus.PLANNED, 'status_display': 'Занято',
+        'client_name': 'Занято', 'address': '', 'work_description': '', 'contact_name': '', 'contact_phone': '',
+    }
 
 
 class CanSeeInstallations(permissions.BasePermission):
@@ -277,6 +286,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             return qs.filter(city_id=city) if str(city or '').isdigit() else qs
         if request.user.role == 'group_leader':
             return qs.filter(city__salons__id__in=request.user.managed_salon_ids()).distinct()
+        if request.user.combines_service_roles and request.user.salon_id:
+            return qs.filter(city_id=request.user.salon.city_id)
         return qs.filter(city_id=user_city_id(request.user))
 
     @action(detail=False, methods=['get'])
@@ -309,6 +320,11 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         ).exclude(installation__status=InstallationStatus.IRRELEVANT).select_related(
             'installation', 'installation__order',
         ).prefetch_related('installers').distinct().order_by('date_from', 'id')
+        visible_installations = None
+        if request.user.combines_service_roles:
+            visible_installations = set(manager_installations_scope(
+                Installation.objects.filter(pk__in=visits.order_by().values('installation_id')), request.user,
+            ).values_list('pk', flat=True))
         rows = []
         for visit in visits:
             groups = {}
@@ -322,15 +338,28 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 continue
             row = ScheduleVisitSerializer(visit).data
             for (start, end), installers in groups.items():
-                rows.append({
+                entry = {
                     **row, 'kind': 'installation',
                     'id': f'{visit.id}:{start}:{end}' if visit.installer_dates else visit.id,
                     'date_from': start.isoformat(), 'date_to': end.isoformat(),
                     'installers': StaffSerializer(installers, many=True).data,
-                })
+                }
+                if visible_installations is not None and visit.installation_id not in visible_installations:
+                    entry = _busy_schedule_row(entry, len(rows))
+                rows.append(entry)
         # Рекламационные выезды — в тех же графиках, выделены цветом на фронте
         from .complaints import complaint_visits
-        rows += complaint_visits(installer_ids, date_from, date_to)
+        complaint_rows = complaint_visits(installer_ids, date_from, date_to)
+        if request.user.combines_service_roles:
+            from projects.access import salon_complaints_q
+            from projects.models import Complaint
+            visible_complaints = set(Complaint.objects.filter(
+                salon_complaints_q(request.user), pk__in=[row['complaint_id'] for row in complaint_rows],
+            ).values_list('pk', flat=True))
+            for row in complaint_rows:
+                rows.append(row if row['complaint_id'] in visible_complaints else _busy_schedule_row(row, len(rows)))
+        else:
+            rows += complaint_rows
         return Response(sorted(rows, key=lambda r: r['date_from']))
 
     @action(detail=False, methods=['get'])
@@ -342,7 +371,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         """СМ назначает монтаж: assignments с периодом каждого монтажника или общий период."""
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return _forbidden(
                 f'Назначать монтажи может сервис-менеджер. Текущий запрос распознан как '
                 f'«{request.user.get_role_display()}» ({request.user.role}), аккаунт {request.user.username}.'
@@ -379,7 +408,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     @action(detail=True, methods=['post'])
     def unassign(self, request, pk=None):
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return _forbidden('Графики правит сервис-менеджер.')
         inst = self.get_object()
         if inst.status != InstallationStatus.PLANNED:
@@ -389,7 +418,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     @action(detail=True, methods=['post'], url_path='not_ready')
     def not_ready(self, request, pk=None):
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return _forbidden('Отмечает сервис-менеджер.')
         inst = self.get_object()
         if inst.status not in (InstallationStatus.NOT_PLANNED, InstallationStatus.PLANNED,
@@ -411,7 +440,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     @action(detail=True, methods=['post'], url_path='request_irrelevant')
     def request_irrelevant(self, request, pk=None):
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return _forbidden('Пометить неактуальным может сервис-менеджер.')
         inst = self.get_object()
         if inst.is_closed or inst.irrelevant_requested_at:
@@ -446,7 +475,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     @action(detail=True, methods=['post'], url_path='notify_call_failed')
     def notify_call_failed(self, request, pk=None):
         """СМ не дозвонился до контактного лица — СМС «перезвоните»."""
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return _forbidden('Отправляет сервис-менеджер.')
         inst = self.get_object()
         if inst.is_closed:
@@ -462,7 +491,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     def _installer_or_sm(self, request, inst):
         """Действие монтажника по текущему выезду (СМ может сделать за него)."""
-        if request.user.role in SCHEDULE_ROLES or is_installer_of(request.user, inst):
+        if can_schedule_installations(request.user) or is_installer_of(request.user, inst):
             return None
         return _forbidden('Это делает монтажник, назначенный на монтаж.')
 
@@ -507,7 +536,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response(self._detail(inst))
 
     def _pending_reschedule(self, request):
-        if request.user.role not in SCHEDULE_ROLES:
+        if not can_schedule_installations(request.user):
             return None, _forbidden('Перенос подтверждает сервис-менеджер.')
         inst = self.get_object()
         visit = inst.current_visit

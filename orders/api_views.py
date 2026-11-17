@@ -700,6 +700,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def _check_creation_salon(self, salon):
         user = self.request.user
+        if user.combines_service_roles and salon.pk != user.salon_id:
+            raise PermissionDenied('Выберите свой салон.')
         if user.role == 'group_leader' and (
             not salon.is_active or salon.pk not in user.managed_salon_ids()
         ):
@@ -708,6 +710,12 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         self._check_creation_salon(serializer.validated_data['salon'])
         super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        salon = serializer.validated_data.get('salon')
+        if self.request.user.combines_service_roles and salon and salon.pk != serializer.instance.salon_id:
+            self._check_creation_salon(salon)
+        super().perform_update(serializer)
 
     # ---------- Phase 2: парсинг КП ----------
 
@@ -1316,7 +1324,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='mark_measurement_irrelevant')
     def mark_measurement_irrelevant(self, request, pk=None):
         """СМ помечает замер (или ещё не назначенную заявку) неактуальным."""
-        if request.user.role not in ('service_manager', 'admin', 'leader', 'group_leader'):
+        if not request.user.can_manage_service and request.user.role not in ('admin', 'leader', 'group_leader'):
             return Response(
                 {'detail': 'Пометить замер неактуальным может только сервис-менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,

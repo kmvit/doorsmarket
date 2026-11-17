@@ -375,9 +375,9 @@
                         </a>
                         {% endif %}
                         
-                        {% if user.role == 'service_manager' or user.role == 'complaint_department' or user.role == 'admin' or user.role == 'leader' or user == complaint.initiator %}
+                        {% if user.can_manage_service or user.role == 'complaint_department' or user.role == 'admin' or user.role == 'leader' or user == complaint.initiator %}
                             <!-- Действия для СМ, ОР, админов, лидеров и инициатора -->
-                            {% if user == complaint.initiator or user.role == 'service_manager' or user.role == 'admin' or user.role == 'leader' %}
+                            {% if user == complaint.initiator or user.can_manage_service or user.role == 'admin' or user.role == 'leader' %}
                             <a href="{% url 'projects:complaint_edit' complaint.id %}" class="block w-full px-4 py-2 bg-white text-center text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                                 <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 0v14m8-7H4"/>
@@ -386,7 +386,7 @@
                             </a>
                             {% endif %}
 
-                            {% if user.role == 'service_manager' or complaint.status == 'new' %}
+                            {% if user.can_manage_service or complaint.status == 'new' %}
                             <a href="{% url 'projects:complaint_process' complaint.id %}" class="block w-full px-4 py-2 bg-blue-600 text-white text-center rounded-xl hover:bg-blue-700 transition-colors">
                                 <svg class="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
@@ -396,7 +396,7 @@
                             {% endif %}
                             
                             <!-- Планирование монтажа (когда товар на складе или отгрузка запланирована) -->
-                            {% if user.role == 'service_manager' and complaint.status in 'on_warehouse,shipping_planned' %}
+                            {% if user.can_manage_service and complaint.status in 'on_warehouse,shipping_planned' %}
                             <form method="post" action="{% url 'projects:sm_plan_installation' complaint.id %}">
                                 {% csrf_token %}
                                 <div class="mb-3">
@@ -423,7 +423,7 @@
                             {% endif %}
                             
                             <!-- Заменить монтажника (СМ) -->
-                            {% if user.role == 'service_manager' and complaint.installer_assigned and complaint.status not in 'completed,closed,resolved' %}
+                            {% if user.can_manage_service and complaint.installer_assigned and complaint.status not in 'completed,closed,resolved' %}
                             <div class="mt-4 p-4 border-2 border-blue-200 rounded-xl bg-blue-50">
                                 <h4 class="text-sm font-semibold text-gray-900 mb-2">
                                     <svg class="inline h-4 w-4 mr-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -457,7 +457,7 @@
                             {% endif %}
                             
                             <!-- Проверить и завершить рекламацию (СМ) -->
-                            {% if user.role == 'service_manager' and complaint.status == 'under_sm_review' %}
+                            {% if user.can_manage_service and complaint.status == 'under_sm_review' %}
                             <form method="post" action="{% url 'projects:complaint_process' complaint.id %}" 
                                   onsubmit="return confirm('Вы подтверждаете, что работа выполнена качественно?');"
                                   class="mt-4 p-4 border-2 border-green-300 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50">
@@ -579,7 +579,7 @@
                             {% endif %}
                         {% endif %}
                         
-                        {% if user.role == 'service_manager' and complaint.complaint_type == 'factory' %}
+                        {% if user.can_manage_service and complaint.complaint_type == 'factory' %}
                             <!-- Действия для СМ по фабричным рекламациям -->
                             
                         {% if complaint.status == 'factory_approved' or complaint.status == 'sm_response_overdue' or complaint.status == 'factory_rejected' %}

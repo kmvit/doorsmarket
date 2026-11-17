@@ -85,6 +85,11 @@ class User(AbstractUser):
         verbose_name='Только замеры',
         help_text='Для сервис-менеджера: только замеры, без доступа к рекламациям, отгрузке и возвратам.',
     )
+    performs_service_manager_duties = models.BooleanField(
+        default=False,
+        verbose_name='Выполняет функции сервис-менеджера',
+        help_text='Для менеджера: действия сервис-менеджера по замерам, монтажам и рекламациям своего салона.',
+    )
 
     @property
     def is_leader(self):
@@ -93,6 +98,14 @@ class User(AbstractUser):
     @property
     def can_create_complaint(self):
         return self.role in (Role.MANAGER, Role.SERVICE_MANAGER) and not self.measurements_only
+
+    @property
+    def combines_service_roles(self):
+        return self.role == Role.MANAGER and self.performs_service_manager_duties and not self.measurements_only
+
+    @property
+    def can_manage_service(self):
+        return self.role == Role.SERVICE_MANAGER or self.combines_service_roles
 
     def managed_salon_ids(self):
         """Салоны руководителя группы (кешируется на объекте до конца запроса)."""

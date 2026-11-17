@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore, stripFolderScope } from '../../store/complaintsStore'
@@ -447,7 +448,7 @@ const ComplaintList = () => {
                 />
                 Созданные мной
               </label>
-              {user?.role !== 'service_manager' && (
+              {!canManageService(user) && (
                 <label className="inline-flex items-center px-4 py-2 bg-green-50 text-green-700 rounded-xl cursor-pointer hover:bg-green-100 transition-colors">
                   <input
                     type="checkbox"

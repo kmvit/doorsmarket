@@ -68,7 +68,7 @@ const InstallersSchedule = () => {
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const [picking, setPicking] = useState(false)
   const [assigning, setAssigning] = useState<Installation | null>(null)
-  const editable = canEditSchedule(user?.role)
+  const editable = canEditSchedule(user)
 
   // Монтажник всегда видит только свой график; выбор коллег доступен сотрудникам.
   const installerId = user?.role === 'installer'
@@ -168,7 +168,11 @@ const InstallersSchedule = () => {
                   dayClassName={(day) => (range && day >= range.from && day <= range.to ? 'bg-primary-50 ring-1 ring-inset ring-primary-400' : '')}
                   renderDay={(day) => (
                     <div className="space-y-1 mt-0.5">
-                      {visitsOn(day).map((v) => (
+                      {visitsOn(day).map((v) => v.kind === 'busy' ? (
+                        <div key={v.id} className="rounded-md bg-gray-100 px-1.5 py-1 text-[11px] text-gray-700">
+                          Занято
+                        </div>
+                      ) : (
                         <Link
                           key={v.id}
                           to={v.kind === 'complaint' ? `/complaints/${v.complaint_id}` : `/orders/installations/${v.installation_id}`}

@@ -47,7 +47,7 @@ const InstallationList = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const folder = searchParams.get('folder') || ''
   const mineParam = searchParams.get('mine') === '1'
-  const canAssign = canEditSchedule(user?.role)
+  const canAssign = canEditSchedule(user)
 
   const [search, setSearch] = usePersistedState('installations:search', '')
   const [rawStatus, setStatus] = usePersistedState<InstallationStatus[]>('installations:status', [])

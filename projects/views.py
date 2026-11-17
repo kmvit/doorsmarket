@@ -6,6 +6,7 @@ from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
 from users.models import User, City
+from .access import in_manager_salon, salon_complaints_q
 from .forms import ComplaintEditForm
 from .models import (
     Complaint,
@@ -21,6 +22,13 @@ from .models import (
 from .decorators import role_required, complaint_access_required
 
 
+def _complaint_for_view(request, pk):
+    queryset = Complaint.objects.all()
+    if request.user.combines_service_roles:
+        queryset = queryset.filter(salon_complaints_q(request.user))
+    return get_object_or_404(queryset, pk=pk)
+
+
 @login_required(login_url='/api/v1/login/')
 def complaint_list(request):
     """Список рекламаций"""
@@ -33,6 +41,8 @@ def complaint_list(request):
         'production_site',
         'reason'
     ).prefetch_related('defective_products', 'attachments')
+    if request.user.combines_service_roles:
+        complaints = complaints.filter(salon_complaints_q(request.user))
     
     # Фильтрация по ролям
     # 1. Монтажник видит только назначенные ему (независимо от города)
@@ -306,7 +316,7 @@ def complaint_detail(request, pk):
                 return initiator_city and initiator_city.id == user_city.id
             return False
 
-        if _manager_has_access(complaint):
+        if action != 'plan-installation' and _manager_has_access(complaint):
             if action == 'start-production' and complaint.status == 'in_progress':
                 # Запуск производства
                 production_deadline = request.POST.get('production_deadline')
@@ -335,7 +345,7 @@ def complaint_detail(request, pk):
                     messages.error(request, 'Укажите дату отгрузки')
         
         # Действия СМ
-        elif request.user.role == 'service_manager':
+        elif request.user.can_manage_service:
             if action == 'plan-installation' and complaint.status in ['on_warehouse', 'shipping_planned']:
                 # Планирование монтажа
                 installation_date = request.POST.get('installation_date')
@@ -395,16 +405,12 @@ def complaint_detail(request, pk):
 @complaint_access_required(check_initiator=True, check_recipient=True, check_manager=True, allow_manager_all=True)
 def complaint_edit(request, pk):
     """Редактирование рекламации сервис-менеджером."""
-    complaint = get_object_or_404(
-        Complaint.objects.select_related(
-            'initiator',
-            'recipient',
-            'manager',
-            'production_site',
-            'reason'
-        ),
-        pk=pk
+    complaints = Complaint.objects.select_related(
+        'initiator', 'recipient', 'manager', 'production_site', 'reason',
     )
+    if request.user.combines_service_roles:
+        complaints = complaints.filter(salon_complaints_q(request.user))
+    complaint = get_object_or_404(complaints, pk=pk)
     # Разрешаем редактирование инициатору, СМ, менеджерам из того же города и пользователям с расширенными правами
     def _manager_can_edit(complaint):
         if request.user.role != 'manager':
@@ -423,6 +429,7 @@ def complaint_edit(request, pk):
 
     if not (
         complaint.initiator == request.user or
+        request.user.combines_service_roles or
         request.user.role in ['service_manager', 'admin', 'leader'] or
         _manager_can_edit(complaint)
     ):
@@ -488,14 +495,6 @@ def complaint_create(request):
         raise PermissionDenied('Создавать рекламации могут менеджеры и сервис-менеджеры с доступом к рекламациям.')
     
     if request.method == 'POST':
-        def get_service_manager_for_city(city):
-            qs = User.objects.filter(role='service_manager', is_active=True, measurements_only=False)
-            if city:
-                sm = qs.filter(city=city).first()
-                if sm:
-                    return sm
-            return qs.first()
-        
         try:
             with transaction.atomic():
                 # Получаем данные из формы
@@ -504,6 +503,10 @@ def complaint_create(request):
                 production_site_id = request.POST.get('production_site')
                 reason_id = request.POST.get('reason')
                 final_manager_id = manager_id
+                manager = User.objects.filter(pk=manager_id, role='manager', is_active=True).first() if manager_id else None
+                if request.user.combines_service_roles and not in_manager_salon(request.user, manager):
+                    messages.error(request, 'Выберите менеджера своего салона.')
+                    raise ValueError('Manager outside salon')
                 
                 # Валидация обязательных полей
                 required_fields = [production_site_id, reason_id, 
@@ -528,7 +531,7 @@ def complaint_create(request):
                 installer_id = request.POST.get('installer')
                 
                 # Определяем получателя
-                if request.user.role == 'service_manager' and complaint_type:
+                if request.user.can_manage_service and complaint_type:
                     # СМ выбрал тип рекламации сразу
                     if complaint_type == 'manager':
                         # Получатель - менеджер заказа
@@ -549,8 +552,10 @@ def complaint_create(request):
                     recipient = User.objects.get(id=recipient_id)
                 else:
                     # Если инициатор - менеджер или монтажник, получатель - первый СМ
-                    if request.user.role in ['manager', 'installer']:
-                        recipient = get_service_manager_for_city(getattr(request.user, 'city', None))
+                    if request.user.combines_service_roles:
+                        recipient = request.user
+                    elif request.user.role in ['manager', 'installer']:
+                        recipient = Complaint.service_manager_for(manager, request.user.city_id)
                         if not recipient:
                             messages.error(request, 'Не найден сервис-менеджер для назначения')
                             raise ValueError('No service manager found')
@@ -626,7 +631,7 @@ def complaint_create(request):
                     )
                 
                 # Если СМ выбрал тип рекламации сразу, применяем соответствующую логику
-                if request.user.role == 'service_manager' and complaint_type:
+                if request.user.can_manage_service and complaint_type:
                     if complaint_type == 'manager':
                         complaint.set_type_manager()
                         messages.success(request, f'Рекламация #{complaint.id} создана и отправлена менеджеру!')
@@ -815,10 +820,10 @@ def shipping_detail(request, pk):
 
 
 @login_required(login_url='/api/v1/login/')
-@role_required(['service_manager', 'complaint_department', 'admin', 'leader'])
+@role_required(['service_manager', 'complaint_department', 'admin', 'leader'], allow_combined_service=True)
 def complaint_process(request, pk):
     """Обработка рекламации СМ"""
-    complaint = get_object_or_404(Complaint, pk=pk)
+    complaint = _complaint_for_view(request, pk)
     
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -1299,7 +1304,7 @@ def or_factory_complaints(request):
 @login_required(login_url='/api/v1/login/')
 def complaint_history(request, pk):
     """История событий по рекламации"""
-    complaint = get_object_or_404(Complaint, pk=pk)
+    complaint = _complaint_for_view(request, pk)
     
     # Проверка прав доступа
     # Менеджер, СМ, Админ, Лидер и ОР видят историю всех рекламаций
@@ -1323,7 +1328,7 @@ def complaint_history(request, pk):
 @role_required(['service_manager', 'manager', 'admin', 'leader'])
 def update_client_contact(request, pk):
     """Обновление контактной информации клиента"""
-    complaint = get_object_or_404(Complaint, pk=pk)
+    complaint = _complaint_for_view(request, pk)
     
     # Проверка прав доступа
     # Менеджер — только в рамках своего города, СМ — в своём городе, Админ и Лидер — без ограничений
@@ -1331,7 +1336,7 @@ def update_client_contact(request, pk):
         if request.user.city and complaint.manager and complaint.manager.city != request.user.city:
             messages.error(request, 'У вас нет прав для редактирования этой рекламации')
             return redirect('projects:complaint_detail', pk=complaint.id)
-    if request.user.role == 'manager':
+    if request.user.role == 'manager' and not request.user.combines_service_roles:
         from .api_views import _manager_has_complaint_access
         if not _manager_has_complaint_access(request.user, complaint):
             messages.error(request, 'У вас нет прав для редактирования этой рекламации')
@@ -1420,10 +1425,10 @@ def update_client_contact(request, pk):
 
 
 @login_required(login_url='/api/v1/login/')
-@role_required(['service_manager', 'admin', 'leader'])
+@role_required(['service_manager', 'admin', 'leader'], allow_combined_service=True)
 def sm_agree_client(request, pk):
     """СМ согласовывает решение фабрики с клиентом"""
-    complaint = get_object_or_404(Complaint, pk=pk)
+    complaint = _complaint_for_view(request, pk)
     
     # Проверка, что рекламация в правильном статусе
     if complaint.status not in ['factory_approved', 'sm_response_overdue']:
@@ -1455,10 +1460,10 @@ def sm_agree_client(request, pk):
 
 
 @login_required(login_url='/api/v1/login/')
-@role_required(['service_manager', 'admin', 'leader'])
+@role_required(['service_manager', 'admin', 'leader'], allow_combined_service=True)
 def sm_dispute_decision(request, pk):
     """СМ оспаривает решение фабрики"""
-    complaint = get_object_or_404(Complaint, pk=pk)
+    complaint = _complaint_for_view(request, pk)
     
     # Проверка, что рекламация в правильном статусе
     if complaint.status not in ['factory_approved', 'sm_response_overdue', 'factory_rejected']:

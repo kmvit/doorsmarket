@@ -112,7 +112,7 @@ const InstallationDetail = () => {
     }
   }
 
-  const sm = canEditSchedule(user?.role)
+  const sm = canEditSchedule(user)
   const isInstaller = user?.role === 'installer'
   const visit = inst.current_visit
   const myVisit = !!visit && visit.installers.some((u) => u.id === user?.id)

@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
@@ -546,14 +547,14 @@ const ComplaintCreate = () => {
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Назначение</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(user?.role === 'service_manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
+              {(canManageService(user) || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')) && (
                 <>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Тип рекламации {user?.role === 'service_manager' && <span className="text-red-500">*</span>}
+                      Тип рекламации {canManageService(user) && <span className="text-red-500">*</span>}
                     </label>
                     <select
-                      {...register('complaint_type', { required: user?.role === 'service_manager' })}
+                      {...register('complaint_type', { required: canManageService(user) })}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     >
                       <option value="">Выберите тип рекламации</option>

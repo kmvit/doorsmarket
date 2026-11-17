@@ -11,8 +11,6 @@ CREATE_ROLES = frozenset({'manager', 'leader', 'group_leader', 'admin'})
 # Список общий на город: смотрят и правят все пользователи города, кроме монтажников.
 # Отдел рекламаций с заказами не работает.
 LIST_ROLES = CREATE_ROLES | {'service_manager'}
-# Графики монтажников правит СМ (монтажник — свой, это этап 3)
-SCHEDULE_ROLES = frozenset({'service_manager', 'admin'})
 # Монтажник видит монтажи, где он на выезде, и графики коллег (только просмотр)
 INSTALLER_ROLE = 'installer'
 # Виды файлов, которые загружает монтажник
@@ -29,6 +27,16 @@ def can_see_installations(user):
         and (user.role in LIST_ROLES or user.role == INSTALLER_ROLE)
         and not getattr(user, 'measurements_only', False)
     )
+
+
+def can_schedule_installations(user):
+    return user.can_manage_service or user.role == 'admin'
+
+
+def manager_installations_scope(queryset, user):
+    if user.salon_id:
+        return queryset.filter(order__salon_id=user.salon_id)
+    return queryset.filter(order__manager=user)
 
 
 def is_installer_of(user, inst):
@@ -62,6 +70,8 @@ def installations_for_user(user):
         return qs.filter(visits__installers=user).distinct()
     if user.role == 'group_leader':
         return qs.filter(order__salon_id__in=user.managed_salon_ids())
+    if user.combines_service_roles:
+        return manager_installations_scope(qs, user)
     city_id = user_city_id(user)
     if not city_id:
         return qs.none()

@@ -311,8 +311,11 @@ def _attach_to_order(inst, f):
 
 def city_service_managers(inst):
     from django.contrib.auth import get_user_model
-    return get_user_model().objects.filter(
-        role='service_manager', is_active=True, city_id=inst.order.salon.city_id, measurements_only=False,
+    from django.db.models import Q
+    return get_user_model().objects.filter(is_active=True, measurements_only=False).filter(
+        Q(role='service_manager', city_id=inst.order.salon.city_id)
+        | Q(role='manager', performs_service_manager_duties=True, salon_id=inst.order.salon_id)
+        | Q(role='manager', performs_service_manager_duties=True, salon__isnull=True, pk=inst.order.manager_id)
     )
 
 

@@ -11,7 +11,7 @@ import Input from '../../components/common/Input'
 import Button from '../../components/common/Button'
 import FileUploadList from '../../components/complaints/FileUploadList'
 import FileViewer from '../../components/common/FileViewer'
-import { User } from '../../types/auth'
+import { canManageService, User } from '../../types/auth'
 
 interface DefectiveProductForm {
   id?: number
@@ -46,7 +46,8 @@ const ComplaintEdit = () => {
   const [showProductSelection, setShowProductSelection] = useState(false)
   const [parsedProducts, setParsedProducts] = useState<ParsedProduct[]>([])
 
-  const isServiceManager = user?.role === 'service_manager'
+  const isServiceManager = canManageService(user)
+  const cityId = user?.city?.id
 
   useEffect(() => {
     const loadData = async () => {
@@ -58,7 +59,7 @@ const ComplaintEdit = () => {
           referencesAPI.getProductionSites(),
           referencesAPI.getComplaintReasons(),
         ]
-        if (user?.role === 'service_manager') {
+        if (isServiceManager) {
           loadPromises.push(
             referencesAPI.getUsersByRole('service_manager'),
             referencesAPI.getUsersByRole('manager'),
@@ -69,13 +70,13 @@ const ComplaintEdit = () => {
         const results = await Promise.all(loadPromises)
         setProductionSites(results[0] as ProductionSite[])
         setReasons(results[1] as ComplaintReason[])
-        if (user?.role === 'service_manager' && results.length >= 5) {
+        if (isServiceManager && results.length >= 5) {
           setServiceManagers((results[2] as User[]).filter(u => !u.measurements_only))
           const allManagers = results[3] as User[]
           const allInstallers = results[4] as User[]
-          if (user.city?.id) {
-            setManagers(allManagers.filter(m => m.city?.id === user.city!.id))
-            setInstallers(allInstallers.filter(i => i.city?.id === user.city!.id))
+          if (cityId) {
+            setManagers(allManagers.filter(m => m.city?.id === cityId))
+            setInstallers(allInstallers.filter(i => i.city?.id === cityId))
           } else {
             setManagers(allManagers)
             setInstallers(allInstallers)
@@ -101,7 +102,7 @@ const ComplaintEdit = () => {
           if (complaint.manager) {
             setValue('manager_id', complaint.manager.id)
           }
-          if (user?.role === 'service_manager') {
+          if (isServiceManager) {
             setValue('complaint_type', (complaint.complaint_type ?? undefined) as ComplaintType | undefined)
             if (complaint.recipient) {
               setValue('recipient_id', complaint.recipient.id)
@@ -131,7 +132,7 @@ const ComplaintEdit = () => {
     }
 
     loadData()
-  }, [id, fetchComplaint, setValue, user?.role])
+  }, [id, fetchComplaint, setValue, isServiceManager, cityId])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {

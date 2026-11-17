@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
@@ -75,7 +76,7 @@ const ComplaintDetail = () => {
       try {
         const installersData = await referencesAPI.getUsersByRole('installer')
         const allInstallers = installersData || []
-        const isServiceManager = user?.role === 'service_manager'
+        const isServiceManager = canManageService(user)
         const userCityId = user?.city?.id ?? user?.city_id
 
         if (isServiceManager && userCityId) {
@@ -88,7 +89,7 @@ const ComplaintDetail = () => {
       }
     }
     loadUsers()
-  }, [user?.role, user?.city?.id, user?.city_id])
+  }, [user?.role, user?.can_manage_service, user?.city?.id, user?.city_id])
 
   useEffect(() => {
     if (currentComplaint) {
@@ -172,14 +173,14 @@ const ComplaintDetail = () => {
   const canEdit = user && (
     currentComplaint.initiator.id === user.id ||
     user.role === 'admin' ||
-    user.role === 'service_manager' ||
+    canManageService(user) ||
     (user.role === 'leader' || user.role === 'group_leader') ||
     canDoManagerActions
   )
 
 
   const canEditContact = user && (
-    user.role === 'service_manager' ||
+    canManageService(user) ||
     user.role === 'manager' ||
     user.role === 'admin' ||
     (user.role === 'leader' || user.role === 'group_leader')
@@ -247,7 +248,7 @@ const ComplaintDetail = () => {
           break
         case 'plan_installation':
           // Если это СМ планирует, нужен installerId, если монтажник - он планирует сам
-          if (user?.role === 'service_manager') {
+          if (canManageService(user)) {
             if (!formData.installerId) {
               alert('Укажите монтажника')
               return
@@ -911,7 +912,7 @@ const ComplaintDetail = () => {
               <h2 className="text-lg font-bold text-gray-900 mb-4">Действия</h2>
               <div className="space-y-2">
                 {/* Общие действия */}
-                {(user?.role === 'service_manager' || user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'complaint_department') && (
+                {(canManageService(user) || user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'complaint_department') && (
                   <Link to={`/complaints/${id}/history`}>
                     <Button variant="outline" className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-0">
                       <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -933,7 +934,7 @@ const ComplaintDetail = () => {
                   </Link>
                 )}
 
-                {(user?.role === 'service_manager' || currentComplaint.status === 'new') && (
+                {(canManageService(user) || currentComplaint.status === 'new') && (
                   <Button
                     onClick={() => handleAction('process')}
                     className="w-full bg-blue-600 text-white hover:bg-blue-700"
@@ -946,7 +947,7 @@ const ComplaintDetail = () => {
                 )}
 
                 {/* Действия для СМ */}
-                {user?.role === 'service_manager' && (
+                {canManageService(user) && (
                   <>
                     {/* Планирование монтажа (когда товар на складе или отгрузка запланирована) */}
                     {(currentComplaint.status === 'on_warehouse' || currentComplaint.status === 'shipping_planned') && (

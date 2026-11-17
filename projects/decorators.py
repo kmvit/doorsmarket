@@ -6,7 +6,7 @@ from django.shortcuts import redirect
 from django.contrib import messages
 
 
-def role_required(allowed_roles):
+def role_required(allowed_roles, *, allow_combined_service=False):
     """
     Декоратор для проверки роли пользователя
     
@@ -22,7 +22,9 @@ def role_required(allowed_roles):
                 messages.error(request, 'Необходима авторизация')
                 return redirect('users:web_login')
             
-            if request.user.role not in allowed_roles:
+            if request.user.role not in allowed_roles and not (
+                allow_combined_service and request.user.combines_service_roles
+            ):
                 messages.error(request, 'У вас нет прав для доступа к этой странице')
                 return redirect('users:web_dashboard')
             
@@ -63,6 +65,13 @@ def complaint_access_required(
                     
                     # Админы и лидеры имеют полный доступ
                     if request.user.role in ['admin', 'leader']:
+                        return view_func(request, *args, **kwargs)
+
+                    if request.user.combines_service_roles:
+                        from django.http import Http404
+                        from .access import in_manager_salon
+                        if not in_manager_salon(request.user, complaint.manager, complaint.source_order):
+                            raise Http404
                         return view_func(request, *args, **kwargs)
                     
                     # Проверяем различные условия доступа

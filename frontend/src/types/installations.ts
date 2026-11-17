@@ -1,3 +1,4 @@
+import { canManageService, User } from './auth'
 export type InstallationStatus =
   | 'not_planned'
   | 'planned'
@@ -127,7 +128,7 @@ export const installerPeriod = (visit: InstallationVisit, installerId?: number |
 /** Выезд в календаре монтажника: монтаж или рекламация (kind) */
 export interface ScheduleVisit extends Omit<InstallationVisit, 'id'> {
   id: number | string
-  kind: 'installation' | 'complaint'
+  kind: 'installation' | 'complaint' | 'busy'
   complaint_id?: number
   window?: string
   installation_id: number | null
@@ -317,7 +318,7 @@ export const formatDeliveryDateRange = (from: string | null, to: string | null) 
 }
 
 /** Графики монтажников правит СМ */
-export const canEditSchedule = (role?: string) => role === 'service_manager' || role === 'admin'
+export const canEditSchedule = (user?: User | null) => canManageService(user) || user?.role === 'admin'
 
 /** Решение по неактуальности — менеджер */
 export const canDecideIrrelevant = (role?: string) => canCreateInstallation(role)

@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.urls import reverse
 from datetime import date, datetime
+from .access import salon_complaints_q
 
 from .models import (
     Complaint,
@@ -164,6 +165,8 @@ def scope_complaints_for_user(queryset, user):
             # Если нет города, видит только созданные им
             queryset = queryset.filter(initiator=user)
     elif user.role == 'manager':
+        if user.combines_service_roles:
+            return queryset.filter(salon_complaints_q(user))
         # Менеджер видит рекламации из своего города
         if user.city:
             queryset = queryset.filter(initiator__city=user.city)
@@ -305,6 +308,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             role_task_filters['group_leader'] = role_task_filters['leader']
             
             role_filters = role_task_filters.get(user.role, {})
+            if user.combines_service_roles:
+                role_filters = {**role_filters, **role_task_filters['service_manager']}
             task_filter = role_filters.get(my_tasks)
             if task_filter:
                 queryset = queryset.filter(task_filter)
@@ -455,7 +460,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint_type = request.data.get('complaint_type')
         
         # Типы "менеджер" и "монтажник" — только для СМ (требуют назначения получателя)
-        if request.user.role == 'service_manager' and complaint_type in ('manager', 'installer'):
+        if request.user.can_manage_service and complaint_type in ('manager', 'installer'):
             if complaint_type == 'manager':
                 complaint.set_type_manager()
             elif complaint_type == 'installer':
@@ -505,7 +510,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             and complaint.complaint_type
             and complaint.complaint_type != old_complaint_type
         )
-        if type_changed and request.user.role in ('service_manager', 'admin'):
+        if type_changed and (request.user.can_manage_service or request.user.role == 'admin'):
             try:
                 if complaint.complaint_type == ComplaintType.MANAGER:
                     complaint.set_type_manager()
@@ -650,7 +655,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             has_access = True
         elif user.role == 'manager':
             # Менеджеры видят рекламации своего города (в т.ч. чужых менеджеров)
-            has_access = _manager_has_complaint_access(user, obj)
+            has_access = user.combines_service_roles or _manager_has_complaint_access(user, obj)
         elif user.role == 'service_manager':
             # СМ могут видеть рекламации по своему городу
             if user.city and obj.initiator.city == user.city:
@@ -669,7 +674,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # Проверка прав (только СМ может обрабатывать)
-        if user.role != 'service_manager' and user.role != 'admin':
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может обрабатывать рекламации'},
                 status=status.HTTP_403_FORBIDDEN
@@ -771,7 +776,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
 
         # Вариант: СМ назначает монтажника, а дату/время определит сам монтажник.
-        if date_by_installer and user.role in ('service_manager', 'admin'):
+        if date_by_installer and (user.can_manage_service or user.role == 'admin'):
             complaint.plan_installation_assign_only(installer)
             serializer = self.get_serializer(complaint)
             return Response(serializer.data)
@@ -789,7 +794,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if user.role == 'installer':
             # Монтажник планирует сам
             complaint.plan_installation(installer, installation_date, installation_end)
-        elif user.role in ['service_manager', 'admin']:
+        elif user.can_manage_service or user.role == 'admin':
             # СМ планирует для монтажника
             complaint.plan_installation_by_sm(installer, installation_date, installation_end)
         else:
@@ -887,7 +892,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role not in ['service_manager', 'admin']:
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может назначать дату готовности'},
                 status=status.HTTP_403_FORBIDDEN
@@ -919,7 +924,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role not in ['service_manager', 'admin']:
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может оспаривать решение фабрики'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1022,7 +1027,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
         # Проверка для менеджера - только в рамках своего города
-        if user.role == 'manager':
+        if user.role == 'manager' and not user.combines_service_roles:
             if not _manager_has_complaint_access(user, complaint):
                 return Response(
                     {'error': 'У вас нет прав для редактирования этой рекламации'},
@@ -1114,7 +1119,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role not in ['service_manager', 'admin']:
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может проверять выполненную работу'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1153,7 +1158,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role not in ['service_manager', 'admin']:
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может заменять монтажника'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1534,7 +1539,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
-        if user.role not in ['service_manager', 'admin']:
+        if not user.can_manage_service and user.role != 'admin':
             return Response(
                 {'error': 'Только сервис-менеджер может закрывать рекламации'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1592,7 +1597,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # Проверяем права доступа
-        if user.role not in ['service_manager', 'admin', 'leader', 'group_leader']:
+        if not user.can_manage_service and user.role not in ['admin', 'leader', 'group_leader']:
             return Response(
                 {'error': 'Недостаточно прав для выполнения этого действия'},
                 status=status.HTTP_403_FORBIDDEN
@@ -1867,6 +1872,8 @@ def _user_has_complaint_access(user, complaint):
         return True
     if user.role == 'group_leader':
         return Complaint.objects.filter(pk=complaint.pk).filter(group_leader_complaints_q(user)).exists()
+    if user.combines_service_roles:
+        return Complaint.objects.filter(pk=complaint.pk).filter(salon_complaints_q(user)).exists()
     if complaint.initiator == user or complaint.recipient == user or complaint.manager == user:
         return True
     if complaint.installer_assigned == user:
@@ -1885,7 +1892,30 @@ def _user_has_complaint_access(user, complaint):
     return False
 
 
-class DefectiveProductViewSet(viewsets.ModelViewSet):
+class ComplaintRelatedViewSet(viewsets.ModelViewSet):
+    def combined_service_scope(self, queryset):
+        user = self.request.user
+        if not user.combines_service_roles:
+            return queryset
+        complaints = Complaint.objects.filter(salon_complaints_q(user))
+        return queryset.filter(complaint_id__in=complaints.values('pk'))
+
+    def check_combined_service_target(self, serializer):
+        user = self.request.user
+        complaint = serializer.validated_data.get('complaint')
+        if user.combines_service_roles and complaint and not _user_has_complaint_access(user, complaint):
+            raise PermissionDenied('У вас нет доступа к этой рекламации.')
+
+    def perform_create(self, serializer):
+        self.check_combined_service_target(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self.check_combined_service_target(serializer)
+        super().perform_update(serializer)
+
+
+class DefectiveProductViewSet(ComplaintRelatedViewSet):
     """ViewSet для бракованных изделий"""
     serializer_class = DefectiveProductSerializer
     permission_classes = [ComplaintsAccess]
@@ -1898,7 +1928,7 @@ class DefectiveProductViewSet(viewsets.ModelViewSet):
         if complaint_id:
             queryset = queryset.filter(complaint_id=complaint_id)
         
-        return queryset
+        return self.combined_service_scope(queryset)
 
     def _check_complaint_access(self, complaint):
         from rest_framework.exceptions import PermissionDenied
@@ -1913,14 +1943,14 @@ class DefectiveProductViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         complaint = serializer.instance.complaint
         self._check_complaint_access(complaint)
-        serializer.save()
+        super().perform_update(serializer)
 
     def perform_destroy(self, instance):
         self._check_complaint_access(instance.complaint)
         instance.delete()
 
 
-class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
+class ComplaintAttachmentViewSet(ComplaintRelatedViewSet):
     """ViewSet для вложений рекламаций"""
     serializer_class = ComplaintAttachmentSerializer
     permission_classes = [ComplaintsAccess]
@@ -1933,7 +1963,7 @@ class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
         if complaint_id:
             queryset = queryset.filter(complaint_id=complaint_id)
         
-        return queryset
+        return self.combined_service_scope(queryset)
     
     def get_serializer_context(self):
         """Добавление request в контекст"""
@@ -1942,7 +1972,7 @@ class ComplaintAttachmentViewSet(viewsets.ModelViewSet):
         return context
 
 
-class ComplaintCommentViewSet(viewsets.ModelViewSet):
+class ComplaintCommentViewSet(ComplaintRelatedViewSet):
     """ViewSet для комментариев к рекламациям"""
     serializer_class = ComplaintCommentSerializer
     permission_classes = [ComplaintsAccess]
@@ -1958,10 +1988,11 @@ class ComplaintCommentViewSet(viewsets.ModelViewSet):
         if complaint_id:
             queryset = queryset.filter(complaint_id=complaint_id)
         
-        return queryset
+        return self.combined_service_scope(queryset)
     
     def perform_create(self, serializer):
         """Автоматическая установка автора"""
+        self.check_combined_service_target(serializer)
         serializer.save(author=self.request.user)
 
 
@@ -1986,7 +2017,8 @@ class DashboardStatsView(APIView):
         )
         
         def add_stat(key, label, query, url_param=None):
-            count = Complaint.objects.filter(query).count()
+            scope = salon_complaints_q(user) if user.combines_service_roles else Q()
+            count = Complaint.objects.filter(scope & query).count()
             # Формируем URL для фронтенда
             if user.role == 'installer':
                 # Для монтажника используем страницу задач с параметром filter
@@ -2037,7 +2069,7 @@ class DashboardStatsView(APIView):
         elif user.role == 'manager':
             # Для менеджера применяем фильтр по городу
             user_city = getattr(user, 'city', None)
-            if user_city:
+            if user_city and not user.combines_service_roles:
                 city_filter = Q(initiator__city=user_city)
             else:
                 city_filter = Q()
@@ -2059,7 +2091,9 @@ class DashboardStatsView(APIView):
             add_stat(
                 'in_work',
                 'В работе',
-                ((Q(manager=user) | Q(initiator=user) | Q(recipient=user)) & Q(status__in=active_statuses)) & city_filter
+                Q(status__in=active_statuses) & (
+                    Q() if user.combines_service_roles else (Q(manager=user) | Q(initiator=user) | Q(recipient=user)) & city_filter
+                ),
             )
             add_stat(
                 'in_progress',
@@ -2082,6 +2116,10 @@ class DashboardStatsView(APIView):
                 Q(manager=user, return_required=True, return_planned_date__isnull=True)
                 & ~Q(status__in=['closed', 'completed', 'resolved'])
             )
+            if user.combines_service_roles:
+                add_stat('review', 'Ожидают проверки', Q(status__in=['under_sm_review', 'factory_approved', 'factory_rejected']))
+                add_stat('overdue', 'Просроченные ответы', sm_overdue_filter)
+                add_stat('plan_installation', 'Запланировать монтаж', Q(status='shipping_planned'))
         elif user.role == 'service_manager':
             # Для СМ применяем фильтр: рекламации из его города ИЛИ созданные им
             user_city = getattr(user, 'city', None)

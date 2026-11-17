@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
@@ -33,7 +34,7 @@ const ComplaintProcess = () => {
         ])
         const allInstallers = installersData || []
         const allManagers = managersData || []
-        const isServiceManager = user?.role === 'service_manager'
+        const isServiceManager = canManageService(user)
         const userCityId = user?.city?.id ?? user?.city_id
 
         if (isServiceManager && userCityId) {
@@ -48,7 +49,7 @@ const ComplaintProcess = () => {
       }
     }
     loadUsers()
-  }, [user?.role, user?.city?.id, user?.city_id])
+  }, [user?.role, user?.can_manage_service, user?.city?.id, user?.city_id])
 
   useEffect(() => {
     if (currentComplaint) {
@@ -188,7 +189,7 @@ const ComplaintProcess = () => {
   }
 
   // Проверка прав доступа - только СМ, ОР, админ и руководитель могут обрабатывать рекламации
-  const canProcess = user?.role && ['service_manager', 'complaint_department', 'admin', 'leader', 'group_leader'].includes(user.role)
+  const canProcess = canManageService(user) || ['complaint_department', 'admin', 'leader', 'group_leader'].includes(user?.role || '')
   
   if (!canProcess) {
     return (
@@ -393,7 +394,7 @@ const ComplaintProcess = () => {
             )}
 
             {/* Возможность завершить рекламацию напрямую */}
-            {user?.role === 'service_manager' && 
+            {canManageService(user) &&
              !['completed', 'closed', 'resolved', 'under_sm_review'].includes(currentComplaint.status) && (
               <div className="mt-6 p-4 border-2 border-gray-300 rounded-xl bg-gray-50">
                 <h4 className="text-md font-medium text-gray-900 mb-3">Закрыть рекламацию</h4>

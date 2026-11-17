@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -82,7 +83,7 @@ const MeasurementForm = () => {
   // обработка менеджером: после неё размеры перенесены в заказ, и правки идут
   // только через повторный замер.
   const canEditOpenings = !m?.is_processed && (
-    user?.role === 'service_manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')
+    canManageService(user) || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader')
   )
   // Закрыть замер можно только один раз — кнопка живёт до «выполнен».
   const canMarkDone = !m?.is_done && canEditOpenings
@@ -91,7 +92,7 @@ const MeasurementForm = () => {
   // Предупреждение про правки после закрытия нужно тем, кто замер обрабатывает,
   // а не тому, кто их только что внёс.
   const showAmendedNotice = Boolean(m?.updated_after_done_at) && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || '')
-  const canUploadSignature = user?.role === 'service_manager' || user?.role === 'admin'
+  const canUploadSignature = canManageService(user) || user?.role === 'admin'
   // Старый сервер / офлайн-кеш без списка — показываем одиночное фото как раньше
   const signatures = m?.signatures
     ?? (m?.signature_photo_url ? [{ id: 0, url: m.signature_photo_url, created_at: '' }] : [])
@@ -110,7 +111,7 @@ const MeasurementForm = () => {
   // ещё раз дёрнет менеджера, состояние объясняет бейдж.
   const canMarkIrrelevant = Boolean(
     !m?.is_done && !m?.is_irrelevant && !irrelevantPending &&
-    ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
+    (canManageService(user) || ['admin', 'leader', 'group_leader'].includes(user?.role || '')),
   )
   const canDecideIrrelevant = Boolean(
     irrelevantPending && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),

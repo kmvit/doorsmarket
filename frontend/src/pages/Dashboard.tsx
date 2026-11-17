@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { selectCanCreateComplaint, useAuthStore } from '../store/authStore'
+import { canManageService } from '../types/auth'
 import apiClient from '../api/client'
 import { authAPI } from '../api/auth'
 import { ordersAPI, workshopAPI } from '../api/orders'
@@ -68,6 +69,8 @@ const Dashboard = () => {
   const showWorkshopCard = user && ['manager', 'service_manager', 'leader', 'group_leader', 'admin'].includes(user.role)
   const isManager = user?.role === 'manager'
   const isSM = user?.role === 'service_manager'
+  const combinesService = isManager && canManageService(user)
+  const managerOnlyInstallations = isManager && !combinesService
   const isLeader = (user?.role === 'leader' || user?.role === 'group_leader')
   const isInstaller = user?.role === 'installer'
 
@@ -83,8 +86,8 @@ const Dashboard = () => {
   // Папки монтажей: менеджеру — по его заказам, СМ и руководителю — по городу
   useEffect(() => {
     if (!(isManager || isSM || isLeader || isInstaller) || user?.measurements_only) return
-    installationsAPI.getFolderCounts({ mine: isManager }).then(setInstallationFolders).catch(() => {})
-  }, [isManager, isSM, isLeader, isInstaller, user?.measurements_only])
+    installationsAPI.getFolderCounts({ mine: managerOnlyInstallations }).then(setInstallationFolders).catch(() => {})
+  }, [isManager, isSM, isLeader, isInstaller, managerOnlyInstallations, user?.measurements_only])
 
   useEffect(() => {
     if (!showWorkshopCard) return
@@ -328,7 +331,7 @@ const Dashboard = () => {
         })()}
 
         {/* Фаза 6: Замеры СМ — только его пайплайн (без «Замер выполнен» и «Не обработан») */}
-        {isSM && orderFolders.length > 0 && (
+        {(isSM || combinesService) && orderFolders.length > 0 && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Замеры</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -338,7 +341,7 @@ const Dashboard = () => {
                 return (
                   <FolderCard
                     key={sf.folder}
-                    to={`/orders?folder=${sf.folder}`}
+                    to={`/orders?folder=${sf.folder}${isManager ? '&mine=1' : ''}`}
                     label={sf.label}
                     count={f.count}
                     overdue={f.overdue}
@@ -448,7 +451,7 @@ const Dashboard = () => {
         {(isManager || isLeader || isSM || isInstaller) && (() => {
           const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
           const shown = installationFolders
-            .filter((f) => !isManager || f.folder === 'irrelevant_requested')
+            .filter((f) => !managerOnlyInstallations || f.folder === 'irrelevant_requested')
             .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
             .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
@@ -461,7 +464,7 @@ const Dashboard = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {due && <FolderCard to={`/orders?folder=installation_needed${mine}`} label={due.label} count={due.count} />}
                 {shown.map((f) => (
-                  <FolderCard key={f.folder} to={`/orders/installations?folder=${f.folder}${mine}`} label={f.label}
+                  <FolderCard key={f.folder} to={`/orders/installations?folder=${f.folder}${managerOnlyInstallations ? '&mine=1' : ''}`} label={f.label}
                     count={f.count} overdue={['irrelevant_requested', 'reschedule_requested', 'act_review'].includes(f.folder)} />
                 ))}
               </div>

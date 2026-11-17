@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from .access import in_manager_salon
 from .models import (
     Complaint,
     DefectiveProduct,
@@ -29,6 +30,17 @@ def keep_or_active(serializer, user, attr):
     if user is not None and getattr(user, 'measurements_only', False):
         raise serializers.ValidationError('Этот сервис-менеджер работает только с замерами.')
     return user
+
+
+def validate_complaint_manager(serializer, manager):
+    manager = keep_or_active(serializer, manager, 'manager')
+    request = serializer.context.get('request')
+    actor = getattr(request, 'user', None)
+    current_manager_id = getattr(serializer.instance, 'manager_id', None)
+    if (actor and actor.combines_service_roles and manager.pk != current_manager_id
+            and not in_manager_salon(actor, manager)):
+        raise serializers.ValidationError('Выберите менеджера своего салона.')
+    return manager
 
 
 class ProductionSiteSerializer(serializers.ModelSerializer):
@@ -242,7 +254,15 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         return keep_or_active(self, user, 'recipient')
 
     def validate_manager_id(self, user):
-        return keep_or_active(self, user, 'manager')
+        return validate_complaint_manager(self, user)
+
+    def validate(self, attrs):
+        actor = getattr(self.context.get('request'), 'user', None)
+        if actor and actor.combines_service_roles and 'source_order' in attrs:
+            manager = attrs.get('manager', getattr(self.instance, 'manager', None))
+            if not in_manager_salon(actor, manager, attrs['source_order']):
+                raise serializers.ValidationError({'source_order': 'Выберите заказ своего салона.'})
+        return attrs
 
     def validate_installer_assigned_id(self, user):
         return keep_or_active(self, user, 'installer_assigned')
@@ -380,7 +400,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         return keep_or_active(self, user, 'recipient')
 
     def validate_manager_id(self, user):
-        return keep_or_active(self, user, 'manager')
+        return validate_complaint_manager(self, user)
 
     def validate_installer_assigned_id(self, user):
         return keep_or_active(self, user, 'installer_assigned')
@@ -428,6 +448,11 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Валидация: для монтажников обязательно описание проблемы (additional_info)"""
         request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        source_order = attrs.get('source_order')
+        if (actor and actor.combines_service_roles and source_order
+                and not in_manager_salon(actor, attrs.get('manager'), source_order)):
+            raise serializers.ValidationError({'source_order_id': 'Выберите заказ своего салона.'})
         if request and request.user and request.user.role == 'installer':
             additional_info = attrs.get('additional_info') or ''
             if not str(additional_info).strip():
@@ -449,7 +474,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                 complaint_type = validated_data.get('complaint_type')
                 
                 # Если СМ создает рекламацию и указан тип
-                if request.user.role == 'service_manager' and complaint_type:
+                if request.user.can_manage_service and complaint_type:
                     if complaint_type == 'manager':
                         # Получатель - менеджер заказа
                         if 'manager' in validated_data and validated_data['manager']:
@@ -476,14 +501,13 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                                 'recipient': 'Не найден отдел рекламаций'
                             })
                 # Если инициатор - менеджер или монтажник, получатель - сервис-менеджер
+                elif request.user.combines_service_roles:
+                    validated_data['recipient'] = request.user
                 elif request.user.role in ['manager', 'installer']:
                     # Найти первого доступного сервис-менеджера (можно по городу)
-                    user_city = getattr(request.user, 'city', None)
-                    service_manager = None
-                    if user_city:
-                        service_manager = User.objects.filter(role='service_manager', is_active=True, measurements_only=False, city=user_city).first()
-                    if not service_manager:
-                        service_manager = User.objects.filter(role='service_manager', is_active=True, measurements_only=False).first()
+                    service_manager = Complaint.service_manager_for(
+                        validated_data.get('manager'), request.user.city_id, validated_data.get('source_order'),
+                    )
                     if service_manager:
                         validated_data['recipient'] = service_manager
                     else:

@@ -1,3 +1,4 @@
+import { canManageService } from '../../types/auth'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -44,7 +45,7 @@ const OrderDetail = () => {
 
   const canEdit = user?.role === 'manager' || user?.role === 'admin'
   const canManage = canEdit || (user?.role === 'leader' || user?.role === 'group_leader')
-  const canUploadAttachments = canEdit || user?.role === 'service_manager' || (user?.role === 'leader' || user?.role === 'group_leader')
+  const canUploadAttachments = canEdit || canManageService(user) || (user?.role === 'leader' || user?.role === 'group_leader')
   // «Неактуален» доступен с момента заявки: клиент может отказаться до того,
   // как СМ назначил дату и замер вообще появился.
   const irrelevantPending = Boolean(
@@ -53,7 +54,7 @@ const OrderDetail = () => {
   const canMarkIrrelevant = Boolean(
     measurementRequest && !measurementRequest.is_irrelevant && !irrelevantPending &&
     !measurement?.is_done &&
-    ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
+    (canManageService(user) || ['admin', 'leader', 'group_leader'].includes(user?.role || '')),
   )
   const canDecideIrrelevant = Boolean(
     irrelevantPending && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),
@@ -820,7 +821,7 @@ const OrderDetail = () => {
                     Открыть замер →
                   </Link>
                   {/* Перенос даты уже назначенного, но ещё не выполненного замера */}
-                  {!measurement.is_done && (canManage || user?.role === 'service_manager') && (
+                  {!measurement.is_done && (canManage || canManageService(user)) && (
                     <button
                       onClick={() => setShowScheduleModal(true)}
                       className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg"
@@ -831,7 +832,7 @@ const OrderDetail = () => {
                   )}
                 </>
               ) : (
-                ['service_manager', 'admin', 'leader', 'group_leader'].includes(user?.role || '') && (
+                (canManageService(user) || ['admin', 'leader', 'group_leader'].includes(user?.role || '')) && (
                   <button
                     onClick={() => setShowScheduleModal(true)}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
@@ -861,7 +862,7 @@ const OrderDetail = () => {
                 </button>
               )}
               {/* Недозвон: кнопка у СМ с момента заявки (замер может быть ещё не создан) */}
-              {!measurement?.is_done && ['service_manager', 'admin'].includes(user?.role || '') && (
+              {!measurement?.is_done && (canManageService(user) || user?.role === 'admin') && (
                 <button
                   onClick={handleNotifyClientCallFailed}
                   disabled={notifyingClient}

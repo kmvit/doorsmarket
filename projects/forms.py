@@ -77,6 +77,8 @@ class ComplaintEditForm(forms.ModelForm):
 
         # Настраиваем queryset полей, гарантируя что текущие значения всегда в списке
         manager_qs = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
+        if user and user.combines_service_roles:
+            manager_qs = manager_qs.filter(salon_id=user.salon_id) if user.salon_id else manager_qs.filter(pk=user.pk)
         if instance and instance.pk and instance.manager_id:
             manager_qs = manager_qs | User.objects.filter(pk=instance.manager_id)
         self.fields['manager'].queryset = manager_qs.distinct()

@@ -219,7 +219,23 @@ class UserListView(generics.ListAPIView):
         
         # Фильтрация по роли
         role = self.request.query_params.get('role')
-        if role:
+        actor = self.request.user
+        if actor.combines_service_roles and role == 'manager':
+            queryset = queryset.filter(role=role)
+            if actor.salon_id:
+                queryset = queryset.filter(salon_id=actor.salon_id)
+            else:
+                queryset = queryset.filter(pk=actor.pk)
+        elif actor.combines_service_roles and role == 'service_manager':
+            from django.db.models import Q
+            colleagues = Q(pk=actor.pk)
+            if actor.salon_id:
+                colleagues |= Q(role='manager', performs_service_manager_duties=True, salon_id=actor.salon_id)
+            city_id = actor.salon.city_id if actor.salon_id else actor.city_id
+            if city_id:
+                colleagues |= Q(role='service_manager', city_id=city_id)
+            queryset = queryset.filter(colleagues, measurements_only=False)
+        elif role:
             queryset = queryset.filter(role=role)
         
         # Сортировка

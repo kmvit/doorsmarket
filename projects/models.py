@@ -1590,22 +1590,38 @@ class Complaint(models.Model):
                 self.id, exc, exc_info=True,
             )
 
-    def _get_service_manager(self):
-        """Определяет СМ для этой рекламации"""
-        # Если получатель - СМ, возвращаем его
-        if (self.recipient and self.recipient.role == 'service_manager' and self.recipient.is_active
-                and not self.recipient.measurements_only):
-            return self.recipient
-        
-        # Ищем СМ по городу инициатора
+    @staticmethod
+    def service_manager_for(manager, city_id, source_order=None):
         from users.models import User
-        if self.initiator.city:
-            sm = User.objects.filter(role='service_manager', is_active=True, measurements_only=False, city=self.initiator.city).first()
-            if sm:
-                return sm
-        
-        # Если не нашли по городу, берем первого доступного СМ
-        return User.objects.filter(role='service_manager', is_active=True, measurements_only=False).first()
+        from .access import in_manager_salon
+
+        if (manager and manager.is_active and manager.combines_service_roles
+                and in_manager_salon(manager, manager, source_order)):
+            return manager
+        service_managers = User.objects.filter(role='service_manager', is_active=True, measurements_only=False)
+        if city_id:
+            local = service_managers.filter(city_id=city_id).first()
+            if local:
+                return local
+        salon_id = source_order.salon_id if source_order else getattr(manager, 'salon_id', None)
+        if salon_id:
+            local = User.objects.filter(
+                role='manager', performs_service_manager_duties=True, salon_id=salon_id,
+                is_active=True, measurements_only=False,
+            ).first()
+            if local:
+                return local
+        return service_managers.first()
+
+    def _get_service_manager(self):
+        """Определяет СМ для этой рекламации."""
+        from .access import in_manager_salon
+
+        recipient = self.recipient
+        if recipient and recipient.is_active and recipient.can_manage_service and not recipient.measurements_only:
+            if not recipient.combines_service_roles or in_manager_salon(recipient, self.manager, self.source_order):
+                return recipient
+        return self.service_manager_for(self.manager, self.initiator.city_id, self.source_order)
     
     def _create_notification(self, recipient, notification_type, title, message):
         """Создание уведомления и отправка push"""
