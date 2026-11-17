@@ -31,7 +31,7 @@ class ComplaintCreationPermissionsTest(TestCase):
     def test_creation_denied_to_other_roles_and_measurement_only_sm(self):
         api = APIClient()
         form_url = reverse('projects:complaint_create')
-        denied_users = [user for role, user in self.users.items() if role != Role.SERVICE_MANAGER]
+        denied_users = [user for role, user in self.users.items() if role not in (Role.MANAGER, Role.SERVICE_MANAGER)]
         for user in [*denied_users, self.measurer]:
             with self.subTest(username=user.username):
                 api.force_authenticate(user)
@@ -57,3 +57,21 @@ class ComplaintCreationPermissionsTest(TestCase):
         self.assertEqual(complaint.initiator, sm)
         self.assertEqual(complaint.installer_assigned, self.users[Role.INSTALLER])
         self.assertEqual(complaint.status, ComplaintStatus.WAITING_INSTALLER_DATE)
+
+    @patch('users.push_utils.send_push_notification', return_value=False)
+    def test_manager_can_create_new_complaint_for_service_manager(self, _):
+        manager = self.users[Role.MANAGER]
+        self.client.force_login(manager)
+        self.assertEqual(self.client.get(reverse('projects:complaint_create')).status_code, 200)
+
+        api = APIClient()
+        api.force_authenticate(manager)
+        payload = self.payload.copy()
+        del payload['complaint_type'], payload['installer_assigned_id']
+        response = api.post('/api/v1/complaints/', payload, format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        complaint = Complaint.objects.get(pk=response.data['id'])
+        self.assertEqual(complaint.initiator, manager)
+        self.assertEqual(complaint.recipient, self.users[Role.SERVICE_MANAGER])
+        self.assertEqual(complaint.status, ComplaintStatus.NEW)

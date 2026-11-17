@@ -485,7 +485,7 @@ def complaint_edit(request, pk):
 def complaint_create(request):
     """Создание новой рекламации"""
     if not request.user.can_create_complaint:
-        raise PermissionDenied('Создавать рекламации может только сервис-менеджер.')
+        raise PermissionDenied('Создавать рекламации могут менеджеры и сервис-менеджеры с доступом к рекламациям.')
     
     if request.method == 'POST':
         def get_service_manager_for_city(city):

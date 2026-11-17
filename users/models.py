@@ -92,7 +92,7 @@ class User(AbstractUser):
 
     @property
     def can_create_complaint(self):
-        return self.role == Role.SERVICE_MANAGER and not self.measurements_only
+        return self.role in (Role.MANAGER, Role.SERVICE_MANAGER) and not self.measurements_only
 
     def managed_salon_ids(self):
         """Салоны руководителя группы (кешируется на объекте до конца запроса)."""

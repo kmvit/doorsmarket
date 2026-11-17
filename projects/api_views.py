@@ -417,7 +417,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Создание рекламации с установкой типа (если указан СМ)"""
         if not request.user.can_create_complaint:
-            raise PermissionDenied('Создавать рекламации может только сервис-менеджер.')
+            raise PermissionDenied('Создавать рекламации могут менеджеры и сервис-менеджеры с доступом к рекламациям.')
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
