@@ -267,11 +267,20 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     @action(detail=False, methods=['get'], url_path='folder_counts')
     def folder_counts(self, request):
         """Счётчики папок монтажей для главной. ?mine=true — монтажи по своим заказам."""
+        from .complaints import complaint_installations
+
         base = installations_for_user(request.user)
         if request.query_params.get('mine') == 'true':
             base = base.filter(order__manager=request.user)
+        complaint_count = complaint_installations(
+            request.user, {'folder': 'to_assign', 'mine': request.query_params.get('mine')},
+        ).count()
         return Response([
-            {'folder': folder, 'label': label, 'count': apply_installation_folder(base, folder).count()}
+            {
+                'folder': folder, 'label': label,
+                'count': apply_installation_folder(base, folder).count()
+                + (complaint_count if folder == 'to_assign' else 0),
+            }
             for folder, label in INSTALLATION_FOLDERS
         ])
 

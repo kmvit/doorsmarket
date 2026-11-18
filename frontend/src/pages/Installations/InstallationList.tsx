@@ -63,7 +63,7 @@ const InstallationList = () => {
   const [complaintsOnly, setComplaintsOnly] = usePersistedState('installations:complaints_only', false)
   const [complaintRows, setComplaintRows] = useState<ComplaintInstallationRow[]>([])
   // Статусы, оплата и папки — отдельные фильтры обычных монтажей.
-  const complaintsShown = !folder && !status.length && paid === ''
+  const complaintsShown = (!folder || folder === 'to_assign') && !status.length && paid === ''
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -82,7 +82,12 @@ const InstallationList = () => {
       }
       const [list, complaints] = await Promise.all([
         complaintsOnly ? Promise.resolve([]) : installationsAPI.getList(filters),
-        complaintsShown ? installationsAPI.getComplaintRows(filters).catch(() => []) : Promise.resolve([]),
+        complaintsShown
+          ? installationsAPI.getComplaintRows(filters).catch((err) => {
+              if (folder === 'to_assign') throw err
+              return []
+            })
+          : Promise.resolve([]),
       ])
       setItems(list)
       setComplaintRows(complaints)
@@ -98,7 +103,7 @@ const InstallationList = () => {
   // чтобы режим «только рекламационные» всегда показывал ожидаемый результат.
   useEffect(() => {
     if (!complaintsOnly) return
-    if (folder) clearFolder()
+    if (folder && folder !== 'to_assign') clearFolder()
     if (status.length) setStatus([])
     if (paid) setPaid('')
     // eslint-disable-next-line react-hooks/exhaustive-deps

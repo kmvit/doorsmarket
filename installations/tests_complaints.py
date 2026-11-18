@@ -48,6 +48,32 @@ class ComplaintInstallationsTest(ScheduleTestBase):
         self.assertIn('с 10:00 до 12:00', planned['window'])
         self.assertTrue(next(r for r in rows if r['id'] == self.to_plan.id)['needs_planning'])
 
+    def test_to_assign_folder_includes_visible_complaints_and_counts_them(self):
+        from users.models import City
+
+        client = self.client_for(self.sm)
+
+        def check_folder(expected_ids):
+            params = {'folder': 'to_assign'}
+            complaints = client.get('/api/v1/installations/complaints/', params)
+            self.assertEqual(complaints.status_code, 200)
+            self.assertEqual([row['id'] for row in complaints.data], expected_ids)
+            installations = client.get('/api/v1/installations/', params).data
+            counts = client.get('/api/v1/installations/folder_counts/').data
+            counts = {row['folder']: row['count'] for row in counts}
+            self.assertEqual(counts['to_assign'], len(installations) + len(expected_ids))
+
+        check_folder([self.to_plan.id])
+        other_city = City.objects.create(name='Другой город')
+        self.manager.city = other_city
+        self.manager.save(update_fields=['city'])
+        check_folder([])
+
+        Complaint.objects.filter(pk=self.to_plan.pk).update(initiator=self.sm)
+        check_folder([self.to_plan.id])
+        Complaint.objects.filter(pk=self.to_plan.pk).update(status=ComplaintStatus.INSTALLATION_PLANNED)
+        check_folder([])
+
     def test_installer_sees_only_his_complaints(self):
         rows = self.client_for(self.inst1).get('/api/v1/installations/complaints/').data
         self.assertEqual([r['id'] for r in rows], [self.planned.id])

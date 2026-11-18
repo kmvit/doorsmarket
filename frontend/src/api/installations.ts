@@ -38,6 +38,7 @@ export const installationsAPI = {
     if (filters?.mine) params.mine = 'true'
     if (filters?.cities?.length) params.city__in = filters.cities.join(',')
     if (filters?.managers?.length) params.manager__in = filters.managers.join(',')
+    if (filters?.folder) params.folder = filters.folder
     return withOfflineFallback({
       cacheKey: `installations_complaints_${JSON.stringify(params)}`,
       request: async () => asList<ComplaintInstallationRow>((await apiClient.get('/installations/complaints/', { params })).data),

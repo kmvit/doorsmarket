@@ -26,6 +26,10 @@ def complaint_installations(user, params):
         Complaint.objects.select_related('manager', 'installer_assigned').prefetch_related('defective_products'),
         user,
     ).filter(status__in=COMPLAINT_INSTALLATION_STATUSES)
+    if params.get('folder') == 'to_assign':
+        if not user.can_manage_service:
+            return qs.none()
+        qs = qs.filter(status=ComplaintStatus.SHIPPING_PLANNED)
     if (search := (params.get('search') or '').strip().lstrip('#№')):
         lookup = (Q(client_name__icontains=search) | Q(address__icontains=search)
                   | Q(order_number__icontains=search) | Q(contact_phone__icontains=search))
