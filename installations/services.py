@@ -565,22 +565,31 @@ class PaymentEmailError(Exception):
 
 SPB_PAYMENT_EMAILS = ('amtbuh1@yandex.ru', '9111776579@mail.ru')
 SAMARA_PAYMENT_EMAILS = ('gerasimova@dveri-academy.ru',)
+SHARED_PAYMENT_EMAIL = 'oplata-academy@yandex.ru'
+SHARED_PAYMENT_CITIES = {'казань', 'нижний новгород'}
+
+
+def _payment_city_name(city):
+    return city.name.strip().casefold().removeprefix('г.').strip()
 
 
 def payment_recipients(inst):
-    """Адресаты актов на оплату: для Санкт-Петербурга — обе бухгалтерии."""
+    """Почта из карточки города, с прежними адресами для СПб и Самары при пустом поле."""
     city = inst.order.salon.city
-    city_name = (city.name or '').strip().casefold()
+    city_name = _payment_city_name(city)
+    address = city.accountant_email.strip()
+    if address and (address.casefold() != SHARED_PAYMENT_EMAIL or city_name in SHARED_PAYMENT_CITIES):
+        return [address]
     if city_name in {'санкт-петербург', 'санкт петербург', 'спб', 'питер'}:
         return list(SPB_PAYMENT_EMAILS)
-    if city_name in {'самара', 'г. самара'}:
+    if city_name == 'самара':
         return list(SAMARA_PAYMENT_EMAILS)
-    return [city.accountant_email] if city.accountant_email else []
+    return []
 
 
 def send_to_payment(inst, estimate, actor):
     """
-    Акт выполненных работ — бухгалтеру города. Письмо уходит с общего адреса,
+    Акт — бухгалтеру города и в копии салону. Письмо уходит с общего адреса,
     ответ — монтажнику (Reply-To); в теме монтажник, номер заказа и монтажа,
     в теле — смета работ и ссылка на монтаж.
     """
@@ -592,6 +601,12 @@ def send_to_payment(inst, estimate, actor):
     recipients = payment_recipients(inst)
     if not recipients:
         raise PaymentEmailError('У города не указана почта бухгалтера — обратитесь к администратору.')
+    salon = inst.order.salon
+    salon_email = salon.payment_email.strip()
+    excluded_copies = {address.casefold() for address in recipients}
+    if _payment_city_name(salon.city) not in SHARED_PAYMENT_CITIES:
+        excluded_copies.add(SHARED_PAYMENT_EMAIL)
+    copies = [salon_email] if salon_email and salon_email.casefold() not in excluded_copies else []
     acts = list(payment_acts(inst))
     if not acts:
         raise PaymentEmailError('Нет подписанного акта — без него на оплату не отправить.')
@@ -606,7 +621,7 @@ def send_to_payment(inst, estimate, actor):
     )
     email = EmailMessage(
         subject=payment_subject(inst, actor), body=body, from_email=settings.DEFAULT_FROM_EMAIL,
-        to=recipients, reply_to=[actor.email] if actor.email else None,
+        to=recipients, cc=copies, reply_to=[actor.email] if actor.email else None,
     )
     for f in acts:
         with f.file.open('rb') as fh:
@@ -621,6 +636,7 @@ def send_to_payment(inst, estimate, actor):
     again = visit.payment_sent_at is not None
     visit.payment_sent_at, visit.payment_sent_by = timezone.now(), actor
     visit.save(update_fields=['payment_sent_at', 'payment_sent_by', 'updated_at'])
+    delivered_to = recipients + copies
     inst.log(EventKind.PAYMENT_SENT, actor=actor,
-             description=f'{"Повторно: " if again else ""}акт отправлен на {", ".join(recipients)}',
-             meta={'estimate': estimate, 'recipients': recipients})
+             description=f'{"Повторно: " if again else ""}акт отправлен на {", ".join(delivered_to)}',
+             meta={'estimate': estimate, 'recipients': delivered_to})

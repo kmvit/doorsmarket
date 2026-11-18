@@ -21,6 +21,7 @@ SCORES = {'overall': 5, 'installation': 4, 'manager': 5}
 class RatingPaymentBase(InstallerTestBase):
     def setUp(self):
         super().setUp()
+        self.city.name = 'Казань'
         self.city.accountant_email = 'oplata-academy@yandex.ru'
         self.city.save()
         self.inst1.email = 'ivan@academy.test'
@@ -120,6 +121,34 @@ class PaymentTest(RatingPaymentBase):
     def test_partial_can_be_sent(self):
         self.finish(partial=True)
         self.assertEqual(self.send_payment().status_code, 200)
+
+    def test_city_admin_address_and_order_salon_copy(self):
+        self.city.name = 'Самара'
+        self.city.accountant_email = 'accounting@academy.test'
+        self.city.save()
+        salon = self.order.salon
+        salon.payment_email = 'salon@academy.test'
+        salon.save(update_fields=['payment_email'])
+        self.finish()
+
+        response = self.send_payment()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['accounting@academy.test'])
+        self.assertEqual(mail.outbox[0].cc, ['salon@academy.test'])
+        self.assertEqual([a[0] for a in mail.outbox[0].attachments], ['Акт.jpg'])
+
+    def test_shared_address_is_restricted_to_kazan_and_nizhny_novgorod(self):
+        self.city.name = 'Нижний Новгород'
+        self.city.save(update_fields=['name'])
+        self.finish()
+        self.assertEqual(self.send_payment().status_code, 200)
+        self.assertEqual(mail.outbox[0].to, ['oplata-academy@yandex.ru'])
+
+        self.city.name = 'Воронеж'
+        self.city.save(update_fields=['name'])
+        self.assertEqual(self.send_payment().status_code, 400)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_requires_estimate_and_completion(self):
         self.upload(self.inst1, kind='act')

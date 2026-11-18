@@ -16,7 +16,7 @@ class DesignerAdmin(admin.ModelAdmin):
 
 @admin.register(Salon)
 class SalonAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'city', 'address', 'phone', 'is_active')
+    list_display = ('id', 'name', 'city', 'address', 'phone', 'payment_email', 'is_active')
     list_filter = ('city', 'is_active')
     search_fields = ('name', 'address')
     list_editable = ('is_active',)

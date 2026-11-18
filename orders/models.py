@@ -70,6 +70,10 @@ class Salon(models.Model):
     )
     address = models.CharField(max_length=500, blank=True, verbose_name='Адрес')
     phone = models.CharField(max_length=50, blank=True, verbose_name='Телефон')
+    payment_email = models.EmailField(
+        blank=True, verbose_name='Email салона для актов на оплату',
+        help_text='На этот адрес приходит копия акта монтажа, отправленного на оплату.',
+    )
     offer_instagram_url = models.URLField(
         max_length=500, blank=True, verbose_name='Ссылка Instagram для красивого КП',
     )
