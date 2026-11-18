@@ -10,6 +10,8 @@
 как `file://…`, не ходя по сети.
 """
 import os
+import re
+from urllib.parse import urlsplit
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -21,9 +23,12 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'orders', 'pretty
 # Постоянные картинки шаблона: обложка, слайды «о компании» и контакты.
 # Вырезаны из исходного PDF Академии, лежат рядом с шаблоном.
 ASSET_FILES = {
+    'contact_max': 'contact-max.jpg',
+    'contact_instagram': 'contact-instagram.png',
+    'contact_interior': 'contact-interior.jpg',
+    'contact_brand': 'contact-brand.jpg',
     'wordmark': 'academy-wordmark.png',
     'logo_academy': 'logo-academy.png',
-    'logo_academy_red': 'logo-academy-red.png',
     'logo_jaguar': 'logo-jaguar.png',
     'cover_door': 'cover-door.jpg',
     'cover_handle': 'cover-handle.png',
@@ -31,13 +36,17 @@ ASSET_FILES = {
     'about_moto': 'about-moto.jpg',
     'about_worker': 'about-worker.jpg',
     'about_folder': 'about-folder.jpg',
-    'facts_interior': 'facts-interior.jpg',
-    'facts_ruble': 'facts-ruble.png',
 }
 
-# Год основания компании — из шаблона Академии: от него считается «N лет на
-# рынке» на слайде о компании, чтобы число не устаревало.
-FOUNDED_YEAR = 1989
+
+def _web_url(value):
+    """В PDF разрешены только полноценные веб-ссылки из настроек."""
+    value = (value or '').strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return ''
+    return value if parsed.scheme in ('https', 'http') and parsed.netloc else ''
 
 
 def _abs_path(filefield):
@@ -205,6 +214,9 @@ def build_context(offer):
         manager_name = f'{manager.first_name} {manager.last_name}'.strip() or manager.username
 
     salon = order.salon
+    phone = (getattr(manager, 'phone_number', '') or getattr(salon, 'phone', '') or '').strip()
+    phone_digits = re.sub(r'[^0-9]', '', phone)
+    phone_uri = ('tel:' + ('+' if phone.startswith('+') else '') + phone_digits) if phone_digits else ''
     return {
         'offer': offer,
         'order': order,
@@ -212,6 +224,13 @@ def build_context(offer):
         'totals': offer.resolved_totals(),
         'general_attachments': general_attachments,
         'manager_name': manager_name,
+        'manager_title': manager.get_role_display() if manager else '',
+        'manager_photo': _abs_path(getattr(manager, 'offer_photo', None)),
+        'contact_phone': phone,
+        'contact_phone_uri': phone_uri,
+        'max_url': _web_url(getattr(manager, 'offer_max_url', '')),
+        'instagram_url': _web_url(getattr(salon, 'offer_instagram_url', '')),
+        'instagram_qr': _abs_path(getattr(salon, 'offer_instagram_qr', None)),
         'salon_address': getattr(salon, 'address', '') or '',
         'salon_phone': getattr(salon, 'phone', '') or '',
         # Город салона, а не сети: КП из Нижнего Новгорода не должно
@@ -220,8 +239,6 @@ def build_context(offer):
         # Год на обложке — всегда текущий: КП печатают сегодня, даже если
         # заказ завели в позапрошлом году.
         'offer_year': timezone.localdate().year,
-        'founded_year': FOUNDED_YEAR,
-        'years_on_market': timezone.localdate().year - FOUNDED_YEAR,
         'assets': {
             key: os.path.join(ASSETS_DIR, filename)
             for key, filename in ASSET_FILES.items()

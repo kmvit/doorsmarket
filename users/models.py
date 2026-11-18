@@ -62,6 +62,13 @@ class User(AbstractUser):
         verbose_name='Номер телефона',
         help_text='Формат: +7XXXXXXXXXX'
     )
+    offer_photo = models.ImageField(
+        upload_to='users/offer_photos/', blank=True, verbose_name='Фото для красивого КП',
+    )
+    offer_max_url = models.URLField(
+        max_length=500, blank=True, verbose_name='Ссылка MAX для красивого КП',
+        help_text='Полная ссылка на контакт сотрудника в MAX.',
+    )
     salon = models.ForeignKey(
         'orders.Salon',
         on_delete=models.SET_NULL,

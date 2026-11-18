@@ -22,6 +22,7 @@ class UserAdmin(BaseUserAdmin):
         ('Дополнительная информация', {'fields': (
             'role', 'measurements_only', 'performs_service_manager_duties', 'city', 'phone_number', 'salon',
         )}),
+        ('Красивое КП', {'fields': ('offer_photo', 'offer_max_url')}),
         ('Руководитель группы салонов', {
             'fields': ('managed_salons',),
             'description': 'Только для роли «Руководитель группы салонов»: какие салоны он видит.',

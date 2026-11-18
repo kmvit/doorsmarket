@@ -70,6 +70,13 @@ class Salon(models.Model):
     )
     address = models.CharField(max_length=500, blank=True, verbose_name='Адрес')
     phone = models.CharField(max_length=50, blank=True, verbose_name='Телефон')
+    offer_instagram_url = models.URLField(
+        max_length=500, blank=True, verbose_name='Ссылка Instagram для красивого КП',
+    )
+    offer_instagram_qr = models.ImageField(
+        upload_to='salons/offer_qr/', blank=True, verbose_name='QR-код Instagram для красивого КП',
+        help_text='Загрузите QR-код, соответствующий ссылке Instagram салона.',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Активен')
 
     class Meta:
