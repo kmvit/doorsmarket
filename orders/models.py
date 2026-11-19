@@ -77,6 +77,10 @@ class Salon(models.Model):
     offer_instagram_url = models.URLField(
         max_length=500, blank=True, verbose_name='Ссылка Instagram для красивого КП',
     )
+    offer_map_url = models.URLField(
+        max_length=500, blank=True, verbose_name='Ссылка на Яндекс Карты для красивого КП',
+        help_text='Вставьте ссылку на карточку салона или точку на карте. Если поле пустое, откроется поиск по адресу салона.',
+    )
     offer_instagram_qr = models.ImageField(
         upload_to='salons/offer_qr/', blank=True, verbose_name='QR-код Instagram для красивого КП',
         help_text='Загрузите QR-код, соответствующий ссылке Instagram салона.',

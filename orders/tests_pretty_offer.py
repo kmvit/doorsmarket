@@ -910,6 +910,7 @@ class PrettyOfferFlowTest(TestCase):
         self.manager.save()
         self.salon.offer_instagram_url = 'https://www.instagram.com/academy_test/'
         self.salon.offer_instagram_qr = upload('instagram-qr.png')
+        self.salon.offer_map_url = 'https://yandex.ru/maps/?ll=49.1%2C55.8&z=17'
         self.salon.save()
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
@@ -920,6 +921,7 @@ class PrettyOfferFlowTest(TestCase):
             self.assertEqual(links, {
                 'tel:+79287511234', 'https://max.ru/u/test-consultant',
                 'https://www.instagram.com/academy_test/',
+                self.salon.offer_map_url,
             })
             self.assertGreaterEqual(len(contacts.images), 3)
             self.assertIn('Проём № 1', document.pages[2].extract_text())
@@ -936,9 +938,28 @@ class PrettyOfferFlowTest(TestCase):
         self.assertEqual(context['max_url'], '')
         self.assertEqual(context['instagram_url'], '')
         self.assertEqual(context['contact_phone_uri'], '')
+        self.assertEqual(context['salon_map_url'], '')
         self.salon.phone = '+7 800 555-35-35'
         self.salon.save()
         self.assertEqual(build_context(build_or_refresh(self.order))['contact_phone_uri'], 'tel:+78005553535')
+
+    def test_map_button_searches_for_salon_address_without_a_direct_link(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        self.salon.address = 'ул. Баумана, 7/2'
+        self.salon.save(update_fields=['address'])
+        self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
+        self.assertEqual(response.status_code, 200)
+
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(response.content)) as document:
+            links = [link['uri'] for link in document.pages[1].hyperlinks]
+        self.assertEqual(len(links), 1)
+        destination = urlsplit(links[0])
+        self.assertEqual((destination.scheme, destination.netloc, destination.path),
+                         ('https', 'yandex.ru', '/maps/'))
+        self.assertEqual(parse_qs(destination.query), {'text': ['Казань, ул. Баумана, 7/2']})
 
     def test_opening_slide_has_no_preset_header(self):
         """

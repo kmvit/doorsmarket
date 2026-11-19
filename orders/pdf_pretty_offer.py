@@ -11,7 +11,7 @@
 """
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -214,6 +214,13 @@ def build_context(offer):
         manager_name = f'{manager.first_name} {manager.last_name}'.strip() or manager.username
 
     salon = order.salon
+    # Город берём из карточки салона, чтобы поиск на карте уточнял адрес.
+    salon_city = getattr(getattr(salon, 'city', None), 'name', '') or ''
+    salon_address = (getattr(salon, 'address', '') or '').strip()
+    salon_map_url = _web_url(getattr(salon, 'offer_map_url', ''))
+    if not salon_map_url and salon_address:
+        query = urlencode({'text': ', '.join(filter(None, (salon_city, salon_address)))})
+        salon_map_url = f'https://yandex.ru/maps/?{query}'
     phone = (getattr(manager, 'phone_number', '') or getattr(salon, 'phone', '') or '').strip()
     phone_digits = re.sub(r'[^0-9]', '', phone)
     phone_uri = ('tel:' + ('+' if phone.startswith('+') else '') + phone_digits) if phone_digits else ''
@@ -231,11 +238,10 @@ def build_context(offer):
         'max_url': _web_url(getattr(manager, 'offer_max_url', '')),
         'instagram_url': _web_url(getattr(salon, 'offer_instagram_url', '')),
         'instagram_qr': _abs_path(getattr(salon, 'offer_instagram_qr', None)),
-        'salon_address': getattr(salon, 'address', '') or '',
+        'salon_address': salon_address,
         'salon_phone': getattr(salon, 'phone', '') or '',
-        # Город салона, а не сети: КП из Нижнего Новгорода не должно
-        # представляться казанским — на контактах стоял жёстко вписанный город.
-        'salon_city': getattr(getattr(salon, 'city', None), 'name', '') or '',
+        'salon_city': salon_city,
+        'salon_map_url': salon_map_url,
         # Год на обложке — всегда текущий: КП печатают сегодня, даже если
         # заказ завели в позапрошлом году.
         'offer_year': offer_year,

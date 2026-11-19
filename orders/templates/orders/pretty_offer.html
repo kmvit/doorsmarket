@@ -260,12 +260,12 @@
     </div>
   </div>
   <img class="abs contacts-brand" src="file://{{ assets.contact_brand }}" alt="ACADEMY">
-  {% if salon_city or salon_address or salon_phone %}
+  {% if salon_city or salon_address or salon_phone or salon_map_url %}
   <div class="abs contacts-card">
     <div class="contacts-card-title">{{ salon_address|default:salon_city }}</div>
     {% if salon_city or salon_address %}<div class="contacts-address"><strong>Адрес:</strong><br>{% if salon_city %}г. {{ salon_city }}{% if salon_address %}, {% endif %}{% endif %}{{ salon_address }}</div>{% endif %}
     {% if salon_phone %}<div class="contacts-address"><strong>Телефон:</strong><br>{{ salon_phone }}</div>{% endif %}
-    {% if salon_address %}<a class="contacts-map" href="https://yandex.ru/maps/?text={{ salon_city|urlencode }}%20{{ salon_address|urlencode }}">Открыть в Яндекс Картах ↗</a>{% endif %}
+    {% if salon_map_url %}<a class="contacts-map" href="{{ salon_map_url }}">Открыть в Яндекс Картах ↗</a>{% endif %}
   </div>
   {% endif %}
   {% if manager_photo %}<img class="abs contacts-photo" src="file://{{ manager_photo }}" alt="Ваш консультант">{% endif %}
