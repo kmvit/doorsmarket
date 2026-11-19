@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { measurementsAPI, openingReworkText } from '../../api/measurements'
 import { Measurement, MeasurementOpening } from '../../types/measurements'
 import { DOUBLE_DOOR_TYPE } from '../../types/orders'
+import { isVideoFile } from '../../utils/videoFiles'
 
 /**
  * Печатная версия бланка замера. Рендерится на клиенте из кешированных данных,
@@ -87,6 +88,9 @@ const MeasurementBlankPrint = () => {
     : (m.signature_photo_url ? [m.signature_photo_url] : [])
   const openingImages = m.attachments.filter(
     (a) => a.file_url && /\.(jpe?g|png|gif|webp|bmp)$/i.test(a.file_url.split('?')[0]),
+  )
+  const printablePlans = (m.opening_plan_urls || []).filter(
+    (f) => !isVideoFile(f.name) && !isVideoFile(f.url),
   )
 
   return (
@@ -309,10 +313,10 @@ const MeasurementBlankPrint = () => {
         })}
 
         {/* Планы открывания — их может быть несколько; PDF-файлы просто не отрисуются */}
-        {(m.opening_plan_urls || []).map((f, idx) => (
+        {printablePlans.map((f, idx) => (
           <div key={`${f.url}-${idx}`} className="photo-page mt-6">
             <div className="text-xs text-gray-500 mb-1">
-              План открывания{m.opening_plan_urls.length > 1 ? ` (${idx + 1} из ${m.opening_plan_urls.length})` : ''}
+              План открывания{printablePlans.length > 1 ? ` (${idx + 1} из ${printablePlans.length})` : ''}
             </div>
             <HideOnError src={f.url} alt="План открывания" className="w-full max-h-[900px] object-contain" />
           </div>

@@ -23,6 +23,7 @@ import FileViewer from '../../components/common/FileViewer'
 import FloatingFileViewer, { FloatingFile } from '../../components/common/FloatingFileViewer'
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
+import { isVideoFile } from '../../utils/videoFiles'
 
 const fieldCls = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500'
 const labelCls = 'block text-xs font-medium text-gray-600 mb-1'
@@ -887,15 +888,21 @@ const MeasurementForm = () => {
               />
             </div>
             <div>
-              {/* Планов открывания в заявке может быть несколько */}
-              <span className="text-gray-500">План открывания: </span>
+              <span className="text-gray-500">Вложения заявки: </span>
               {(m.opening_plan_urls || []).length > 0 ? (
                 <span className="inline-flex flex-wrap gap-x-3 gap-y-0.5 align-top">
                   {m.opening_plan_urls.map((f, idx) => (
                     <button
                       key={`${f.url}-${idx}`}
                       type="button"
-                      onClick={() => setPlanFile((prev) => (prev?.url === f.url ? null : { url: f.url, name: f.name }))}
+                      onClick={() => {
+                        if (isVideoFile(f.name) || isVideoFile(f.url)) {
+                          setPlanFile(null)
+                          setViewerFile(f)
+                        } else {
+                          setPlanFile((prev) => (prev?.url === f.url ? null : f))
+                        }
+                      }}
                       className={`hover:underline ${planFile?.url === f.url ? 'text-primary-800 font-semibold' : 'text-primary-600'}`}
                     >
                       {f.name}
@@ -903,7 +910,7 @@ const MeasurementForm = () => {
                   ))}
                 </span>
               ) : (
-                <span className="text-gray-500">Не приложен</span>
+                <span className="text-gray-500">Нет файлов</span>
               )}
             </div>
             <div>

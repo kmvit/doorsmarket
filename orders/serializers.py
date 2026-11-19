@@ -6,7 +6,7 @@ from .models import (
     Salon, Designer, Order, OrderItem, DoorType, DOUBLE_OPENING_TYPES, SLIDING_OPENING_TYPES, OrderAddon, OrderAttachment, ActivityKind,
     MeasurementRequest, OrderActionReminder,
     Measurement, MeasurementOpening, MeasurementAttachment,
-    OrderActivityLog, OVERDUE_STATUSES,
+    OrderActivityLog, CLOSED_ORDER_STATUSES, OVERDUE_STATUSES,
     OfferTextPreset, PrettyOffer, PrettyOfferAttachment, PrettyOfferItem,
     PrettyOfferItemAddon,
 )
@@ -723,6 +723,8 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
         ]
 
     def _next_reminder(self, obj):
+        if obj.status in CLOSED_ORDER_STATUSES:
+            return None
         return getattr(obj, '_next_reminder', None) or obj.action_reminders.filter(done=False).order_by('due_at').first()
 
     def get_next_action_at(self, obj):

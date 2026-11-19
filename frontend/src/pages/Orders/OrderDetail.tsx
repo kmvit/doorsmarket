@@ -15,6 +15,7 @@ import MeasurementLinkSection from './MeasurementLinkSection'
 import HScrollSync from '../../components/common/HScrollSync'
 import LoadingOverlay from '../../components/common/LoadingOverlay'
 import FileViewer from '../../components/common/FileViewer'
+import { isVideoFile } from '../../utils/videoFiles'
 import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
 import OrderInstallationsBlock from '../../components/installations/OrderInstallationsBlock'
 import { canCreateInstallation, canSeeInstallations } from '../../types/installations'
@@ -334,6 +335,9 @@ const OrderDetail = () => {
   }
 
   const salon = order.salon as any
+  const planUrl = measurement?.opening_plan_url
+  const planName = measurement?.opening_plan_urls?.find((file) => file.url === planUrl)?.name
+  const planLabel = planUrl && isVideoFile(planUrl) ? 'Видео из заявки' : 'План открывания'
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl">
@@ -692,13 +696,13 @@ const OrderDetail = () => {
                 </li>
               ))}
             </ul>
-            {measurement.opening_plan_url && (
+            {planUrl && (
               <button
                 type="button"
-                onClick={() => setViewerFile({ url: measurement.opening_plan_url!, name: 'План открывания' })}
+                onClick={() => setViewerFile({ url: planUrl, name: planName || planLabel })}
                 className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100"
               >
-                План открывания
+                {planLabel}
               </button>
             )}
           </div>
@@ -755,7 +759,7 @@ const OrderDetail = () => {
               </div>
               {(measurementRequest.files || []).length > 0 && (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gray-500 shrink-0">План открывания</dt>
+                  <dt className="text-gray-500 shrink-0">Вложения</dt>
                   <dd className="text-right">
                     {/* Открываем через FileViewer, а не target="_blank": в PWA на iOS
                         новая вкладка открывается без браузерных кнопок и файл нельзя закрыть */}

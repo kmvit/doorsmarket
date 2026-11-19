@@ -14,6 +14,7 @@
 import apiClient from '../api/client'
 import { Measurement, MeasurementListItem } from '../types/measurements'
 import { Order } from '../types/orders'
+import { isVideoFile } from '../utils/videoFiles'
 import { measurementUtils, orderUtils, cacheUtils } from './offline'
 
 // Кеш файлов замера (планы открывания, фото, документы). Тем же именем
@@ -92,13 +93,13 @@ const runPool = async <T>(
 }
 
 // Файлы замера и его заказа: планы открывания, фото проёмов, подпись, документы.
-// Видео пропускаем — они тяжёлые, а в поле не нужны.
+// Видео доступны по сети. При подготовке офлайн-копии пропускаем их из-за размера.
 const mediaUrls = (m: Measurement): string[] => {
   const urls: string[] = []
   for (const plan of m.opening_plan_urls || []) {
-    if (plan?.url) urls.push(plan.url)
+    if (plan?.url && !isVideoFile(plan.name) && !isVideoFile(plan.url)) urls.push(plan.url)
   }
-  if (m.opening_plan_url) urls.push(m.opening_plan_url)
+  if (m.opening_plan_url && !isVideoFile(m.opening_plan_url)) urls.push(m.opening_plan_url)
   if (m.signature_photo_url) urls.push(m.signature_photo_url)
   for (const s of m.signatures || []) {
     if (s.url) urls.push(s.url)

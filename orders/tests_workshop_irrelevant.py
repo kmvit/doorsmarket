@@ -61,3 +61,6 @@ class WorkshopHidesIrrelevantTest(TestCase):
 
     def test_reminder_today_count_hides_irrelevant(self):
         self.assertEqual(self.ids({'with_reminder_today': 'true'}), {self.live.id})
+
+    def test_overdue_reminders_hide_irrelevant(self):
+        self.assertEqual(self.ids({'with_overdue_reminder': 'true'}), {self.live.id})

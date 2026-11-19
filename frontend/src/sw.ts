@@ -5,6 +5,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute, NavigationRoute } from 'workbox-routing'
 import { CacheFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
+import { isVideoFile } from './utils/videoFiles'
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: any[] }
 
@@ -48,7 +49,9 @@ registerRoute(
   ({ url, request }) =>
     request.method === 'GET' &&
     url.origin === self.location.origin &&
-    url.pathname.startsWith('/media/'),
+    url.pathname.startsWith('/media/') &&
+    // Видео из заявки воспроизводятся по сети с поддержкой запросов Range.
+    !(url.pathname.startsWith('/media/orders/opening_plans/') && isVideoFile(url.pathname)),
   new CacheFirst({
     cacheName: 'offline-media',
     plugins: [

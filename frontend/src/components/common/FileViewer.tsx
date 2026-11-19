@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import PdfPages from './PdfPages'
+import { isVideoFile } from '../../utils/videoFiles'
 
 interface FileViewerProps {
   fileUrl: string | null
@@ -45,7 +46,7 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
   const detectType = (s: string): 'image' | 'video' | 'pdf' | 'other' | null => {
     const v = s.toLowerCase().split('?')[0].split('#')[0]
     if (v.match(/\.(jpg|jpeg|jfif|jpe|png|gif|webp|bmp|svg|heic|heif|avif)$/)) return 'image'
-    if (v.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/)) return 'video'
+    if (isVideoFile(v)) return 'video'
     if (v.match(/\.(pdf)$/)) return 'pdf'
     return null
   }
@@ -121,6 +122,8 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
           <video
             src={normalizedUrl}
             controls
+            playsInline
+            preload="metadata"
             className="max-w-full max-h-full"
           >
             Ваш браузер не поддерживает воспроизведение видео.

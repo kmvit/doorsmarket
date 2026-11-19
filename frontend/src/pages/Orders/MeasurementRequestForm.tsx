@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ordersAPI } from '../../api/orders'
 import { MeasurementRequest, MeasurementPayer, CreateMeasurementRequestData, MeasurementRequestFile } from '../../types/orders'
 import FileViewer from '../../components/common/FileViewer'
+import { VIDEO_FILE_ACCEPT } from '../../utils/videoFiles'
 
 interface Props {
   orderId: number
@@ -24,8 +25,6 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
     comment: existing?.comment || '',
     address: defaultAddress,
   })
-  // Планов открывания может быть несколько: копим выбранные файлы, а уже
-  // приложенные показываем списком с возможностью удалить
   const [newFiles, setNewFiles] = useState<File[]>([])
   const [removedFileIds, setRemovedFileIds] = useState<(number | null)[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -59,7 +58,11 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
       onClose()
     } catch (err: any) {
       const detail = err.response?.data
-      setError(typeof detail === 'object' ? Object.values(detail).flat().join(', ') : (err.message || 'Ошибка сохранения'))
+      if (err.response?.status === 413) {
+        setError('Общий размер вложений слишком большой. Попробуйте загрузить файлы по одному или уменьшить размер видео.')
+      } else {
+        setError(detail && typeof detail === 'object' ? Object.values(detail).flat().join(', ') : (err.message || 'Ошибка сохранения'))
+      }
       setIsSubmitting(false)
     }
   }
@@ -111,7 +114,9 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">План открывания (PDF/JPG, можно несколько)</label>
+            <label htmlFor="measurement-request-files" className="block text-sm font-medium text-gray-700 mb-1">
+              Вложения (PDF, фото, видео)
+            </label>
             {/* Уже приложенные файлы: открываются во встроенном просмотрщике */}
             {existingFiles.length > 0 && (
               <ul className="mb-2 space-y-1">
@@ -155,9 +160,10 @@ const MeasurementRequestForm = ({ orderId, defaultClientName = '', defaultPhone 
               </ul>
             )}
             <input
+              id="measurement-request-files"
               type="file"
               multiple
-              accept="application/pdf,image/*,.jfif"
+              accept={`application/pdf,image/*,.jfif,${VIDEO_FILE_ACCEPT}`}
               onChange={(e) => {
                 // Добавляем к уже выбранным: на телефоне файлы часто выбирают по одному
                 const picked = Array.from(e.target.files || [])

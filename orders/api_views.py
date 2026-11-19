@@ -1715,13 +1715,19 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
         if self.request.query_params.get('mine') == 'true':
             qs = qs.filter(manager=user)
         qs = apply_people_filters(qs, self.request)
-        if self.request.query_params.get('with_reminder_today') == 'true':
+        params = self.request.query_params
+        reminder_today = params.get('with_reminder_today') == 'true'
+        reminder_tomorrow = params.get('with_reminder_tomorrow') == 'true'
+        reminder_overdue = params.get('with_overdue_reminder') == 'true'
+        if reminder_today or reminder_tomorrow or reminder_overdue:
+            qs = qs.exclude(status__in=CLOSED_ORDER_STATUSES)
+        if reminder_today:
             today = timezone.localdate()
             qs = qs.filter(action_reminders__due_at__date=today, action_reminders__done=False).distinct()
-        if self.request.query_params.get('with_reminder_tomorrow') == 'true':
+        if reminder_tomorrow:
             tomorrow = timezone.localdate() + timedelta(days=1)
             qs = qs.filter(action_reminders__due_at__date=tomorrow, action_reminders__done=False).distinct()
-        if self.request.query_params.get('with_overdue_reminder') == 'true':
+        if reminder_overdue:
             qs = qs.filter(action_reminders__due_at__lt=timezone.now(), action_reminders__done=False).distinct()
         return qs
 
