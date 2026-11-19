@@ -169,17 +169,21 @@
   .about-1 { left: 0; top: 12pt; width: 126pt; height: 162pt; }
   .about-2 { left: 0; top: 187pt; width: 127pt; height: 162pt; }
   .about-3 { left: 0; top: 365pt; width: 127pt; height: 162pt; }
-  .about-title { left: 365pt; top: 30pt; width: 188pt; text-align: right; }
-  .about-title .ru { font-size: 22pt; font-weight: 400; }
-  .about-title .en { font-size: 12pt; }
+  .about-title { left: 271pt; top: 218pt; width: 380pt; color: #1a1a1a; }
+  .about-title .brand { font-size: 17pt; letter-spacing: 0.6pt; }
+  .about-title .ru { font-size: 22pt; letter-spacing: 0.6pt; margin-top: 2pt; }
+  .about-title .en { font-size: 12pt; letter-spacing: 0.6pt; color: #555; margin-top: 3pt; }
+
+  /* У большого фото правая сторона — почти полукруг, как в макете. */
+  .about-photo { left: 0; top: 120pt; width: 258pt; height: 318pt; border-radius: 0 130pt 130pt 0; }
   .about-lead {
-    left: 300pt; top: 190pt; width: 330pt; text-align: center;
-    font-size: 11pt; line-height: 1.45;
+    left: 280pt; top: 40pt; width: 400pt; text-align: right;
+    font-size: 11pt; line-height: 1.7; color: #1a1a1a;
   }
   .about-lead img { height: 15pt; vertical-align: -2pt; margin: 0 3pt; }
   .about-body {
-    left: 298pt; top: 293pt; width: 322pt; text-align: right;
-    font-size: 10pt; line-height: 1.45; color: #1a1a1a;
+    left: 280pt; top: 150pt; width: 400pt; text-align: right;
+    font-size: 10pt; line-height: 1.8; color: #1a1a1a;
   }
   .about-body .brand { font-size: 15pt; display: block; margin-bottom: 6pt; }
 
@@ -192,29 +196,8 @@
   /* Координаты контактного блока из предоставленного PDF, страница 3.
      Кнопки используют исходные изображения, а ссылки накладываются в PDF. */
   .contacts-brand { left: 175pt; top: 84pt; width: 157pt; height: 193pt; }
-  .contacts-top { left: 16pt; top: 13pt; width: 139pt; height: 47pt; border-radius: 24pt; }
-  .contacts-top img { width: 54pt; }
-  .contacts-facts { left: 0; top: 97pt; display: flex; flex-direction: column; gap: 10pt; }
-  .contacts-fact {
-    width: 90pt; height: 87pt; padding-right: 18pt;
-    background: #d9d9d9; border-radius: 0 45pt 45pt 0; color: white;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; font-size: 10pt; line-height: 1.1;
-  }
-  .contacts-fact-number { font-size: 32pt; }
-  .contacts-fact-icon { width: 29pt; height: 29pt; }
-  .contacts-caption { max-width: 60pt; }
-  .contacts-card {
-    left: 166pt; top: 296pt; width: 172pt; padding: 11pt 12pt;
-    border: 0.75pt solid #eeeeee; border-radius: 8pt;
-    font-size: 9pt; line-height: 1.4; overflow-wrap: anywhere;
-  }
-  .contacts-card-title { font-size: 11pt; padding-bottom: 6pt; border-bottom: 0.6pt solid #ddd; }
-  .contacts-address { margin-top: 6pt; }
-  .contacts-map {
-    display: inline-block; margin-top: 8pt; padding: 5pt 7pt;
-    background: #eef2fd; color: #34568a; font-size: 7.5pt; text-decoration: none;
-  }
+  .contacts-company { left: 175pt; top: 296pt; width: 170pt; font-size: 10pt; line-height: 1.5; }
+  .contacts-address { margin-top: 12pt; }
   .contacts-photo { left: 397.6pt; top: 102pt; width: 133.2pt; height: 173.7pt; object-fit: cover; }
   .contacts-interior { left: 396.9pt; top: 296.8pt; width: 133.9pt; height: 173.7pt; object-fit: cover; }
   .contacts-heading { left: 547.2pt; top: 103pt; width: 160pt; font-size: 10pt; color: #bfbfbf; }
@@ -247,46 +230,6 @@
   <div class="abs cover-year">{{ offer_year }}</div>
 </div>
 
-{# ===================== Контакты ===================== #}
-<div class="slide plain">
-  <div class="abs logo-block contacts-top"><img src="file://{{ wordmark_path }}" alt="ACADEMY"></div>
-  <div class="abs contacts-facts">
-    <div class="contacts-fact"><div class="contacts-fact-number">{{ years_on_market }}</div><div class="contacts-caption">лет на рынке</div></div>
-    <div class="contacts-fact"><div class="contacts-fact-number">62</div><div class="contacts-caption">города</div></div>
-    <div class="contacts-fact"><img class="contacts-fact-icon" src="file://{{ assets.facts_ruble }}" alt="₽"></div>
-    <div class="contacts-fact">
-      <svg class="contacts-fact-icon" viewBox="0 0 24 24" fill="white" aria-hidden="true">
-        <path d="M12 21S2 14 2 7.8C2 2.7 8.7 1.1 12 5.2c3.3-4.1 10-2.5 10 2.6C22 14 12 21 12 21Z"/>
-      </svg>
-      <div class="contacts-caption">сервис под ключ</div>
-    </div>
-  </div>
-  <img class="abs contacts-brand" src="file://{{ assets.contact_brand }}" alt="ACADEMY">
-  {% if salon_city or salon_address or salon_phone %}
-  <div class="abs contacts-card">
-    <div class="contacts-card-title">{{ salon_address|default:salon_city }}</div>
-    {% if salon_city or salon_address %}<div class="contacts-address"><strong>Адрес:</strong><br>{% if salon_city %}г. {{ salon_city }}{% if salon_address %}, {% endif %}{% endif %}{{ salon_address }}</div>{% endif %}
-    {% if salon_phone %}<div class="contacts-address"><strong>Телефон:</strong><br>{{ salon_phone }}</div>{% endif %}
-    {% if salon_address %}<a class="contacts-map" href="https://yandex.ru/maps/?text={{ salon_city|urlencode }}%20{{ salon_address|urlencode }}">Открыть в Яндекс Картах ↗</a>{% endif %}
-  </div>
-  {% endif %}
-  {% if manager_photo %}<img class="abs contacts-photo" src="file://{{ manager_photo }}" alt="Ваш консультант">{% endif %}
-  <img class="abs contacts-interior" src="file://{{ assets.contact_interior }}" alt="Интерьер салона">
-  <div class="abs contacts-heading">ВАШ КОНСУЛЬТАНТ</div>
-  {% if manager_name %}<div class="abs contacts-name">{{ manager_name }}</div>{% endif %}
-  {% if manager_title %}<div class="abs contacts-role">{{ manager_title }}</div>{% endif %}
-  {% if salon_city %}<div class="abs contacts-city">{{ salon_city }}</div>{% endif %}
-  {% if contact_phone_uri or max_url %}<div class="abs contacts-prompt">По всем вопросам обращайтесь ко мне:</div>{% endif %}
-  {% if contact_phone_uri %}
-  <a class="contact-button contact-phone" href="{{ contact_phone_uri }}"><svg class="phone-icon" viewBox="0 0 24 24"><path d="M6 3l4 5-3 3c2 3 3 4 6 6l3-3 5 4c-1 5-5 4-9 2C6 17 2 11 2 7c0-2 1-3 4-4z" fill="none" stroke="#8495b4" stroke-width="2"/></svg>{{ contact_phone }}</a>
-  {% endif %}
-  {% if max_url %}<a class="contact-button contact-max" href="{{ max_url }}"><img src="file://{{ assets.contact_max }}" alt="MAX"></a>{% endif %}
-  {% if instagram_qr %}<img class="abs contact-qr" src="file://{{ instagram_qr }}" alt="QR-код Instagram">{% endif %}
-  {% if instagram_url %}
-  <div class="abs contact-instagram-label">ОТКРЫТЬ INSTAGRAM</div>
-  <a class="contact-button contact-instagram" href="{{ instagram_url }}"><img src="file://{{ assets.contact_instagram }}" alt="INSTAGRAM"></a>
-  {% endif %}
-</div>
 {# ===================== Слайд на каждый проём ===================== #}
 {% for slide in slides %}
 <div class="slide{% if slide.extra_paths %} has-extras{% endif %}">
@@ -391,12 +334,17 @@
 {# ===================== О компании ===================== #}
 <div class="slide plain">
   <img class="abs round-right about-1" src="file://{{ assets.about_salon }}" alt="">
-  <img class="abs round-right about-2" src="file://{{ assets.about_folder }}" alt="">
+  <img class="abs round-right about-2" src="file://{{ assets.about_moto }}" alt="">
   <img class="abs round-right about-3" src="file://{{ assets.about_worker }}" alt="">
   <div class="abs about-title">
+    <div class="brand">ACADEMY</div>
     <div class="ru">О КОМПАНИИ</div>
     <div class="en">ABOUT COMPANY</div>
   </div>
+</div>
+
+<div class="slide plain">
+  <img class="abs round-right about-photo" src="file://{{ assets.about_folder }}" alt="">
   <div class="abs about-lead">
     Группа компаний <img src="file://{{ assets.logo_jaguar }}" alt="ДВЕРИ ЯГУАР">
     представляет сеть фирменных салонов «ACADEMY».<br>
@@ -414,5 +362,32 @@
   </div>
 </div>
 
+{# ===================== Контакты ===================== #}
+<div class="slide plain">
+  <img class="abs contacts-brand" src="file://{{ assets.contact_brand }}" alt="ACADEMY">
+  <div class="abs contacts-company">
+    Торгово-производственная компания ACADEMY<br>
+    Межкомнатные двери / Входные двери /<br>
+    Перегородки{% if salon_city %}, г. {{ salon_city }}{% endif %}
+    {% if salon_address %}<div class="contacts-address">Адрес:<br>{{ salon_address }}</div>{% endif %}
+    {% if salon_phone %}<div class="contacts-address">Телефон:<br>{{ salon_phone }}</div>{% endif %}
+  </div>
+  {% if manager_photo %}<img class="abs contacts-photo" src="file://{{ manager_photo }}" alt="Ваш консультант">{% endif %}
+  <img class="abs contacts-interior" src="file://{{ assets.contact_interior }}" alt="Интерьер салона">
+  <div class="abs contacts-heading">ВАШ КОНСУЛЬТАНТ</div>
+  {% if manager_name %}<div class="abs contacts-name">{{ manager_name }}</div>{% endif %}
+  {% if manager_title %}<div class="abs contacts-role">{{ manager_title }}</div>{% endif %}
+  {% if salon_city %}<div class="abs contacts-city">{{ salon_city }}</div>{% endif %}
+  {% if contact_phone_uri or max_url %}<div class="abs contacts-prompt">По всем вопросам обращайтесь ко мне:</div>{% endif %}
+  {% if contact_phone_uri %}
+  <a class="contact-button contact-phone" href="{{ contact_phone_uri }}"><svg class="phone-icon" viewBox="0 0 24 24"><path d="M6 3l4 5-3 3c2 3 3 4 6 6l3-3 5 4c-1 5-5 4-9 2C6 17 2 11 2 7c0-2 1-3 4-4z" fill="none" stroke="#8495b4" stroke-width="2"/></svg>{{ contact_phone }}</a>
+  {% endif %}
+  {% if max_url %}<a class="contact-button contact-max" href="{{ max_url }}"><img src="file://{{ assets.contact_max }}" alt="MAX"></a>{% endif %}
+  {% if instagram_qr %}<img class="abs contact-qr" src="file://{{ instagram_qr }}" alt="QR-код Instagram">{% endif %}
+  {% if instagram_url %}
+  <div class="abs contact-instagram-label">ОТКРЫТЬ INSTAGRAM</div>
+  <a class="contact-button contact-instagram" href="{{ instagram_url }}"><img src="file://{{ assets.contact_instagram }}" alt="INSTAGRAM"></a>
+  {% endif %}
+</div>
 </body>
 </html>
