@@ -1,3 +1,4 @@
+import { hasManagerPermissions } from '../../types/auth'
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -193,7 +194,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {(user.role === 'manager' || user.role === 'service_manager') && !measurementsOnly && (
+              {(hasManagerPermissions(user) || user.role === 'service_manager') && !measurementsOnly && (
                 <Link
                   to="/shipping-registry"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -209,7 +210,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
+              {(hasManagerPermissions(user) || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
                 <Link
                   to="/return-registry"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -225,7 +226,7 @@ const Header = () => {
                 </Link>
               )}
 
-              {user.role === 'manager' && (
+              {hasManagerPermissions(user) && (
                 <Link
                   to="/manager/production"
                   className={`inline-flex items-center whitespace-nowrap px-3 py-2 text-sm font-medium rounded-xl transition-all ${
@@ -597,7 +598,7 @@ const Header = () => {
               </Link>
             )}
 
-            {(user.role === 'manager' || user.role === 'service_manager') && !measurementsOnly && (
+            {(hasManagerPermissions(user) || user.role === 'service_manager') && !measurementsOnly && (
               <Link
                 to="/shipping-registry"
                 onClick={() => setMobileMenuOpen(false)}
@@ -610,7 +611,7 @@ const Header = () => {
               </Link>
             )}
 
-            {(user.role === 'manager' || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
+            {(hasManagerPermissions(user) || user.role === 'service_manager' || user.role === 'complaint_department') && !measurementsOnly && (
               <Link
                 to="/return-registry"
                 onClick={() => setMobileMenuOpen(false)}
@@ -623,7 +624,7 @@ const Header = () => {
               </Link>
             )}
 
-            {user.role === 'manager' && (
+            {hasManagerPermissions(user) && (
               <Link
                 to="/manager/production"
                 onClick={() => setMobileMenuOpen(false)}

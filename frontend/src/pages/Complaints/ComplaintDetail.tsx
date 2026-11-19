@@ -1,4 +1,4 @@
-import { canManageService } from '../../types/auth'
+import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
@@ -164,11 +164,11 @@ const ComplaintDetail = () => {
     )
   }
 
-  const canDoManagerActions = user?.role === 'manager' && (
+  const canDoManagerActions = user?.role === 'group_leader' || (user?.role === 'manager' && (
     currentComplaint.manager?.id === user.id ||
     (user.city?.id && currentComplaint.manager?.city?.id === user.city?.id) ||
     (user.city?.id && !currentComplaint.manager && currentComplaint.initiator?.city?.id === user.city?.id)
-  )
+  ))
 
   const canEdit = user && (
     currentComplaint.initiator.id === user.id ||
@@ -181,7 +181,7 @@ const ComplaintDetail = () => {
 
   const canEditContact = user && (
     canManageService(user) ||
-    user.role === 'manager' ||
+    hasManagerPermissions(user) ||
     user.role === 'admin' ||
     (user.role === 'leader' || user.role === 'group_leader')
   )
@@ -912,7 +912,7 @@ const ComplaintDetail = () => {
               <h2 className="text-lg font-bold text-gray-900 mb-4">Действия</h2>
               <div className="space-y-2">
                 {/* Общие действия */}
-                {(canManageService(user) || user?.role === 'manager' || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'complaint_department') && (
+                {(canManageService(user) || hasManagerPermissions(user) || user?.role === 'admin' || (user?.role === 'leader' || user?.role === 'group_leader') || user?.role === 'complaint_department') && (
                   <Link to={`/complaints/${id}/history`}>
                     <Button variant="outline" className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-0">
                       <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

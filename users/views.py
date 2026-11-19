@@ -235,6 +235,8 @@ class UserListView(generics.ListAPIView):
             if city_id:
                 colleagues |= Q(role='service_manager', city_id=city_id)
             queryset = queryset.filter(colleagues, measurements_only=False)
+        elif role == 'manager':
+            queryset = queryset.filter(role__in=['manager', 'group_leader'])
         elif role:
             queryset = queryset.filter(role=role)
         

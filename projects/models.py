@@ -144,7 +144,7 @@ class Complaint(models.Model):
         on_delete=models.PROTECT,
         related_name='managed_complaints',
         verbose_name='Менеджер заказа',
-        limit_choices_to={'role': 'manager'}
+        limit_choices_to={'role__in': ['manager', 'group_leader']}
     )
     
     # Производство
@@ -1875,7 +1875,7 @@ class ShippingRegistry(models.Model):
         on_delete=models.PROTECT,
         related_name='shipping_orders',
         verbose_name='Менеджер',
-        limit_choices_to={'role': 'manager'}
+        limit_choices_to={'role__in': ['manager', 'group_leader']}
     )
     
     # Информация о клиенте
@@ -1981,7 +1981,7 @@ class ReturnRegistry(models.Model):
         on_delete=models.PROTECT,
         related_name='return_orders',
         verbose_name='Менеджер',
-        limit_choices_to={'role': 'manager'}
+        limit_choices_to={'role__in': ['manager', 'group_leader']}
     )
     client_name = models.CharField(max_length=255, verbose_name='Клиент')
     product_name = models.CharField(max_length=255, verbose_name='Наименование товара')

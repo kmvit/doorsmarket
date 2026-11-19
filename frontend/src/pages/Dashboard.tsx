@@ -317,14 +317,14 @@ const Dashboard = () => {
         )}
 
         {/* Выплаты дизайнерам: заказы с дизайнером, ушедшие в производство, без отмеченной выплаты */}
-        {isManager && (() => {
+        {(isManager || user?.role === 'group_leader') && (() => {
           const payouts = orderFolders.find((f) => f.folder === 'designer_payouts')
           if (!payouts) return null
           return (
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">Дизайнеры</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <FolderCard to="/orders?folder=designer_payouts&mine=1" label={payouts.label} count={payouts.count} />
+                <FolderCard to={`/orders?folder=designer_payouts${isManager ? '&mine=1' : ''}`} label={payouts.label} count={payouts.count} />
               </div>
             </div>
           )

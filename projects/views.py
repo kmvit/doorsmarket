@@ -24,6 +24,9 @@ from .decorators import role_required, complaint_access_required
 
 def _complaint_for_view(request, pk):
     queryset = Complaint.objects.all()
+    if request.user.role == 'group_leader':
+        from .api_views import group_leader_complaints_q
+        queryset = queryset.filter(group_leader_complaints_q(request.user))
     if request.user.combines_service_roles:
         queryset = queryset.filter(salon_complaints_q(request.user))
     return get_object_or_404(queryset, pk=pk)
@@ -41,6 +44,9 @@ def complaint_list(request):
         'production_site',
         'reason'
     ).prefetch_related('defective_products', 'attachments')
+    if request.user.role == 'group_leader':
+        from .api_views import group_leader_complaints_q
+        complaints = complaints.filter(group_leader_complaints_q(request.user))
     if request.user.combines_service_roles:
         complaints = complaints.filter(salon_complaints_q(request.user))
     
@@ -302,6 +308,8 @@ def complaint_detail(request, pk):
         
         # Действия менеджера (назначенный или из того же города)
         def _manager_has_access(complaint):
+            if request.user.role == 'group_leader':
+                return True
             if request.user.role != 'manager':
                 return False
             if complaint.manager == request.user:
@@ -380,7 +388,7 @@ def complaint_detail(request, pk):
                 break
     
     # Менеджер может выполнять действия, если назначен или из того же города
-    can_do_manager_actions = False
+    can_do_manager_actions = request.user.role == 'group_leader'
     if request.user.role == 'manager':
         user_city = getattr(request.user, 'city', None)
         if complaint.manager == request.user:
@@ -415,6 +423,8 @@ def complaint_edit(request, pk):
     complaint = get_object_or_404(complaints, pk=pk)
     # Разрешаем редактирование инициатору, СМ, менеджерам из того же города и пользователям с расширенными правами
     def _manager_can_edit(complaint):
+        if request.user.role == 'group_leader':
+            return True
         if request.user.role != 'manager':
             return False
         if complaint.manager == request.user:
@@ -663,7 +673,7 @@ def complaint_create(request):
     context = {
         'reasons': ComplaintReason.objects.filter(is_active=True),
         'production_sites': ProductionSite.objects.filter(is_active=True),
-        'managers': User.objects.filter(role='manager', is_active=True),
+        'managers': User.objects.filter(role__in=['manager', 'group_leader'], is_active=True),
         'installers': User.objects.filter(role='installer', is_active=True),
         'recipients': User.objects.filter(
             role__in=['service_manager', 'complaint_department', 'leader'], is_active=True,
@@ -683,6 +693,8 @@ def shipping_registry(request):
     shipping_entries = ShippingRegistry.objects.select_related(
         'manager', 'complaint'
     ).all()
+    if request.user.role == 'group_leader':
+        shipping_entries = shipping_entries.filter(manager__salon_id__in=request.user.managed_salon_ids())
     
     # Фильтрация по городам
     if request.user.role == 'manager':
@@ -742,7 +754,9 @@ def shipping_registry(request):
     }
     
     # Списки для фильтров
-    managers = User.objects.filter(role='manager').order_by('first_name', 'last_name')
+    managers = User.objects.filter(role__in=['manager', 'group_leader']).order_by('first_name', 'last_name')
+    if request.user.role == 'group_leader':
+        managers = managers.filter(Q(salon_id__in=request.user.managed_salon_ids()) | Q(pk=request.user.pk))
     if request.user.role in ['manager', 'service_manager']:
         user_city = getattr(request.user, 'city', None)
         if user_city:
@@ -772,6 +786,8 @@ def shipping_detail(request, pk):
     """Детальная страница записи реестра на отгрузку"""
     
     entry = get_object_or_404(ShippingRegistry, pk=pk)
+    if request.user.role == 'group_leader' and entry.manager.salon_id not in request.user.managed_salon_ids():
+        raise PermissionDenied('Запись другого салона.')
     
     # Проверка прав по городу
     # Менеджер и СМ видят только по своему городу
@@ -1007,7 +1023,7 @@ def complaint_process(request, pk):
     
     # Получаем монтажников и менеджеров для планирования
     installers = User.objects.filter(role='installer', is_active=True).order_by('first_name', 'last_name')
-    managers = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
+    managers = User.objects.filter(role__in=['manager', 'group_leader'], is_active=True).order_by('first_name', 'last_name')
     
     context = {
         'complaint': complaint,
@@ -1177,6 +1193,9 @@ def manager_production(request):
     ).select_related(
         'initiator', 'recipient', 'production_site', 'reason'
     )
+    if request.user.role == 'group_leader':
+        from .api_views import group_leader_complaints_q
+        complaints = complaints.filter(group_leader_complaints_q(request.user))
     
     # Фильтруем по менеджеру
     # Админ, лидер и менеджер видят все
@@ -1190,7 +1209,7 @@ def manager_production(request):
         complaint_id = request.POST.get('complaint_id')
         
         try:
-            complaint = Complaint.objects.get(id=complaint_id)
+            complaint = complaints.get(id=complaint_id)
             
             if action == 'start_production':
                 deadline = request.POST.get('production_deadline')

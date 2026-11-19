@@ -26,6 +26,9 @@ export interface User {
 export const canManageService = (user?: User | null) =>
   user?.role === 'service_manager' || user?.can_manage_service === true
 
+export const hasManagerPermissions = (user?: User | null) =>
+  user?.role === 'manager' || user?.role === 'group_leader'
+
 export interface LoginResponse {
   access: string
   refresh: string

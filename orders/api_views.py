@@ -713,6 +713,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         salon = serializer.validated_data.get('salon')
+        if self.request.user.role == 'group_leader' and salon:
+            self._check_creation_salon(salon)
         if self.request.user.combines_service_roles and salon and salon.pk != serializer.instance.salon_id:
             self._check_creation_salon(salon)
         super().perform_update(serializer)
@@ -1141,7 +1143,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Какой замер заказа брать для связки позиций КП с проёмами. null — последний.
         """
         order = self.get_object()
-        if request.user.role not in ('manager', 'admin'):
+        if not request.user.has_manager_permissions and request.user.role != 'admin':
             return Response(
                 {'detail': 'Выбирать замер для связки может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1168,7 +1170,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """
         order = self.get_object()
         # Связки и применение замера — только менеджер/admin. СМ только делает замер.
-        if request.user.role not in ('manager', 'admin'):
+        if not request.user.has_manager_permissions and request.user.role != 'admin':
             return Response(
                 {'detail': 'Обрабатывать замер (связывать проёмы) может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1598,8 +1600,19 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        self._check_order_scope(serializer)
         reminder = serializer.save(created_by=self.request.user)
         reminder.order.touch_activity(ActivityKind.UPDATED)
+
+    def perform_update(self, serializer):
+        self._check_order_scope(serializer)
+        super().perform_update(serializer)
+
+    def _check_order_scope(self, serializer):
+        order = serializer.validated_data.get('order')
+        if self.request.user.role == 'group_leader' and order:
+            if not get_orders_queryset_for_user(self.request.user).filter(pk=order.pk).exists():
+                raise PermissionDenied('Заказ другого салона.')
 
     @action(detail=True, methods=['post'])
     def mark_done(self, request, pk=None):
@@ -2639,7 +2652,7 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         Body: {order_item_id: int | null}
         Привязывает / отвязывает проём замера к позиции КП.
         """
-        if request.user.role not in ('manager', 'admin'):
+        if not request.user.has_manager_permissions and request.user.role != 'admin':
             return Response(
                 {'detail': 'Связывать проёмы может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2673,7 +2686,7 @@ class MeasurementOpeningViewSet(viewsets.ModelViewSet):
         Транзакционно сохраняет связки. Все openings должны принадлежать одному заказу.
         """
         from django.db import transaction
-        if request.user.role not in ('manager', 'admin'):
+        if not request.user.has_manager_permissions and request.user.role != 'admin':
             return Response(
                 {'detail': 'Связывать проёмы может только менеджер.'},
                 status=status.HTTP_403_FORBIDDEN,

@@ -6,12 +6,18 @@ from rest_framework.test import APIClient
 
 from projects.models import Complaint, ComplaintReason, ComplaintStatus, ProductionSite
 from users.models import Role, User
+from orders.models import Salon
+from users.models import City
 
 
 class ComplaintCreationPermissionsTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.users = {role: User.objects.create_user(username=role, role=role) for role in Role}
+        salon = Salon.objects.create(name='Салон', city=City.objects.create(name='Казань'))
+        cls.users[Role.MANAGER].salon = salon
+        cls.users[Role.MANAGER].save(update_fields=['salon'])
+        cls.users[Role.GROUP_LEADER].managed_salons.add(salon)
         cls.measurer = User.objects.create_user(
             username='measurer', role=Role.SERVICE_MANAGER, measurements_only=True,
         )

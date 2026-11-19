@@ -1,3 +1,4 @@
+import { hasManagerPermissions } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -108,7 +109,7 @@ const OrderEdit = () => {
     load()
   }, [id])
 
-  const canEdit = user?.role === 'manager' || user?.role === 'admin'
+  const canEdit = hasManagerPermissions(user) || user?.role === 'admin'
   const requireDesignerAnswer = order?.has_designer != null
 
   const setField = (field: keyof CreateOrderData, value: any) => {

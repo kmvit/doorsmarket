@@ -103,6 +103,10 @@ class User(AbstractUser):
         return self.role in LEADER_ROLES
 
     @property
+    def has_manager_permissions(self):
+        return self.role in (Role.MANAGER, Role.GROUP_LEADER)
+
+    @property
     def can_create_complaint(self):
         return self.is_authenticated
 

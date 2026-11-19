@@ -76,7 +76,7 @@ class ComplaintEditForm(forms.ModelForm):
         instance = self.instance
 
         # Настраиваем queryset полей, гарантируя что текущие значения всегда в списке
-        manager_qs = User.objects.filter(role='manager', is_active=True).order_by('first_name', 'last_name')
+        manager_qs = User.objects.filter(role__in=['manager', 'group_leader'], is_active=True).order_by('first_name', 'last_name')
         if user and user.combines_service_roles:
             manager_qs = manager_qs.filter(salon_id=user.salon_id) if user.salon_id else manager_qs.filter(pk=user.pk)
         if instance and instance.pk and instance.manager_id:

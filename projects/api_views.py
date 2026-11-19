@@ -50,7 +50,9 @@ def _manager_has_complaint_access(user, complaint):
     Менеджер имеет доступ к рекламации, если он назначен на неё
     или если он из того же города, что и назначенный менеджер (или инициатор, если менеджер не назначен).
     """
-    if user.role != 'manager':
+    if user.role == 'group_leader':
+        return Complaint.objects.filter(pk=complaint.pk).filter(group_leader_complaints_q(user)).exists()
+    if not user.has_manager_permissions:
         return False
     if complaint.manager == user:
         return True
@@ -75,7 +77,8 @@ def group_leader_complaints_q(user):
     им или адресованные ему) видит всегда.
     """
     return (
-        Q(manager__salon_id__in=user.managed_salon_ids())
+        Q(source_order__salon_id__in=user.managed_salon_ids())
+        | Q(source_order__isnull=True, manager__salon_id__in=user.managed_salon_ids())
         | Q(initiator=user)
         | Q(recipient=user)
     )

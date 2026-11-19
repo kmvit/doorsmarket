@@ -11,7 +11,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from orders.models import Measurement, MeasurementRequest, Order, OrderStatus, Salon
+from orders.models import Measurement, MeasurementOpening, MeasurementRequest, Order, OrderItem, OrderStatus, Salon
 from projects.models import Complaint, ComplaintReason, ProductionSite, ShippingRegistry
 from users.models import City
 
@@ -127,3 +127,70 @@ class GroupLeaderScopeTest(TestCase):
         self.client.force_authenticate(User.objects.get(pk=self.gl.pk))
         self.assertEqual(self._ids('/api/v1/orders/'), set())
         self.assertEqual(self._ids('/api/v1/complaints/'), set())
+
+    def test_edits_order_items_and_reminders_in_managed_salon(self):
+        response = self.client.patch(f'/api/v1/orders/{self.own_order.pk}/', {
+            'client_name': 'Исправленное имя',
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.patch(f'/api/v1/orders/{self.own_order.pk}/', {
+            'salon': self.other_salon.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 403, response.data)
+        item = OrderItem.objects.create(order=self.own_order, opening_number=1, model_name='Дверь')
+        response = self.client.patch(f'/api/v1/order-items/{item.pk}/', {'model_name': 'Новая модель'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        for order, expected in ((self.own_order, 201), (self.other_order, 400)):
+            response = self.client.post('/api/v1/action-reminders/', {
+                'order': order.pk, 'action_text': 'Позвонить', 'due_at': timezone.now().isoformat(),
+            }, format='json')
+            self.assertEqual(response.status_code, expected, response.data)
+            if expected == 201:
+                reminder_id = response.data['id']
+                response = self.client.patch(f'/api/v1/action-reminders/{reminder_id}/', {
+                    'action_text': 'Уточнить заказ',
+                }, format='json')
+                self.assertEqual(response.status_code, 200, response.data)
+                response = self.client.post(f'/api/v1/action-reminders/{reminder_id}/mark_done/', {
+                    'new_status': 'paid',
+                }, format='json')
+                self.assertEqual(response.status_code, 200, response.data)
+                self.own_order.refresh_from_db()
+                self.assertEqual(self.own_order.status, OrderStatus.PAID)
+
+    def test_links_and_processes_measurement_in_managed_salon(self):
+        item = OrderItem.objects.create(order=self.own_order, opening_number=1, model_name='Дверь')
+        opening = MeasurementOpening.objects.create(measurement=self.own_m, opening_number=1)
+        response = self.client.post(f'/api/v1/orders/{self.own_order.pk}/set_link_measurement/', {
+            'measurement_id': self.own_m.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/v1/measurement-openings/{opening.pk}/link/', {
+            'order_item_id': item.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post('/api/v1/measurement-openings/batch_link/', {
+            'links': [{'measurement_opening_id': opening.pk, 'order_item_id': item.pk}],
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/v1/orders/{self.own_order.pk}/apply_measurement_to_items/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.own_m.is_done = True
+        self.own_m.save(update_fields=['is_done'])
+        response = self.client.post(f'/api/v1/measurements/{self.own_m.pk}/mark_processed/')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/v1/orders/{self.other_order.pk}/set_link_measurement/', {
+            'measurement_id': self.other_m.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 404, response.data)
+
+    def test_manager_actions_on_complaint_and_group_leader_as_manager(self):
+        response = self.client.post(f'/api/v1/complaints/{self.own_complaint.pk}/mark_warehouse/')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/v1/complaints/{self.other_complaint.pk}/mark_warehouse/')
+        self.assertEqual(response.status_code, 404, response.data)
+        response = self.client.patch(f'/api/v1/complaints/{self.own_complaint.pk}/', {
+            'manager_id': self.gl.pk, 'source_order': self.own_order.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.client.get(f'/api/v1/complaints/{self.own_complaint.pk}/').status_code, 200)

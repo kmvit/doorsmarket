@@ -46,6 +46,9 @@ def validate_complaint_manager(serializer, manager):
     request = serializer.context.get('request')
     actor = getattr(request, 'user', None)
     current_manager_id = getattr(serializer.instance, 'manager_id', None)
+    if actor and actor.role == 'group_leader' and manager.pk != current_manager_id:
+        if manager.pk != actor.pk and manager.salon_id not in actor.managed_salon_ids():
+            raise serializers.ValidationError('Выберите менеджера закреплённого салона.')
     if (actor and actor.combines_service_roles and manager.pk != current_manager_id
             and not in_manager_salon(actor, manager)):
         raise serializers.ValidationError('Выберите менеджера своего салона.')
@@ -234,7 +237,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
         required=False
     )
     manager_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='manager'),
+        queryset=User.objects.filter(role__in=['manager', 'group_leader']),
         source='manager',
         write_only=True,
         required=False
@@ -269,6 +272,10 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         actor = getattr(self.context.get('request'), 'user', None)
+        source_order = attrs.get('source_order')
+        if actor and actor.role == 'group_leader' and source_order:
+            if source_order.salon_id not in actor.managed_salon_ids():
+                raise serializers.ValidationError({'source_order': 'Выберите заказ закреплённого салона.'})
         if (actor and not actor.can_assign_complaint_installer
                 and attrs.get('complaint_type') == ComplaintType.INSTALLER
                 and getattr(self.instance, 'complaint_type', None) != ComplaintType.INSTALLER):
@@ -399,7 +406,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         required=False
     )
     manager_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='manager'),
+        queryset=User.objects.filter(role__in=['manager', 'group_leader']),
         source='manager',
         write_only=True,
         required=False
@@ -469,6 +476,9 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         if actor and not actor.can_assign_complaint_installer and attrs.get('complaint_type') == ComplaintType.INSTALLER:
             raise PermissionDenied('Направлять рекламацию монтажнику может только сервис-менеджер.')
         source_order = attrs.get('source_order')
+        if actor and actor.role == 'group_leader' and source_order:
+            if source_order.salon_id not in actor.managed_salon_ids():
+                raise serializers.ValidationError({'source_order_id': 'Выберите заказ закреплённого салона.'})
         if (actor and actor.combines_service_roles and source_order
                 and not in_manager_salon(actor, attrs.get('manager'), source_order)):
             raise serializers.ValidationError({'source_order_id': 'Выберите заказ своего салона.'})
@@ -570,7 +580,7 @@ class ShippingRegistrySerializer(serializers.ModelSerializer):
     )
     manager = UserSerializer(read_only=True)
     manager_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='manager'),
+        queryset=User.objects.filter(role__in=['manager', 'group_leader']),
         source='manager',
         write_only=True
     )

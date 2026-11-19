@@ -1,3 +1,4 @@
+import { hasManagerPermissions } from '../../types/auth'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -205,7 +206,7 @@ const InstallationList = () => {
           </>
         )}
         <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
-        {user?.role === 'manager' && (
+        {hasManagerPermissions(user) && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"

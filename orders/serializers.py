@@ -653,6 +653,12 @@ class OrderActionReminderSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
 
+    def validate_order(self, order):
+        actor = self.context['request'].user
+        if actor.role == 'group_leader' and order.salon_id not in actor.managed_salon_ids():
+            raise serializers.ValidationError('Выберите заказ закреплённого салона.')
+        return order
+
     class Meta:
         model = OrderActionReminder
         fields = [

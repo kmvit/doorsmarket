@@ -1,4 +1,4 @@
-import { canManageService } from '../../types/auth'
+import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -99,7 +99,7 @@ const MeasurementForm = () => {
   // По заказу назначен повторный замер — обрабатывают и повторяют уже его
   const supersededBy = m?.newer_measurement_id || null
   const canMarkProcessed = m?.is_done && !m?.is_processed && !supersededBy
-    && (user?.role === 'manager' || user?.role === 'admin')
+    && (hasManagerPermissions(user) || user?.role === 'admin')
   // Повторный замер назначает менеджер (тот же список ролей, что проверяет сервер)
   const canRequestRepeat = Boolean(
     m?.is_done && !supersededBy && ['manager', 'admin', 'leader', 'group_leader'].includes(user?.role || ''),

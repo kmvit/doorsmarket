@@ -23,6 +23,8 @@ def role_required(allowed_roles, *, allow_combined_service=False):
                 return redirect('users:web_login')
             
             if request.user.role not in allowed_roles and not (
+                'manager' in allowed_roles and request.user.has_manager_permissions
+            ) and not (
                 allow_combined_service and request.user.combines_service_roles
             ):
                 messages.error(request, 'У вас нет прав для доступа к этой странице')
@@ -62,6 +64,12 @@ def complaint_access_required(
                 from .models import Complaint
                 try:
                     complaint = Complaint.objects.get(pk=complaint_id)
+                    if request.user.role == 'group_leader':
+                        from django.http import Http404
+                        from .api_views import group_leader_complaints_q
+                        if not Complaint.objects.filter(pk=complaint.pk).filter(group_leader_complaints_q(request.user)).exists():
+                            raise Http404
+                        return view_func(request, *args, **kwargs)
                     
                     # Админы и лидеры имеют полный доступ
                     if request.user.role in ['admin', 'leader']:

@@ -1,4 +1,4 @@
-import { canManageService } from '../../types/auth'
+import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -43,7 +43,7 @@ const OrderDetail = () => {
   const [requestingRepeat, setRequestingRepeat] = useState(false)
   const nextActionRef = useRef<NextActionBlockHandle>(null)
 
-  const canEdit = user?.role === 'manager' || user?.role === 'admin'
+  const canEdit = hasManagerPermissions(user) || user?.role === 'admin'
   const canManage = canEdit || (user?.role === 'leader' || user?.role === 'group_leader')
   const canUploadAttachments = canEdit || canManageService(user) || (user?.role === 'leader' || user?.role === 'group_leader')
   // «Неактуален» доступен с момента заявки: клиент может отказаться до того,
