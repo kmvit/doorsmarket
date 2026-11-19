@@ -616,8 +616,8 @@ class PrettyOfferFlowTest(TestCase):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            one = ' '.join((document.pages[1].extract_text() or '').split())
-            two = ' '.join((document.pages[2].extract_text() or '').split())
+            one = ' '.join((document.pages[2].extract_text() or '').split())
+            two = ' '.join((document.pages[3].extract_text() or '').split())
         self.assertIn('Петли скрытые ACADEMY 8000, 2 шт.', one)
         self.assertIn('Петли скрытые ACADEMY 8000, 4 шт.', two)
         self.assertNotIn('12 шт.', one)
@@ -701,7 +701,7 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            text = ' '.join((document.pages[1].extract_text() or '').split())
+            text = ' '.join((document.pages[2].extract_text() or '').split())
 
         self.assertIn('Комплектация и описание:', text)
         self.assertIn('Скрытые петли', text)
@@ -713,7 +713,7 @@ class PrettyOfferFlowTest(TestCase):
         # На соседнем проёме ничего не набрано и не выбрано — блока нет вовсе:
         # типовых текстов в КП больше не печатаем.
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            other = ' '.join((document.pages[2].extract_text() or '').split())
+            other = ' '.join((document.pages[3].extract_text() or '').split())
         self.assertNotIn('Короб Epsilon Капучино', other)
         self.assertNotIn('Комплектация и описание:', other)
 
@@ -748,7 +748,7 @@ class PrettyOfferFlowTest(TestCase):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            page = document.pages[1]
+            page = document.pages[2]
             text = ' '.join((page.extract_text() or '').split())
             # Пункты набраны одним кеглем: и написанные руками, и из заказа.
             sizes = {
@@ -817,8 +817,8 @@ class PrettyOfferFlowTest(TestCase):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            self.assertEqual(len(document.pages), 9)
-            text = ' '.join((document.pages[4].extract_text() or '').split())
+            self.assertEqual(len(document.pages), 8)
+            text = ' '.join((document.pages[5].extract_text() or '').split())
         # Последние позиции списка не обрезались.
         self.assertIn('Сопутствующая позиция номер 10', text)
         self.assertIn('СМЕШАННОЕ НАПРАВЛЕНИЕ ШПОНА Д3', text)
@@ -836,19 +836,24 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf)) as document:
-            # Обложка + три проёма + итоги + «о компании» (2)
-            # + контакты.
-            self.assertEqual(len(document.pages), 8)
-            text = '\n'.join((page.extract_text() or '') for page in document.pages)
+            # Обложка, контакты, три проёма, итоги и один слайд «О компании».
+            self.assertEqual(len(document.pages), 7)
+            pages = [' '.join((page.extract_text() or '').split()) for page in document.pages]
+            for page, title in zip(pages, (
+                'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', 'ВАШ КОНСУЛЬТАНТ', 'Проём № 1',
+                'Проём № 2', 'Проём № 3', 'Итого со скидкой', 'О КОМПАНИИ',
+            )):
+                self.assertIn(title, page)
+            self.assertIn('лет на рынке', pages[1])
+            self.assertIn('сервис под ключ', pages[1])
+            self.assertEqual(sum('лет на рынке' in page for page in pages), 1)
+            text = '\n'.join(pages)
         # Извлечённый из PDF текст переносится по строкам колонок — сравниваем
         # по строке без переносов, иначе тест ловит вёрстку, а не содержимое.
         flat = ' '.join(text.split())
 
         self.assertIn('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', text)
         self.assertNotIn('Земфира', text)
-        # Слайд с цифрами о компании удалён.
-        self.assertNotIn('лет на рынке', text)
-        self.assertNotIn('Сервис под ключ', text)
         self.assertIn('Проём № 1 — Спальня', text)
         # Полное название модели из КП, как требует п.8 ТЗ.
         self.assertIn('Полотно Epsilon 12 Капуччино', flat)
@@ -861,7 +866,7 @@ class PrettyOfferFlowTest(TestCase):
         # Постоянные слайды шаблона: о компании и контакты.
         self.assertIn('О КОМПАНИИ', text)
         self.assertIn('Компания основана в 1991 году', flat)
-        self.assertIn('Торгово-производственная компания ACADEMY', flat)
+        self.assertIn('ВАШ КОНСУЛЬТАНТ', flat)
 
     def test_cover_omits_client_and_kp_number(self):
         """На обложке остаются логотип, название и текущий год."""
@@ -910,15 +915,15 @@ class PrettyOfferFlowTest(TestCase):
         response = self.client.get(f'/api/v1/orders/{self.order.pk}/pretty-offer/pdf/')
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            contacts = document.pages[-1]
+            contacts = document.pages[1]
             links = {link['uri'] for link in contacts.hyperlinks}
             self.assertEqual(links, {
                 'tel:+79287511234', 'https://max.ru/u/test-consultant',
                 'https://www.instagram.com/academy_test/',
             })
             self.assertGreaterEqual(len(contacts.images), 3)
-            self.assertIn('Проём № 1', document.pages[1].extract_text())
-            totals = document.pages[4]
+            self.assertIn('Проём № 1', document.pages[2].extract_text())
+            totals = document.pages[5]
             self.assertNotIn('Стоимость', (totals.extract_text() or '').splitlines())
             green = [c for c in totals.chars if c['text'].isdigit()
                      and c.get('non_stroking_color') == (0.180392, 0.490196, 0.196078)]
@@ -945,7 +950,7 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            opening = ' '.join((document.pages[1].extract_text() or '').split())
+            opening = ' '.join((document.pages[2].extract_text() or '').split())
 
         self.assertIn('Проём № 1', opening)
         self.assertNotIn('современное решение для мебели и интерьеров', opening)
@@ -994,7 +999,7 @@ class PrettyOfferFlowTest(TestCase):
 
         import pdfplumber
         with pdfplumber.open(io.BytesIO(response.content)) as document:
-            slide = document.pages[1]
+            slide = document.pages[2]
             text = ' '.join((slide.extract_text() or '').split())
             # Логотип + обе двери: средняя и правая колонки на месте.
             self.assertEqual(len(slide.images), 3)
@@ -1121,6 +1126,5 @@ class PrettyOfferContactsCityTest(TestCase):
         from django.template.loader import render_to_string
 
         html = render_to_string('orders/pretty_offer.html', self.context_for('Нижний Новгород'))
-        self.assertIn('Перегородки, г. Нижний Новгород', html)
-        # В списке городов сети Казань остаётся — проверяем именно контакты
-        self.assertNotIn('Перегородки, г. Казань', html)
+        self.assertIn('г. Нижний Новгород', html)
+        self.assertNotIn('г. Казань', html)

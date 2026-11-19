@@ -2,7 +2,7 @@
 Генерация PDF красивого КП по шаблону Академии Дверей.
 
 Шаблон — презентация 720×540 pt (10×7.5 дюйма, как исходный PDF), по слайду
-на проём: обложка → проёмы → итоги. Размер страницы задан прямо в CSS
+на проём: обложка → контакты → проёмы → итоги → о компании. Размер страницы задан прямо в CSS
 шаблона. Вёрстка в HTML, рендер WeasyPrint — тем же способом, что бланк
 замера в `pdf_blank.py`.
 
@@ -33,9 +33,9 @@ ASSET_FILES = {
     'cover_door': 'cover-door.jpg',
     'cover_handle': 'cover-handle.png',
     'about_salon': 'about-salon.jpg',
-    'about_moto': 'about-moto.jpg',
     'about_worker': 'about-worker.jpg',
     'about_folder': 'about-folder.jpg',
+    'facts_ruble': 'facts-ruble.png',
 }
 
 
@@ -217,6 +217,7 @@ def build_context(offer):
     phone = (getattr(manager, 'phone_number', '') or getattr(salon, 'phone', '') or '').strip()
     phone_digits = re.sub(r'[^0-9]', '', phone)
     phone_uri = ('tel:' + ('+' if phone.startswith('+') else '') + phone_digits) if phone_digits else ''
+    offer_year = timezone.localdate().year
     return {
         'offer': offer,
         'order': order,
@@ -224,7 +225,6 @@ def build_context(offer):
         'totals': offer.resolved_totals(),
         'general_attachments': general_attachments,
         'manager_name': manager_name,
-        'manager_title': manager.get_role_display() if manager else '',
         'manager_photo': _abs_path(getattr(manager, 'offer_photo', None)),
         'contact_phone': phone,
         'contact_phone_uri': phone_uri,
@@ -238,7 +238,8 @@ def build_context(offer):
         'salon_city': getattr(getattr(salon, 'city', None), 'name', '') or '',
         # Год на обложке — всегда текущий: КП печатают сегодня, даже если
         # заказ завели в позапрошлом году.
-        'offer_year': timezone.localdate().year,
+        'offer_year': offer_year,
+        'years_on_market': offer_year - 1989,
         'assets': {
             key: os.path.join(ASSETS_DIR, filename)
             for key, filename in ASSET_FILES.items()
