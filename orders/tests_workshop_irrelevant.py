@@ -56,6 +56,35 @@ class WorkshopHidesIrrelevantTest(TestCase):
         data = response.data['results'] if isinstance(response.data, dict) else response.data
         return {row['id'] for row in data}
 
+    def test_manual_amount_and_inclusive_filters(self):
+        payload = {
+            'salon': self.salon.pk, 'client_name': 'Ручной заказ', 'has_designer': False,
+            'next_action_text': 'Позвонить', 'next_action_due_at': timezone.now().isoformat(),
+            'manual_order_amount': '1200.50',
+        }
+        result = self.client.post('/api/v1/orders/', payload, format='json')
+        self.assertEqual(result.status_code, 201, result.data)
+        manual = result.data['id']
+        self.live.total_with_discount = 0
+        self.live.save()
+        limits = {'amount_min': '1200.50', 'amount_max': '1200.50'}
+        self.assertEqual(self.ids(limits), {manual})
+        self.assertEqual(self.ids({'amount_min': '1200.51'}), set())
+        self.assertEqual(self.ids({'amount_max': '0'}), {self.live.pk})
+        self.assertEqual(self.client.get('/api/v1/workshop/', {'amount_min': '3', 'amount_max': '2'}).status_code, 400)
+        self.assertEqual(self.client.post('/api/v1/orders/', {**payload, 'manual_order_amount': '-1'}, format='json').status_code, 400)
+
+        kp = {'kp_number': 'КП-1', 'items': [{'model_name': 'Дверь', 'amount': '800'}],
+              'totals': {'total_amount': '800', 'total_with_discount': '745.25'}}
+        response = self.client.post(f'/api/v1/orders/{manual}/append_from_parsed/', kp, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.ids({'amount_max': '745.25'}), {self.live.pk, manual})
+        self.assertEqual(self.ids(limits), set())
+
+    def test_unknown_amount_is_not_zero(self):
+        self.assertEqual(self.ids(), {self.live.pk})
+        self.assertEqual(self.ids({'amount_min': '0'}), set())
+
     def test_list_hides_irrelevant(self):
         self.assertEqual(self.ids(), {self.live.id})
 

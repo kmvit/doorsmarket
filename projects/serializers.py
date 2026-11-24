@@ -168,7 +168,19 @@ class ComplaintCommentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class ComplaintListSerializer(serializers.ModelSerializer):
+class ComplaintScheduleSerializer(serializers.ModelSerializer):
+    installation_assignments = serializers.SerializerMethodField()
+    installation_window_text = serializers.CharField(read_only=True)
+
+    def get_installation_assignments(self, obj):
+        return [
+            {'installer_id': user.pk, 'name': user.get_full_name() or user.username,
+             'date_from': start.isoformat(), 'date_to': end.isoformat()}
+            for user, start, end in obj.installer_periods()
+        ]
+
+
+class ComplaintListSerializer(ComplaintScheduleSerializer):
     """Упрощенный сериализатор для списка рекламаций"""
     initiator = UserSerializer(read_only=True)
     recipient = UserSerializer(read_only=True)
@@ -197,7 +209,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
             'manager',
             'production_site',
             'reason',
-            'installer_assigned',
+            'installer_assigned', 'installation_assignments', 'installation_dates_only', 'installation_window_text',
             'created_at',
             'updated_at',
             'planned_installation_date',
@@ -209,8 +221,7 @@ class ComplaintListSerializer(serializers.ModelSerializer):
         ]
 
 
-class ComplaintDetailSerializer(serializers.ModelSerializer):
-    """Полный сериализатор для детальной информации о рекламации"""
+class ComplaintDetailSerializer(ComplaintScheduleSerializer):
     initiator = UserSerializer(read_only=True)
     recipient = UserSerializer(read_only=True)
     manager = UserSerializer(read_only=True)
@@ -316,7 +327,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'manager',
             'manager_id',
             'installer_assigned',
-            'installer_assigned_id',
+            'installer_assigned_id', 'installation_assignments', 'installation_dates_only', 'installation_window_text',
             
             # Производство
             'production_site',
@@ -376,6 +387,7 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'comments',
         ]
         read_only_fields = [
+            'installation_dates_only',
             'id', 'created_at', 'updated_at',
             'return_required', 'return_product_name', 'return_requested_at', 'return_planned_date',
             'moscow_service_at', 'moscow_service_deadline', 'production_review_deadline',

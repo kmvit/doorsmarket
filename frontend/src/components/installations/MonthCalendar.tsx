@@ -78,7 +78,12 @@ const MonthCalendar = ({ month, onMonthChange, renderDay, dayClassName, onDayCli
                 day === today ? 'font-bold text-primary-600' : 'text-gray-500'
               }`}
               >
-                {d.getDate()}
+                {onDayClick ? (
+                  <button type="button" aria-label={d.toLocaleDateString('ru-RU', { dateStyle: 'full' })}
+                    onClick={e => { e.stopPropagation(); onDayClick(day) }}>
+                    {d.getDate()}
+                  </button>
+                ) : d.getDate()}
               </div>
               {renderDay?.(day)}
             </div>

@@ -1,6 +1,14 @@
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
+
+OPENING_LIMITS = (5, 10, 15, 20, 30, 40, 60)
+
+
+def payroll_rate(label, default):
+    return models.DecimalField(label, max_digits=10, decimal_places=2, default=default,
+                               validators=[MinValueValidator(0)])
 
 
 class City(models.Model):
@@ -19,6 +27,18 @@ class City(models.Model):
         verbose_name='Email бухгалтера (акты монтажей на оплату)',
         help_text='Сюда монтажник отправляет акт выполненных работ на оплату.',
     )
+
+    measurement_rate_5 = payroll_rate('1–5 проёмов, ₽', 750)
+    measurement_rate_10 = payroll_rate('6–10 проёмов, ₽', 900)
+    measurement_rate_15 = payroll_rate('11–15 проёмов, ₽', 1200)
+    measurement_rate_20 = payroll_rate('16–20 проёмов, ₽', 1800)
+    measurement_rate_30 = payroll_rate('21–30 проёмов, ₽', 2400)
+    measurement_rate_40 = payroll_rate('31–40 проёмов, ₽', 3600)
+    measurement_rate_60 = payroll_rate('41–60 проёмов, ₽', 4800)
+    measurement_km_rate = payroll_rate('Удалённость, ₽/км', 30)
+
+    def measurement_tariff(self):
+        return [(limit, getattr(self, f'measurement_rate_{limit}')) for limit in OPENING_LIMITS]
 
     def __str__(self):
         return self.name

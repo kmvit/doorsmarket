@@ -1,3 +1,4 @@
+import OrderRefusalDialog from '../../components/orders/OrderRefusalDialog'
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
 import { remindersAPI } from '../../api/orders'
 import { OrderActionReminder, OrderStatus, ORDER_STATUS_DISPLAY } from '../../types/orders'
@@ -48,6 +49,7 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
   const [nextPrompt, setNextPrompt] = useState<{ reminderId: number | null; status?: OrderStatus } | null>(null)
   const [promptText, setPromptText] = useState('')
   const [promptDueAt, setPromptDueAt] = useState('')
+  const [refusalReminder, setRefusalReminder] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editDueAt, setEditDueAt] = useState('')
@@ -103,6 +105,10 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
     reminderId: number,
     action: CompleteAction,
   ) => {
+    if (action.status === 'cancelled') {
+      setRefusalReminder(reminderId)
+      return
+    }
     if (action.promptNext) {
       setNextPrompt({ reminderId, status: action.status })
       setPromptText('')
@@ -207,6 +213,11 @@ const NextActionBlock = forwardRef<NextActionBlockHandle, Props>(({ orderId, can
         )}
       </div>
 
+      {refusalReminder !== null && <OrderRefusalDialog onClose={() => setRefusalReminder(null)} onSave={async refusal => {
+        await remindersAPI.markDone(refusalReminder, { new_status: 'cancelled', refusal })
+        onStatusChanged?.('cancelled')
+        await load()
+      }} />}
       {inactiveReason && (
         <p className="mb-3 text-xs text-gray-500">{inactiveReason}</p>
       )}

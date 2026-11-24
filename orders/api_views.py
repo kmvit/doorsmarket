@@ -1,3 +1,8 @@
+import json
+import mimetypes
+from pathlib import Path
+from uuid import uuid4
+
 from rest_framework import mixins, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -12,6 +17,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from catalog.models import DoorColor
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -27,6 +33,8 @@ from .models import (
 )
 from . import sms_templates
 from .serializers import (
+    infer_attachment_type,
+    normalize_phone,
     SalonSerializer,
     OrderListSerializer,
     OrderDetailSerializer,
@@ -35,7 +43,8 @@ from .serializers import (
     OrderAttachmentSerializer,
     MeasurementRequestSerializer,
     OrderActionReminderSerializer,
-    WorkshopOrderSerializer,
+    validated_refusal,
+    WorkshopAmountRangeSerializer, WorkshopOrderSerializer,
     OrderManagerSerializer,
     OrderSalesFieldsSerializer,
     ORDER_SALES_FIELDS,
@@ -43,6 +52,7 @@ from .serializers import (
     user_city_id,
     MeasurementSerializer,
     MeasurementListSerializer,
+    MeasurementScheduleSerializer,
     PendingMeasurementRequestListSerializer,
     MeasurementOpeningSerializer,
     MeasurementOpeningWriteSerializer,
@@ -53,6 +63,7 @@ from .serializers import (
     PrettyOfferItemSerializer,
     PrettyOfferAttachmentSerializer,
 )
+from .kp_totals import combined, legacy_append, legacy_totals, line_totals, offer_totals, order_line_totals, with_workshop_amount
 from .pdf_parser import parse_kp_pdf
 from .recommendations import (
     calculate_door_recommendation,
@@ -170,8 +181,26 @@ def _sm_name_phone(user):
     """Имя и телефон сервис-менеджера для SMS-шаблонов."""
     if not user:
         return '', ''
-    name = (user.get_full_name() or '').strip() or user.username
-    return name, (user.phone_number or '').strip()
+    return user.first_name, (user.phone_number or '').strip()
+
+
+def _notify_measurement_requested(mr, actor):
+    order = mr.order
+    measurement = mr.measurement
+    sm = measurement.service_manager if measurement else None
+    if not sm:
+        candidates = list(get_user_model().objects.filter(
+            role='service_manager', is_active=True, city_id=order.salon.city_id,
+        )[:2]) if order.salon.city_id else []
+        if len(candidates) == 1:
+            sm = candidates[0]
+    name, sm_phone = _sm_name_phone(sm)
+    seen = set()
+    for phone in (mr.contact_phone, order.contact_phone):
+        key = normalize_phone(phone) or (phone or '').strip()
+        if key and key not in seen:
+            seen.add(key)
+            send_client_sms(order, phone, sms_templates.request_created(name, sm_phone, phone), actor=actor)
 
 
 class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
@@ -230,6 +259,22 @@ class DesignerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         serializer.save(created_by=self.request.user)
 
 
+def leadership_salons(user):
+    salons = Salon.objects.filter(is_active=True)
+    if user.role == 'group_leader':
+        return salons.filter(pk__in=user.managed_salon_ids())
+    if user.role == 'leader' and user.city_id:
+        return salons.filter(city_id=user.city_id)
+    return salons.none()
+
+
+def assignable_managers(user):
+    scope = Q(salon__in=leadership_salons(user))
+    if user.role == 'leader' and user.city_id:
+        scope |= Q(salon__isnull=True, city_id=user.city_id)
+    return get_user_model().objects.filter(scope, role='manager', is_active=True)
+
+
 class SalonViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SalonSerializer
     permission_classes = [IsAuthenticated]
@@ -247,8 +292,8 @@ class SalonViewSet(viewsets.ReadOnlyModelViewSet):
             if hasattr(user, 'salon') and user.salon_id:
                 return qs.filter(id=user.salon_id)
             return qs.none()
-        if user.role == 'group_leader':
-            return qs.filter(id__in=user.managed_salon_ids())
+        if user.role in ('group_leader', 'leader'):
+            return leadership_salons(user).select_related('city')
         # СМ и руководитель — все салоны своего города
         if hasattr(user, 'city') and user.city:
             return qs.filter(city=user.city)
@@ -405,7 +450,7 @@ def own_flow_measurement_folders():
         elif not m.is_done:
             if closed_before_own_flow(mr.order_id, m.measurement_date):
                 continue
-            if m.measurement_date < now:
+            if (m.measurement_end or m.measurement_date) < now:
                 put('measurement_not_done', mr.order_id)
                 continue
             put('measurement_scheduled', mr.order_id)
@@ -544,8 +589,9 @@ def _reset_measurement_for_resubmit(mr):
         ])
     m = Measurement.objects.filter(request=mr, is_done=False).first()
     if m and m.measurement_date:
+        m.measurement_end = None
         m.measurement_date = None
-        m.save(update_fields=['measurement_date', 'updated_at'])
+        m.save(update_fields=['measurement_date', 'measurement_end', 'updated_at'])
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -561,6 +607,9 @@ class OrderViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = get_orders_queryset_for_user(user)
+
+        if self.action in ('update', 'partial_update', 'replace_from_parsed', 'append_from_parsed', 'transition'):
+            qs = qs.select_for_update(of=('self',))
 
         manager_id = self.request.query_params.get('manager_id')
         if manager_id:
@@ -707,17 +756,75 @@ class OrderViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied('Создавать заказы можно только в закреплённых активных салонах.')
 
+    def create(self, request, *args, **kwargs):
+        if 'order_data' not in request.data or not request.content_type.startswith('multipart/form-data'):
+            return super().create(request, *args, **kwargs)
+        try:
+            data = json.loads(request.data['order_data'])
+        except (ValueError, TypeError):
+            raise ValidationError({'order_data': 'Не удалось прочитать данные заказа.'})
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+
+        stored_files = []
+        try:
+            with transaction.atomic():
+                self.perform_create(serializer)
+                for upload in request.FILES.getlist('files'):
+                    attachment = OrderAttachment(order=serializer.instance, name=upload.name)
+                    suffix = Path(upload.name).suffix.lower()
+                    # Документы произвольного формата скачиваются с исходным именем.
+                    # Хранилище отдаёт их как бинарные данные.
+                    if infer_attachment_type(upload.name) == 'document' and suffix != '.pdf':
+                        suffix = '.bin'
+                    upload.content_type = mimetypes.types_map.get(suffix, 'application/octet-stream')
+                    attachment.file.save(f'{uuid4().hex}{suffix}', upload, save=False)
+                    stored_files.append(attachment.file)
+                    attachment.save()
+        except Exception:
+            # Откат транзакции убирает строки БД. Сами файлы находятся в отдельном хранилище.
+            for field in stored_files:
+                field.storage.delete(field.name)
+            raise
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         self._check_creation_salon(serializer.validated_data['salon'])
         super().perform_create(serializer)
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'])
+    def assignment_managers(self, request):
+        if request.user.role not in ('leader', 'group_leader'):
+            raise PermissionDenied('Назначать менеджера может руководитель.')
+        managers = assignable_managers(request.user).order_by('last_name', 'first_name', 'username')
+        return Response(OrderManagerSerializer(managers, many=True).data)
+
     def perform_update(self, serializer):
+        order = serializer.instance
+        user = self.request.user
         salon = serializer.validated_data.get('salon')
-        if self.request.user.role == 'group_leader' and salon:
-            self._check_creation_salon(salon)
-        if self.request.user.combines_service_roles and salon and salon.pk != serializer.instance.salon_id:
-            self._check_creation_salon(salon)
+        manager = serializer.validated_data.get('manager')
+        changes = {}
+        descriptions = []
+        if salon and salon.pk != order.salon_id:
+            if user.role != 'admin' and not leadership_salons(user).filter(pk=salon.pk).exists():
+                raise PermissionDenied('Выберите доступный салон.')
+            changes['salon'] = {'old': order.salon_id, 'new': salon.pk}
+            descriptions.append(f'Салон: {order.salon.name[:95]} → {salon.name[:95]}')
+        if manager and manager.pk != order.manager_id:
+            if not assignable_managers(user).filter(pk=manager.pk).exists():
+                raise PermissionDenied('Выберите менеджера из доступного списка.')
+            changes['manager'] = {'old': order.manager_id, 'new': manager.pk}
+            before = order.manager.get_full_name() or order.manager.username
+            after = manager.get_full_name() or manager.username
+            descriptions.append(f'Менеджер: {before[:95]} → {after[:95]}')
         super().perform_update(serializer)
+        if changes:
+            order.log_activity(ActivityKind.UPDATED, actor=user, description='. '.join(descriptions), meta=changes)
 
     # ---------- Phase 2: парсинг КП ----------
 
@@ -742,6 +849,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         data['totals'] = {
             key: (str(value) if value is not None else None)
             for key, value in (data.get('totals') or {}).items()
+        }
+        data['original_line_totals'] = {
+            key: str(value) if value is not None else None
+            for key, value in line_totals(data['items'], data['addons']).items()
         }
         return Response(data)
 
@@ -861,16 +972,19 @@ class OrderViewSet(viewsets.ModelViewSet):
         проёмы сохраняются; связки проёмов с позициями КП сбрасываются
         (order_item → NULL), их нужно привязать заново.
         """
-        from django.db import transaction
-        order = self.get_object()
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         items = data.pop('items', []) or []
         addons = data.pop('addons', []) or []
         totals = data.pop('totals', None) or {}
 
         with transaction.atomic():
-            for field, value in _totals_kwargs(totals).items():
-                setattr(order, field, value)
+            from .pdf_parser import TOTALS_KEYS
+            order = self.get_object()
+            # Итоги относятся к заменяющему КП. Пустой подвал не наследует суммы прежних КП.
+            order.manual_order_amount = None
+            replacement = _totals_kwargs(totals)
+            for field in TOTALS_KEYS:
+                setattr(order, field, replacement.get(field))
             order.client_name = (data.get('client_name') or '').strip()[:255] or order.client_name
             order.contact_phone = (data.get('contact_phone') or '')[:50] or order.contact_phone
             order.address = (data.get('address') or '')[:500] or order.address
@@ -940,10 +1054,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         Что именно добавлять, менеджер выбирает в превью — сюда приходят только
         отмеченные позиции (так отсеиваются повторные услуги вроде доставки).
         """
-        from django.db import transaction
         from django.db.models import Max
 
-        order = self.get_object()
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         items = data.pop('items', []) or []
         addons = data.pop('addons', []) or []
@@ -955,6 +1067,26 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
+            order = self.get_object()
+            try:
+                addition = offer_totals(data.get('totals') or {}, line_totals(items, addons),
+                                        data.get('original_line_totals'))
+            except (InvalidOperation, ValueError, TypeError):
+                raise ValidationError({'totals': 'Проверьте суммы и количество позиций КП.'})
+            footer = {key: getattr(order, key) for key in addition}
+            if legacy_append(order):
+                previous = legacy_totals(order)
+            elif all(value is None for value in footer.values()) and not order.items.exists() and not order.addons.exists():
+                previous = dict.fromkeys(addition, Decimal(0))
+            else:
+                previous = offer_totals(footer, order_line_totals(order))
+            if order.manual_order_amount is not None:
+                # Первое КП заменяет введённую вручную оценку заказа.
+                previous['total_with_discount'] = Decimal(0)
+                order.manual_order_amount = None
+            for key, value in addition.items():
+                setattr(order, key, combined(previous[key], value))
+
             last_opening = order.items.aggregate(v=Max('opening_number'))['v'] or 0
             last_item_pos = order.items.aggregate(v=Max('position'))['v']
             last_item_pos = -1 if last_item_pos is None else last_item_pos
@@ -968,8 +1100,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                     room_name=(item.get('room_name') or '')[:255],
                     model_name=(item.get('model_name') or '')[:500],
                     quantity=int(item.get('quantity') or 1),
-                    price=item.get('price') or None,
-                    amount=item.get('amount') or None,
+                    price=None if item.get('price') in (None, '') else item['price'],
+                    amount=None if item.get('amount') in (None, '') else item['amount'],
                     door_type=item.get('door_type') or '',
                     opening_type=item.get('opening_type') or '',
                     door_height=item.get('door_height') or None,
@@ -989,8 +1121,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                     quantity=addon.get('quantity') or 1,
                     size=(addon.get('size') or '')[:100],
                     opening_type=addon.get('opening_type') or '',
-                    price=addon.get('price') or None,
-                    amount=addon.get('amount') or None,
+                    price=None if addon.get('price') in (None, '') else addon['price'],
+                    amount=None if addon.get('amount') in (None, '') else addon['amount'],
                     comment=(addon.get('comment') or ''),
                     position=last_addon_pos + 1 + idx,
                 )
@@ -1020,8 +1152,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                     f'Добавлено КП № {new_kp or "—"}: '
                     f'позиций {len(items)}, сопутствующих {len(addons)}'
                 ),
+                meta={'totals_combined': True},
             )
 
+        order._prefetched_objects_cache = {}
         serializer = OrderDetailSerializer(order, context={'request': request})
         payload = serializer.data
         if kp_number_skipped:
@@ -1129,6 +1263,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 order.status = OrderStatus.MEASUREMENT_REQUESTED
             order.touch_activity(ActivityKind.MEASUREMENT_REQUESTED, save=False)
             order.save()
+            _notify_measurement_requested(instance, request.user)
         elif address_provided:
             order.save(update_fields=['address', 'updated_at'])
         return Response(
@@ -1229,6 +1364,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     # ---------- Phase 5: переходы статусов производства/отгрузки ----------
     @action(detail=True, methods=['post'], url_path='transition')
+    @transaction.atomic
     def transition(self, request, pk=None):
         """
         POST /orders/{id}/transition/  Body: {status, production_deadline?, production_start_date?}
@@ -1259,7 +1395,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         elif target == OrderStatus.COMPLETED:
             order.mark_completed(actor=actor)
         elif target == OrderStatus.CANCELLED:
-            order.mark_cancelled(actor=actor)
+            order.mark_cancelled(validated_refusal(request.data.get('refusal')), actor=actor)
         elif target == OrderStatus.ACTIVE:
             if order.status != OrderStatus.CANCELLED:
                 return Response(
@@ -1584,6 +1720,8 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
         qs = OrderActionReminder.objects.filter(order_id__in=accessible_ids).select_related(
             'order', 'created_by'
         )
+        if self.action == 'mark_done':
+            qs = qs.select_for_update(of=('self', 'order'))
         if self.request.query_params.get('mine') == 'true':
             qs = qs.filter(created_by=user)
         # Списки «на сегодня / завтра / просрочено» — без закрытых заказов
@@ -1615,6 +1753,7 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('Заказ другого салона.')
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def mark_done(self, request, pk=None):
         """
         Закрывает напоминание. Опционально меняет статус заказа.
@@ -1630,7 +1769,9 @@ class OrderActionReminderViewSet(viewsets.ModelViewSet):
 
         new_status = request.data.get('new_status')
         order = reminder.order
-        if new_status and new_status in dict(OrderStatus.choices):
+        if new_status == OrderStatus.CANCELLED:
+            order.mark_cancelled(validated_refusal(request.data.get('refusal')), actor=request.user)
+        elif new_status and new_status in dict(OrderStatus.choices):
             order.change_status(
                 new_status, actor=request.user,
                 description='Смена статуса при закрытии напоминания',
@@ -1697,12 +1838,19 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = get_orders_queryset_for_user(user).select_related('designer')
-        # Неактуальные в наработки не попадают — ни отменённые заказы, ни заказы,
-        # где менеджер подтвердил неактуальность замера. По этому же списку
-        # дашборд считает «Задачи на сегодня/завтра» и просрочки.
-        qs = qs.exclude(status=OrderStatus.CANCELLED).exclude(
-            measurement_request__is_irrelevant=True,
-        )
+        wanted = requested_statuses(self.request)
+        reason = self.request.query_params.get('refusal_reason')
+        purchase_reason = self.request.query_params.get('purchase_reason')
+        if reason or purchase_reason:
+            qs = qs.filter(status=OrderStatus.CANCELLED)
+            if reason:
+                qs = qs.filter(refusal__reason=reason)
+            if purchase_reason:
+                qs = qs.filter(refusal__reason='bought_elsewhere', refusal__purchase_reason=purchase_reason)
+        elif OrderStatus.CANCELLED in wanted:
+            qs = qs.filter(Q(status=OrderStatus.CANCELLED) | ~Q(measurement_request__is_irrelevant=True))
+        else:
+            qs = qs.exclude(status=OrderStatus.CANCELLED).exclude(measurement_request__is_irrelevant=True)
         # Подгружаем ближайшее активное напоминание
         qs = qs.prefetch_related(
             Prefetch(
@@ -1716,6 +1864,13 @@ class WorkshopViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(manager=user)
         qs = apply_people_filters(qs, self.request)
         params = self.request.query_params
+        qs = with_workshop_amount(qs)
+        bounds = WorkshopAmountRangeSerializer(data=params)
+        bounds.is_valid(raise_exception=True)
+        if 'amount_min' in bounds.validated_data:
+            qs = qs.filter(order_amount__gte=bounds.validated_data['amount_min'])
+        if 'amount_max' in bounds.validated_data:
+            qs = qs.filter(order_amount__lte=bounds.validated_data['amount_max'])
         reminder_today = params.get('with_reminder_today') == 'true'
         reminder_tomorrow = params.get('with_reminder_tomorrow') == 'true'
         reminder_overdue = params.get('with_overdue_reminder') == 'true'
@@ -2005,22 +2160,25 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         if not accessible:
             return Response({'detail': 'Нет доступа'}, status=status.HTTP_403_FORBIDDEN)
 
-        m = Measurement.objects.filter(request=mr).first()
+        m = mr.measurement
         is_create = m is None
-        if is_create:
-            m = Measurement.objects.create(
-                request=mr,
-                service_manager=request.user,
-                measurement_date=request.data.get('measurement_date') or None,
-            )
-            # SMS контактному: «Вам позвонит {СМ} по замеру в течение 2 раб. дн.»
-            sm_name, sm_phone = _sm_name_phone(request.user)
-            phone = mr.contact_phone or mr.order.contact_phone
-            send_client_sms(
-                mr.order, phone,
-                sms_templates.request_created(sm_name, sm_phone, phone),
-                actor=request.user,
-            )
+        if is_create or (not m.measurement_date and request.data.get('measurement_date')):
+            schedule = MeasurementScheduleSerializer(data=request.data)
+            schedule.is_valid(raise_exception=True)
+            if is_create:
+                m = Measurement.objects.create(
+                    request=mr, service_manager=request.user, **schedule.validated_data,
+                )
+            else:
+                m.measurement_date = schedule.validated_data['measurement_date']
+                m.measurement_end = schedule.validated_data.get('measurement_end')
+                m.save(update_fields=['measurement_date', 'measurement_end', 'updated_at'])
+            if m.measurement_date:
+                send_client_sms(
+                    mr.order, mr.contact_phone or mr.order.contact_phone,
+                    sms_templates.measurement_scheduled(m.measurement_date, m.measurement_end),
+                    actor=request.user,
+                )
 
         # Если назначили дату при создании — статус scheduled.
         # Учитываем и measurement_not_planned: cron мог пометить заказ как «не
@@ -2043,12 +2201,17 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def schedule(self, request, pk=None):
         m = self.get_object()
-        date = request.data.get('measurement_date')
+        schedule = MeasurementScheduleSerializer(data=request.data)
+        schedule.is_valid(raise_exception=True)
+        date = schedule.validated_data.get('measurement_date')
         if not date:
             return Response({'detail': 'Не указана дата'}, status=status.HTTP_400_BAD_REQUEST)
+        if (m.measurement_date, m.measurement_end) == (date, schedule.validated_data.get('measurement_end')):
+            return Response(MeasurementSerializer(m, context={'request': request}).data)
         had_date = m.measurement_date is not None
         m.measurement_date = date
-        m.save(update_fields=['measurement_date', 'updated_at'])
+        m.measurement_end = schedule.validated_data.get('measurement_end')
+        m.save(update_fields=['measurement_date', 'measurement_end', 'updated_at'])
         order = m.request.order
         # MEASUREMENT_NOT_DONE обязателен в списке: если дата прошла, крон
         # помечает заказ «Замер не выполнен», и СМ переносит замер именно из
@@ -2065,8 +2228,8 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         mr = m.request
         phone = mr.contact_phone or order.contact_phone
         text = (
-            sms_templates.measurement_rescheduled(m.measurement_date) if had_date
-            else sms_templates.measurement_scheduled(m.measurement_date)
+            sms_templates.measurement_rescheduled(m.measurement_date, m.measurement_end) if had_date
+            else sms_templates.measurement_scheduled(m.measurement_date, m.measurement_end)
         )
         send_client_sms(order, phone, text, actor=request.user)
         return Response(MeasurementSerializer(m, context={'request': request}).data)
@@ -2196,7 +2359,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         if order.manager_id and order.manager_id != request.user.pk:
             try:
                 from users.push_utils import send_push_notification
-                sm_name = _sm_name_phone(request.user)[0]
+                sm_name = request.user.get_full_name().strip() or request.user.username
                 send_push_notification(
                     user=order.manager,
                     title=f'Замер выполнен — заказ #{order.id}',

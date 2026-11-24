@@ -4,8 +4,8 @@
 
 По каждому выполненному за период замеру:
 - количество проёмов — все проёмы плюс все панели в них;
-- сумма по замеру — по шкале от количества проёмов (OPENINGS_TARIFF ниже);
-- удалённость — км × 30 ₽, если она не оплачена клиентом на месте;
+- сумма по замеру — по шкале от количества проёмов города салона;
+- удалённость — км × ставку города, если она не оплачена клиентом на месте;
 - итого по замеру = сумма по замеру + удалённость;
 - замер, оплаченный клиентом на месте (галочка в условиях объекта), в отчёте
   есть, но в зарплату не идёт: суммы по нему — 0.
@@ -25,32 +25,23 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from users.models import City
+
 from .api_views import get_measurements_queryset_for_user
 from .designer_report import REPORT_ROLES, _date, _ids, _user_name
 from .models import DistancePayment
 
-# Сумма по замеру от количества проёмов (проёмы + панели): (до N проёмов включительно, ₽)
-OPENINGS_TARIFF = [
-    (5, Decimal(750)),
-    (10, Decimal(900)),
-    (15, Decimal(1200)),
-    (20, Decimal(1800)),
-    (30, Decimal(2400)),
-    (40, Decimal(3600)),
-    (60, Decimal(4800)),
-]
-# Удалённость, ₽ за км (если не оплачена на месте)
-DISTANCE_RATE = Decimal(30)
+DEFAULT_TARIFF = City().measurement_tariff()
 
 
-def measurement_sum(openings):
+def measurement_sum(openings, tariff=DEFAULT_TARIFF):
     """Сумма по замеру по шкале. Больше 60 проёмов шкала не описывает — берём верхнюю ступень и помечаем."""
     if openings <= 0:
         return Decimal(0), False
-    for limit, amount in OPENINGS_TARIFF:
+    for limit, amount in tariff:
         if openings <= limit:
             return amount, False
-    return OPENINGS_TARIFF[-1][1], True
+    return tariff[-1][1], True
 
 
 def payment_status(paid_on_site):
@@ -62,13 +53,14 @@ def _money(value):
     return f'{value:.2f}'
 
 
-def build_report(request):
+def build_report(request, city_tariffs):
     """Строки отчёта, сгруппированные по СМ. Суммы — Decimal (в JSON и Excel приводятся отдельно)."""
     # Видимость — как у раздела «Замеры»: руководителю его город, админу всё.
     # Проёмы, вложения и прочее, что подгружает базовый запрос, отчёту не нужны.
     qs = (
         get_measurements_queryset_for_user(request.user)
         .prefetch_related(None)
+        .select_related('request__order__salon__city')
         .filter(is_done=True, done_at__isnull=False, service_manager__isnull=False)
     )
     # В расчёт идут замеры, выполненные в выбранном периоде
@@ -106,11 +98,15 @@ def build_report(request):
                 'measurements': [],
             }
         order = m.request.order
+        city = order.salon.city
+        if city.pk not in city_tariffs:
+            city_tariffs[city.pk] = (city.name, city.measurement_tariff(), city.measurement_km_rate)
+        _, tariff, km_rate = city_tariffs[city.pk]
         panels = m.panels_count or 0
         openings_total = m.openings_count + panels
-        base, tariff_exceeded = measurement_sum(openings_total)
+        base, tariff_exceeded = measurement_sum(openings_total, tariff)
         counted_km = m.distance_km if m.distance_payment == DistancePayment.INVOICE and m.distance_km else Decimal(0)
-        distance = counted_km * DISTANCE_RATE
+        distance = (counted_km * km_rate).quantize(Decimal('0.01'))
         if m.paid_on_site:
             # Замер оплачен клиентом на месте — в отчёте он есть, в зарплату не идёт
             base = distance = Decimal(0)
@@ -157,6 +153,13 @@ def _json_row(row):
     }
 
 
+def _tariff_data(tariff, km_rate):
+    return {
+        'openings': [{'up_to': limit, 'amount': _money(amount)} for limit, amount in tariff],
+        'distance_rate': _money(km_rate),
+    }
+
+
 class ServiceManagerReportView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -166,7 +169,8 @@ class ServiceManagerReportView(APIView):
             return Response({'detail': 'Отчёт доступен руководителю и сервис-менеджеру.'},
                             status=status.HTTP_403_FORBIDDEN)
 
-        groups = build_report(request)
+        city_tariffs = {}
+        groups = build_report(request, city_tariffs)
         if request.query_params.get('export') == 'xlsx':
             return _xlsx_response(groups, request)
 
@@ -177,6 +181,10 @@ class ServiceManagerReportView(APIView):
             'total': _money(g['total']),
             'measurements': [_json_row(r) for r in g['measurements']],
         } for g in groups]
+        city_rates = [
+            {'city_id': city_id, 'city_name': name, **_tariff_data(tariff, km_rate)}
+            for city_id, (name, tariff, km_rate) in sorted(city_tariffs.items(), key=lambda item: item[1][0])
+        ]
         return Response({
             'totals': {
                 'service_managers_count': len(groups),
@@ -186,10 +194,8 @@ class ServiceManagerReportView(APIView):
                 'distance_sum': _money(sum((g['distance_sum'] for g in groups), Decimal(0))),
                 'total': _money(sum((g['total'] for g in groups), Decimal(0))),
             },
-            'tariff': {
-                'openings': [{'up_to': limit, 'amount': _money(amount)} for limit, amount in OPENINGS_TARIFF],
-                'distance_rate': _money(DISTANCE_RATE),
-            },
+            'tariff': city_rates[0] if len(city_rates) == 1 else _tariff_data(DEFAULT_TARIFF, City().measurement_km_rate),
+            'city_tariffs': city_rates,
             'service_managers': rows,
         })
 

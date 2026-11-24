@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import City, User
+from .models import City, OPENING_LIMITS, User
 from orders.models import Salon
 
 
@@ -9,7 +9,14 @@ from orders.models import Salon
 class CityAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'warehouse_notification_email', 'accountant_email')
     search_fields = ('name',)
-    fields = ('name', 'warehouse_notification_email', 'accountant_email')
+    fieldsets = (
+        (None, {'fields': ('name', 'warehouse_notification_email', 'accountant_email')}),
+        ('Расценки сервис-менеджера', {
+            'description': 'В количество проёмов входят панели. При количестве свыше 60 применяется последняя ставка. '
+                           'Изменения пересчитывают отчёты этого города за все периоды.',
+            'fields': [f'measurement_rate_{limit}' for limit in OPENING_LIMITS] + ['measurement_km_rate'],
+        }),
+    )
 
 
 @admin.register(User)

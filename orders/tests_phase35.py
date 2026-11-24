@@ -35,7 +35,7 @@ class Phase35FlowTest(TestCase):
         )
         self.item2 = OrderItem.objects.create(
             order=self.order, opening_number=2, room_name='Кухня',
-            model_name='Дверь B', door_height=2050, door_width=900, position=1,
+            model_name='Дверь B', position=1,
         )
         self.mr = MeasurementRequest.objects.create(
             order=self.order, contact_name='Иванов', contact_phone='+700',
@@ -147,10 +147,10 @@ class Phase35FlowTest(TestCase):
         r = mgr_client.post(f'/api/v1/orders/{self.order.id}/apply_measurement_to_items/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.item1.refresh_from_db()
-        # door = рек. дверь из замера (заданная СМ вручную)
-        self.assertEqual(self.item1.door_height, 1900)
-        self.assertEqual(self.item1.door_width, 700)
-        self.assertEqual(self.item1.door_type, 'interior')  # тип из замера перезаписал
+        # Заполненные размеры позиции сохраняются, пустые поля берутся из замера.
+        self.assertEqual(self.item1.door_height, 2000)
+        self.assertEqual(self.item1.door_width, 800)
+        self.assertEqual(self.item1.door_type, 'interior')  # тип из замера
         # рек.проём из замера
         self.assertEqual(self.item1.recommended_opening_height, 1970)
         self.assertEqual(self.item1.recommended_opening_width, 800)

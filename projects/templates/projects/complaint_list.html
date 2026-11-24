@@ -205,6 +205,10 @@
                         <input type="checkbox" name="exclude_closed" value="1" class="mr-2" {% if exclude_closed %}checked{% endif %}>
                         Кроме завершенных
                     </label>
+                    <label class="inline-flex items-center px-4 py-2 bg-red-50 text-red-700 rounded-xl cursor-pointer hover:bg-red-100">
+                        <input type="checkbox" name="overdue" value="1" class="mr-2" {% if overdue %}checked{% endif %}>
+                        Просрочено
+                    </label>
                     <button type="submit" class="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors">
                         Применить фильтры
                     </button>

@@ -157,6 +157,12 @@ const InstallationDetail = () => {
             </span>
           </div>
         </div>
+        {inst.can_repeat && (
+          <Link to={`/orders/installations/new?order=${inst.order}&repeat_from=${inst.id}`}
+            className="px-4 py-2 text-sm font-medium rounded-xl border border-primary-300 text-primary-700 hover:bg-primary-50">
+            Оформить повторный монтаж
+          </Link>
+        )}
         {editable && !isInstaller && (
           <Link
             to={`/orders/installations/${inst.id}/edit`}
@@ -248,7 +254,7 @@ const InstallationDetail = () => {
         </div>
       )}
 
-      {editable && !isInstaller && (sm || inst.status === 'not_ready') && canSeeInstallations(user?.role) && (
+      {editable && !isInstaller && (sm || inst.can_unassign || inst.status === 'not_ready') && canSeeInstallations(user?.role) && (
         <div className="flex flex-wrap gap-2 mb-4">
           {sm && assignable && (
             <button type="button" disabled={acting} className={btnPrimary} onClick={() => setAssigning(true)}>
@@ -261,10 +267,10 @@ const InstallationDetail = () => {
               Назначить монтаж
             </button>
           )}
-          {sm && inst.status === 'planned' && (
+          {inst.can_unassign && (
             <button type="button" disabled={acting} className={btnPlain}
-              onClick={() => ask('Снять монтаж с графика монтажников?', 'unassign')}>
-              Снять с графика
+              onClick={() => ask('Снять текущий выезд с графика и вернуть монтаж сервис-менеджеру в папку «Назначить монтаж»?', 'unassign')}>
+              {user?.role === 'manager' ? 'Вернуть на назначение' : 'Снять с графика'}
             </button>
           )}
           {sm && assignable && (

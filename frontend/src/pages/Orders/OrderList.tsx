@@ -1,3 +1,4 @@
+import { formatMeasurementTime } from '../../utils/measurementTime'
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -110,11 +111,6 @@ const OrderList = () => {
     const timer = setTimeout(loadOrders, 300)
     return () => clearTimeout(timer)
   }, [loadOrders])
-
-  const formatTime = (dateString: string | null | undefined) => {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  }
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '—'
@@ -304,7 +300,7 @@ const OrderList = () => {
                     </td>
                     {showMeasurementTime && (
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-gray-900">{formatTime(order.measurement_date)}</div>
+                        <div className="text-sm font-semibold text-gray-900">{formatMeasurementTime(order.measurement_date, order.measurement_end, { timeStyle: 'short' })}</div>
                         {order.service_manager_name && (
                           <div className="text-xs text-gray-500">{order.service_manager_name}</div>
                         )}

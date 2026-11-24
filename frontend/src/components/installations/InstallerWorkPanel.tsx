@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import { QUEUED_MESSAGE } from '../../services/sync'
-import { Installation, formatPeriod, formatPeriodForInstaller, installerPeriod } from '../../types/installations'
+import { Installation, PARTIAL_COMPLETION_REASONS, PartialCompletionReason, formatPeriod, formatPeriodForInstaller, installerPeriod } from '../../types/installations'
 import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 import ModalPortal from './ModalPortal'
 import FileViewer from '../common/FileViewer'
@@ -30,6 +30,8 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const installerId = useAuthStore((state) => state.user?.id)
   const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
   const [busy, setBusy] = useState(false)
+  const [choosingReason, setChoosingReason] = useState(false)
+  const [reason, setReason] = useState<PartialCompletionReason | ''>('')
   const [rescheduling, setRescheduling] = useState(false)
   // Файлы, ушедшие в офлайн-очередь: сервер их ещё не видит, но монтажник
   // приложил акт и должен иметь возможность завершить монтаж
@@ -72,16 +74,15 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
     }
   }
 
-  const complete = async (partial: boolean) => {
-    const question = partial
-      ? 'Отметить: часть работ выполнена, монтаж продолжится?'
-      : 'Монтаж завершён полностью?'
-    if (!window.confirm(question)) return
+  const complete = async (partialReason?: PartialCompletionReason) => {
+    if (!visit || (!partialReason && !window.confirm('Монтаж завершён полностью?'))) return
     setBusy(true)
     try {
-      onChanged(await installationsAPI.complete(inst.id, partial))
+      onChanged(await installationsAPI.complete(inst.id, visit.id, partialReason))
+      setChoosingReason(false)
     } catch (err: any) {
       if (err?.message === QUEUED_MESSAGE) {
+        setChoosingReason(false)
         setNotice('Нет связи: отметка о завершении отправится, когда появится интернет.')
       } else {
         alert(apiErrorText(err, 'Не удалось завершить монтаж'))
@@ -246,11 +247,11 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
       </div>
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
-        <button type="button" disabled={busy || !hasAct} onClick={() => complete(false)}
+        <button type="button" disabled={busy || !hasAct} onClick={() => complete()}
           className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>
           ✓ Монтаж завершён
         </button>
-        <button type="button" disabled={busy || !hasAct} onClick={() => complete(true)} className={btnPlain}>
+        <button type="button" disabled={busy || !hasAct} onClick={() => { setReason(''); setChoosingReason(true) }} className={btnPlain}>
           Монтаж завершён частично
         </button>
         {canCreateComplaint ? (
@@ -262,6 +263,23 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
           </Link>
         ) : null}
       </div>
+      {choosingReason && (
+        <fieldset className="mt-3 space-y-3 rounded-lg border border-gray-200 p-3" disabled={busy}>
+          <legend className="px-1 text-sm font-medium">Почему монтаж завершён частично?</legend>
+          {(Object.keys(PARTIAL_COMPLETION_REASONS) as PartialCompletionReason[]).map(value => (
+            <label key={value} className="flex items-center gap-2 text-sm">
+              <input type="radio" name="partial-reason" checked={reason === value} onChange={() => setReason(value)} />
+              {PARTIAL_COMPLETION_REASONS[value]}
+            </label>
+          ))}
+          {reason === 'short_delivery' && <p className="text-sm text-gray-600">Менеджер заказа получит задание оформить повторный монтаж.</p>}
+          <div className="flex gap-2">
+            <button type="button" className={btnPrimary} disabled={!reason || !hasAct}
+              onClick={() => reason && complete(reason)}>Подтвердить</button>
+            <button type="button" className={btnPlain} onClick={() => setChoosingReason(false)}>Отмена</button>
+          </div>
+        </fieldset>
+      )}
       {!hasAct && <p className="text-xs text-gray-500">Завершить монтаж можно после того, как приложен акт.</p>}
 
       {notice && <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">{notice}</p>}

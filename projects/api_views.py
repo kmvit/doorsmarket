@@ -16,7 +16,7 @@ from .access import salon_complaints_q
 
 from .models import (
     Complaint,
-    INSTALLATION_STAGE_STATUSES,
+    INSTALLATION_STAGE_STATUSES, OVERDUE_COMPLAINT_STATUSES,
     DefectiveProduct,
     ComplaintAttachment,
     ComplaintComment,
@@ -146,8 +146,8 @@ def scope_complaints_for_user(queryset, user):
     elif user.role == 'installer':
         # Монтажник видит только назначенные ему или созданные им
         queryset = queryset.filter(
-            Q(initiator=user) | Q(installer_assigned=user)
-        )
+            Q(initiator=user) | Q(installer_assigned=user) | Q(additional_visits__installer=user)
+        ).distinct()
     elif user.role == 'complaint_department':
         # ОР видит только фабричные рекламации
         queryset = queryset.filter(complaint_type='factory')
@@ -213,10 +213,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             'defective_products',
             'attachments',
-            'comments__author'
+            'comments__author', 'additional_visits__installer'
         )
         
         queryset = scope_complaints_for_user(queryset, user)
+
+        if user.role == 'installer' and self.request.method not in permissions.SAFE_METHODS:
+            queryset = queryset.filter(Q(initiator=user) | Q(installer_assigned=user))
 
         # Дополнительные фильтры из query params
         my_complaints = self.request.query_params.get('my_complaints')
@@ -255,13 +258,12 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             
             role_task_filters = {
                 'installer': {
-                    'in_work': (Q(installer_assigned=user) | Q(initiator=user)) & Q(status__in=active_statuses),
+                    'in_work': (Q(installer_assigned=user) | Q(additional_visits__installer=user) | Q(initiator=user)) & Q(status__in=active_statuses),
                     'needs_planning': Q(installer_assigned=user, status__in=[
                         'waiting_installer_date', 'needs_planning', 'installer_not_planned', 'installer_overdue'
                     ]),
-                    'planned': Q(installer_assigned=user, status__in=[
-                        'installation_planned', 'both_planned'
-                    ]),
+                    'planned': (Q(installer_assigned=user) | Q(additional_visits__installer=user)) &
+                               Q(status__in=['installation_planned', 'both_planned']),
                     'completed': Q(installer_assigned=user, status__in=[
                         'under_sm_review', 'completed'
                     ]),
@@ -367,9 +369,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         for complaint in moscow_service_complaints:
             complaint.check_moscow_service_overdue()
 
-        # Возвращаем обновленный queryset через стандартный list
-        response = super().list(request, *args, **kwargs)
-        return response
+        # Отбираем после пересчёта, чтобы только что просроченный монтаж сразу попал в список.
+        if request.query_params.get('overdue') in ('true', '1'):
+            queryset = queryset.filter(status__in=OVERDUE_COMPLAINT_STATUSES)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            return self.get_paginated_response(self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(queryset, many=True).data)
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -667,6 +673,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             has_access = True
         elif obj.installer_assigned == user:
             has_access = True
+        elif user.role == 'installer' and request.method in permissions.SAFE_METHODS:
+            has_access = obj.additional_visits.filter(installer=user).exists()
         elif user.role == 'manager':
             # Менеджеры видят рекламации своего города (в т.ч. чужых менеджеров)
             has_access = user.combines_service_roles or _manager_has_complaint_access(user, obj)
@@ -785,6 +793,33 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             installer_id = user.pk
         elif not user.can_assign_complaint_installer:
             raise PermissionDenied('Назначать монтажника может только сервис-менеджер.')
+
+        if 'assignments' in request.data:
+            from datetime import time
+            from installations.serializers import InstallerAssignmentSerializer
+            from installations.services import city_installers
+            from orders.serializers import user_city_id
+            if not user.can_assign_complaint_installer:
+                raise PermissionDenied('Назначать бригаду может только сервис-менеджер.')
+            data = InstallerAssignmentSerializer(data=request.data['assignments'], many=True, allow_empty=False)
+            data.is_valid(raise_exception=True)
+            periods = {row['installer_id']: (row['date_from'], row['date_to']) for row in data.validated_data}
+            city_id = user.salon.city_id if user.combines_service_roles and user.salon_id else user_city_id(user)
+            staff = city_installers(city_id).in_bulk(periods)
+            if not city_id or len(staff) != len(data.validated_data):
+                return Response({'detail': 'Выберите монтажников своего города без повторений.'}, status=400)
+            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
+            if complaint.status not in {*INSTALLATION_STAGE_STATUSES, ComplaintStatus.ON_WAREHOUSE, ComplaintStatus.SHIPPING_PLANNED}:
+                return Response({'detail': 'На этом этапе монтаж по рекламации не назначается.'}, status=400)
+            team = [(staff[pk], start, end) for pk, (start, end) in periods.items()]
+            primary, start, end = team[0]
+            if complaint.installation_dates_only and complaint.installer_periods() == team:
+                return Response(self.get_serializer(complaint).data)
+            complaint.plan_installation_by_sm(
+                primary, timezone.make_aware(datetime.combine(start, time.min)),
+                timezone.make_aware(datetime.combine(end, time(23, 59, 59))), team=team,
+            )
+            return Response(self.get_serializer(complaint).data)
 
         if not installer_id:
             return Response(
@@ -1173,6 +1208,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def change_installer(self, request, pk=None):
         """СМ заменяет монтажника"""
         complaint = self.get_object()
@@ -1192,9 +1228,14 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
         
         try:
+            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
+            if complaint.installation_dates_only or complaint.additional_visits.exists():
+                return Response({'detail': 'Измените состав бригады в окне назначения монтажа.'}, status=400)
             old_installer = complaint.installer_assigned
             new_installer = User.objects.get(id=new_installer_id, role='installer', is_active=True)
             
+            if complaint.planned_installation_date:
+                complaint.check_installer_calendar(new_installer, complaint.planned_installation_date)
             complaint.installer_assigned = new_installer
             complaint.save()
             
@@ -1278,7 +1319,9 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        complaint.check_installer_calendar(user, installation_date)
         old_window = complaint.installation_window_text
+        complaint.installation_dates_only = False
         complaint.planned_installation_date = installation_date
         complaint.planned_installation_end = installation_end
         complaint.save()
@@ -2044,7 +2087,7 @@ class DashboardStatsView(APIView):
         
         def add_stat(key, label, query, url_param=None):
             scope = salon_complaints_q(user) if user.combines_service_roles else Q()
-            count = Complaint.objects.filter(scope & query).count()
+            count = Complaint.objects.filter(scope & query).values('pk').distinct().count()
             # Формируем URL для фронтенда
             if user.role == 'installer':
                 # Для монтажника используем страницу задач с параметром filter
@@ -2066,7 +2109,7 @@ class DashboardStatsView(APIView):
         
         if user.role == 'installer':
             # Базовый фильтр для монтажника
-            installer_base_filter = Q(installer_assigned=user) | Q(initiator=user)
+            installer_base_filter = Q(installer_assigned=user) | Q(additional_visits__installer=user) | Q(initiator=user)
             
             add_stat(
                 'in_work',

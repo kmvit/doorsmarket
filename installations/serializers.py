@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from orders.serializers import format_file_size, infer_attachment_type
 
+from .access import CREATE_ROLES, can_unassign_installation
 from .models import RATING_FIELDS, Installation, InstallationEvent, InstallationFile, InstallationRating, InstallationVisit
 
 
@@ -174,6 +175,8 @@ class InstallationDetailSerializer(InstallationListSerializer):
     order_status_display = serializers.CharField(source='order.get_status_display', read_only=True)
     measurement_blank_required = serializers.SerializerMethodField()
     order_manager_id = serializers.SerializerMethodField()
+    can_unassign = serializers.SerializerMethodField()
+    can_repeat = serializers.SerializerMethodField()
     visits = InstallationVisitSerializer(many=True, read_only=True)
     installer_notified_at = serializers.SerializerMethodField()
     complaints = serializers.SerializerMethodField()
@@ -184,7 +187,7 @@ class InstallationDetailSerializer(InstallationListSerializer):
     class Meta(InstallationListSerializer.Meta):
         fields = InstallationListSerializer.Meta.fields + [
             'created_by_name', 'order_status_display', 'measurement_blank_required',
-            'order_manager_id', 'visits', 'installer_notified_at', 'complaints',
+            'order_manager_id', 'can_unassign', 'can_repeat', 'visits', 'installer_notified_at', 'complaints',
             'act_sent_at', 'client_confirmed_at', 'client_link', 'rating', 'payment',
         ]
 
@@ -226,6 +229,14 @@ class InstallationDetailSerializer(InstallationListSerializer):
         from projects.models import Complaint
         rows = Complaint.objects.filter(source_order=obj.order, created_at__gte=obj.created_at).order_by('-id')
         return [{'id': c.id, 'created_at': c.created_at, 'status_display': c.get_status_display()} for c in rows]
+
+    def get_can_repeat(self, obj):
+        from orders.api_views import get_orders_queryset_for_user
+        user = self.context['request'].user
+        return user.role in CREATE_ROLES and get_orders_queryset_for_user(user).filter(pk=obj.order_id).exists()
+
+    def get_can_unassign(self, obj):
+        return obj.status == 'planned' and can_unassign_installation(self.context['request'].user, obj)
 
     def get_order_manager_id(self, obj):
         return obj.order.manager_id

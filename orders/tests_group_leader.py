@@ -6,12 +6,17 @@
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
         python manage.py test orders.tests_group_leader
 """
+import json
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from orders.models import Measurement, MeasurementOpening, MeasurementRequest, Order, OrderItem, OrderStatus, Salon
+from orders.models import Measurement, MeasurementOpening, MeasurementRequest, Order, OrderAttachment, OrderItem, OrderStatus, Salon
 from projects.models import Complaint, ComplaintReason, ProductionSite, ShippingRegistry
 from users.models import City
 
@@ -107,6 +112,75 @@ class GroupLeaderScopeTest(TestCase):
                 response = self.client.post(url, {**payload, 'salon': self.other_salon.pk}, format='json')
                 self.assertEqual(response.status_code, 403, response.data)
                 self.assertFalse(Order.objects.filter(salon=self.other_salon, manager=self.gl).exists())
+
+    def test_manual_create_with_arbitrary_attachments(self):
+        data = {'salon': self.own_salon.pk, 'client_name': 'С файлами', 'has_designer': False,
+                'next_action_text': 'Звонок', 'next_action_due_at': timezone.now().isoformat(),
+                'items': [{'opening_number': 1, 'model_name': 'Дверь'}]}
+
+        def submit():
+            return self.client.post('/api/v1/orders/', {
+                'order_data': json.dumps(data),
+                'files': [SimpleUploadedFile('проект.dwg', b'drawing'), SimpleUploadedFile('README', b'notes')],
+            }, format='multipart')
+
+        with TemporaryDirectory() as directory, override_settings(MEDIA_ROOT=directory):
+            with patch.object(OrderAttachment, 'save', side_effect=RuntimeError('storage failure')):
+                with self.assertRaises(RuntimeError):
+                    submit()
+            self.assertFalse(Order.objects.filter(client_name='С файлами').exists())
+            response = submit()
+            self.assertEqual(response.status_code, 201, response.data)
+            detail = self.client.get(f"/api/v1/orders/{response.data['id']}/").data
+            self.assertEqual(len(detail['items']), 1)
+            self.assertEqual({a['name'] for a in detail['attachments']}, {'проект.dwg', 'README'})
+            order = Order.objects.get(pk=response.data['id'])
+            for attachment in order.attachments.all():
+                with attachment.file.open('rb') as stored:
+                    self.assertEqual(stored.read(), b'notes' if attachment.name == 'README' else b'drawing')
+
+    def test_group_reassignment_is_scoped_and_audited(self):
+        url = f'/api/v1/orders/{self.own_order.pk}/'
+        choices = '/api/v1/orders/assignment_managers/'
+        self.assertEqual(self._ids(choices), {self.own_mgr.pk})
+        changes = {'salon': self.other_salon.pk, 'manager': self.other_mgr.pk}
+        self.assertEqual(self.client.patch(url, changes, format='json').status_code, 403)
+        self.assertEqual(self.client.patch(url, {'manager': self.other_mgr.pk}, format='json').status_code, 403)
+        self.assertFalse(self.own_order.activity_logs.exists())
+        self.gl.managed_salons.add(self.other_salon)
+        self.client.force_authenticate(User.objects.get(pk=self.gl.pk))
+        response = self.client.patch(url, changes, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.own_order.refresh_from_db()
+        self.assertEqual((self.own_order.salon_id, self.own_order.manager_id),
+                         (self.other_salon.pk, self.other_mgr.pk))
+        entry, = self.client.get(url + 'activity_log/').data
+        self.assertEqual(entry['actor'], self.gl.pk)
+        self.assertEqual(entry['meta'], {
+            'salon': {'old': self.own_salon.pk, 'new': self.other_salon.pk},
+            'manager': {'old': self.own_mgr.pk, 'new': self.other_mgr.pk},
+        })
+        for value in (self.own_salon.name, self.other_salon.name, self.own_mgr.username, self.other_mgr.username):
+            self.assertIn(value, entry['description'])
+        self.assertEqual(self.client.patch(url, changes, format='json').status_code, 200)
+        self.assertEqual(self.own_order.activity_logs.count(), 1)
+
+    def test_leader_changes_individual_fields_only_within_city(self):
+        leader = User.objects.create_user(username='leader', role='leader', city=self.own_salon.city)
+        inactive = User.objects.create_user(username='inactive', role='manager', salon=self.own_salon, is_active=False)
+        outsider = Salon.objects.create(name='В другом городе', city=City.objects.create(name='Самара'))
+        user = User.objects.create_user(username='outside', role='manager', salon=outsider)
+        url = f'/api/v1/orders/{self.own_order.pk}/'
+        self.client.force_authenticate(leader)
+        self.assertEqual(self._ids('/api/v1/orders/assignment_managers/'), {self.own_mgr.pk, self.other_mgr.pk})
+        for payload in ({'manager': inactive.pk}, {'manager': self.sm.pk}, {'manager': user.pk}, {'salon': outsider.pk}):
+            self.assertEqual(self.client.patch(url, payload, format='json').status_code, 403)
+        for payload in ({'salon': self.other_salon.pk}, {'manager': self.other_mgr.pk}):
+            self.assertEqual(self.client.patch(url, payload, format='json').status_code, 200)
+        self.assertEqual(self.own_order.activity_logs.count(), 2)
+        self.client.force_authenticate(self.other_mgr)
+        self.assertEqual(self.client.patch(url, {'manager': self.own_mgr.pk}, format='json').status_code, 403)
+        self.assertEqual(self.own_order.activity_logs.count(), 2)
 
     def test_complaints_and_registry_only_own_salons(self):
         self.assertEqual(self._ids('/api/v1/complaints/'), {self.own_complaint.id})

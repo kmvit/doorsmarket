@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -79,6 +80,28 @@ class ServiceManagerReportTest(TestCase):
 
     def row(self, data, sm):
         return next(r for r in data['service_managers'] if r['service_manager']['id'] == sm.id)
+
+    def test_admin_changes_city_rates_and_report_uses_order_city(self):
+        admin = User.objects.create_superuser(username='admin', password='x', role='admin')
+        self.client.force_login(admin)
+        url = reverse('admin:users_city_change', args=[self.samara.pk])
+        form = self.client.get(url).context['adminform'].form
+        data = {name: form[name].value() or '' for name in form.fields}
+        data.update(measurement_rate_5='-1', measurement_km_rate='32.12')
+        self.assertIn('measurement_rate_5', self.client.post(url, data).context['adminform'].form.errors)
+        data['measurement_rate_5'] = '950.50'
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+
+        self.client.force_authenticate(admin)
+        far = self.measurement(self.petr, aware(2026, 10, 4), openings=1, manager=self.far_manager)
+        Measurement.objects.filter(pk=far.pk).update(distance_payment='invoice', distance_km=Decimal('2.5'))
+        report = self.get()
+        rows = {r['id']: r for r in self.row(report, self.petr)['measurements']}
+        self.assertEqual(rows[self.m1.pk]['total'], '750.00')
+        self.assertEqual(rows[far.pk]['total'], '1030.80')
+        tariffs = {t['city_name']: t for t in report['city_tariffs']}
+        self.assertEqual(tariffs['Самара']['distance_rate'], '32.12')
+        self.assertEqual(tariffs['Казань']['openings'][0]['amount'], '750.00')
 
     def test_counts_done_measurements_in_own_city(self):
         data = self.get()

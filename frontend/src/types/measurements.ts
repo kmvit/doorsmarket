@@ -71,6 +71,7 @@ export interface Measurement {
   service_manager: number | null
   service_manager_name: string | null
   measurement_date: string | null
+  measurement_end?: string | null
   signature_photo_url: string | null
   // Фото подписанных бланков — их может быть несколько
   signatures?: MeasurementSignature[]
@@ -147,6 +148,7 @@ export interface MeasurementListItem {
   desired_date: string | null
   payer_display: string
   measurement_date: string | null
+  measurement_end?: string | null
   is_draft: boolean
   is_done: boolean
   done_at: string | null

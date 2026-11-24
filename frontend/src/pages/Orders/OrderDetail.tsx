@@ -1,3 +1,4 @@
+import { formatMeasurementTime } from '../../utils/measurementTime'
 import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
@@ -5,6 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { ordersAPI } from '../../api/orders'
 import { Order, MeasurementRequest, ORDER_STATUS_COLOR, DOOR_TYPE_DISPLAY, OPENING_TYPE_SHORT, OPENING_TYPE_DISPLAY, ADDON_KIND_DISPLAY, AddonKind, OpeningType } from '../../types/orders'
 import NextActionBlock, { NextActionBlockHandle } from './NextActionBlock'
+import OrderAssignmentForm from './OrderAssignmentForm'
 import OrderStatusWorkflow from './OrderStatusWorkflow'
 import MeasurementRequestForm from './MeasurementRequestForm'
 import { measurementsAPI, buildRecommendationText } from '../../api/measurements'
@@ -570,6 +572,9 @@ const OrderDetail = () => {
               </div>
             )}
           </dl>
+          {(user?.role === 'leader' || user?.role === 'group_leader') && (
+            <OrderAssignmentForm key={order.id} order={order} onSaved={reloadOrder} />
+          )}
         </div>
 
         {/* КП и условия */}
@@ -939,7 +944,7 @@ const OrderDetail = () => {
                 <dt className="text-gray-500">Дата замера</dt>
                 <dd className="font-medium text-gray-900">
                   {measurement.measurement_date
-                    ? new Date(measurement.measurement_date).toLocaleString('ru-RU')
+                    ? formatMeasurementTime(measurement.measurement_date, measurement.measurement_end)
                     : 'не назначена'}
                 </dd>
               </div>
@@ -1262,6 +1267,7 @@ const OrderDetail = () => {
           measurementId={measurement?.id}
           requestId={measurementRequest.id}
           initialDate={measurement?.measurement_date}
+          initialEnd={measurement?.measurement_end}
           contactName={measurementRequest.contact_name}
           onClose={() => setShowScheduleModal(false)}
           onScheduled={(mid) => {

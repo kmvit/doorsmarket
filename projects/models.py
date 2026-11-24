@@ -1,7 +1,7 @@
 import logging
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from datetime import timedelta
 from maxbot.sending import send_client_message
@@ -77,6 +77,16 @@ class ComplaintStatus(models.TextChoices):
     CLOSED = 'closed', 'Закрыта'
     REJECTED = 'rejected', 'Отклонена'
     SENT = 'sent', 'Отправлена'
+
+
+OVERDUE_COMPLAINT_STATUSES = (
+    ComplaintStatus.SHIPPING_OVERDUE,
+    ComplaintStatus.FACTORY_RESPONSE_OVERDUE,
+    ComplaintStatus.SM_RESPONSE_OVERDUE,
+    ComplaintStatus.MOSCOW_SERVICE_OVERDUE,
+    ComplaintStatus.INSTALLER_NOT_PLANNED,
+    ComplaintStatus.INSTALLER_OVERDUE,
+)
 
 
 # Этап монтажа: монтажник назначен, монтаж ждёт даты или запланирован. Только
@@ -206,6 +216,7 @@ class Complaint(models.Model):
     )
     
     # Планирование и даты
+    installation_dates_only = models.BooleanField(default=False)
     planned_installation_date = models.DateTimeField(
         blank=True,
         null=True,
@@ -982,12 +993,33 @@ class Complaint(models.Model):
                 return city
         return None
 
+    def installer_periods(self):
+        if not self.planned_installation_date or not self.installer_assigned_id:
+            return []
+        start = timezone.localdate(self.planned_installation_date)
+        end = timezone.localdate(self.planned_installation_end) if self.planned_installation_end else start
+        periods = [(self.installer_assigned, start, end)]
+        periods.extend((row.installer, row.date_from, row.date_to) for row in self.additional_visits.all())
+        return periods
+
     @property
     def installation_window_text(self) -> str:
+        if self.installation_dates_only:
+            periods = sorted({(start, end) for _, start, end in self.installer_periods()})
+            return ', '.join(format_visit_period(start, end) for start, end in periods)
         return format_installation_window(self.planned_installation_date, self.planned_installation_end)
 
+    @staticmethod
+    def check_installer_calendar(installer, when):
+        from installations.services import check_calendar_blocks
+        day = timezone.localdate(when) if timezone.is_aware(when) else when.date()
+        check_calendar_blocks({installer.pk: (day, day)})
+
+    @transaction.atomic
     def plan_installation(self, installer, installation_date, installation_end=None):
         """Монтажник планирует дату монтажа (интервал: начало и конец)"""
+        self.check_installer_calendar(installer, installation_date)
+        self.installation_dates_only = False
         self.installer_assigned = installer
         if not self.installer_assigned_at:
             self.installer_assigned_at = timezone.now()
@@ -1135,6 +1167,12 @@ class Complaint(models.Model):
         # снимаем его и возвращаем рекламацию в нормальный статус планирования.
         # Монтаж назначен интервалом — просрочка после его конца, а не начала
         installation_deadline = self.planned_installation_end or self.planned_installation_date
+        if installation_deadline:
+            from datetime import datetime, time
+            for row in self.additional_visits.all():
+                installation_deadline = max(installation_deadline, timezone.make_aware(
+                    datetime.combine(row.date_to, time.max),
+                ))
         if installation_deadline and installation_deadline > now:
             self._restore_status_from_overdue()
             return False
@@ -1512,8 +1550,23 @@ class Complaint(models.Model):
             planned_return_date=self.return_planned_date,
         )
 
-    def plan_installation_by_sm(self, installer, installation_date, installation_end=None):
+    @transaction.atomic
+    def plan_installation_by_sm(self, installer, installation_date, installation_end=None, *, team=None):
         """СМ планирует монтаж (интервал: начало и конец)"""
+        previous_window = self.installation_window_text if team else None
+        if team:
+            from installations.services import check_calendar_blocks
+            check_calendar_blocks({user.pk: (start, end) for user, start, end in team})
+        else:
+            self.check_installer_calendar(installer, installation_date)
+        self.additional_visits.all().delete()
+        self.installation_dates_only = bool(team)
+        if team:
+            ComplaintInstallerVisit.objects.bulk_create([
+                ComplaintInstallerVisit(complaint=self, installer=user, date_from=start, date_to=end)
+                for user, start, end in team[1:]
+            ])
+        self._prefetched_objects_cache = {}
         self.installer_assigned = installer
         self.planned_installation_date = installation_date
         self.planned_installation_end = installation_end
@@ -1524,15 +1577,18 @@ class Complaint(models.Model):
         self.save()
         
         # Уведомление монтажнику в личный кабинет
-        self._create_notification(
-            recipient=installer,
-            notification_type='pc',
-            title='Назначен монтаж',
-            message=f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). Дата: {self.installation_window_text}. Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}'
-        )
-        
+        for recipient, period in (
+            [(user, format_visit_period(start, end)) for user, start, end in team]
+            if team else [(installer, self.installation_window_text)]
+        ):
+            self._create_notification(
+                recipient=recipient, notification_type='pc', title='Назначен монтаж',
+                message=f'Вам назначен монтаж по рекламации #{self.id} ({self.order_number}). Дата: {period}. '
+                        f'Клиент: {self.client_name}, адрес: {self.address}, тел: {self.contact_phone}',
+            )
+
         # Отправка SMS клиенту
-        if self.contact_phone:
+        if self.contact_phone and self.installation_window_text != previous_window:
             try:
                 sms_text = f"По Вашей рекламации запланирован монтаж {self.installation_window_text}."
                 
@@ -1549,11 +1605,14 @@ class Complaint(models.Model):
                     exc_info=True,
         )
 
+    @transaction.atomic
     def plan_installation_assign_only(self, installer):
         """
         СМ назначает монтажника, но дату и время монтажа определит сам монтажник
         (галочка «Дату запланирует монтажник»). Статус — «Ожидает дату от монтажника».
         """
+        self.additional_visits.all().delete()
+        self.installation_dates_only = False
         self.installer_assigned = installer
         if not self.installer_assigned_at:
             self.installer_assigned_at = timezone.now()
@@ -2099,3 +2158,19 @@ class Notification(models.Model):
             self.save()
 
 
+
+
+def format_visit_period(start, end):
+    return f'{start:%d.%m.%Y}' if start == end else f'{start:%d.%m.%Y}–{end:%d.%m.%Y}'
+
+
+class ComplaintInstallerVisit(models.Model):
+    complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name='additional_visits')
+    installer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    date_from = models.DateField()
+    date_to = models.DateField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['complaint', 'installer'], name='unique_complaint_team_installer'),
+        ]

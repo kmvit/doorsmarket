@@ -6,18 +6,18 @@ SMS-шаблоны для уведомлений клиента/контактн
 публичную ссылку на PDF-бланк замера (доступен без авторизации по токену).
 """
 from django.conf import settings
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 
 def _format_dt(value) -> str:
     """Дата+время замера в человекочитаемом виде."""
+    if isinstance(value, str):
+        value = parse_datetime(value)
     if not value:
         return ''
-    try:
-        from django.utils import timezone
-        local = timezone.localtime(value) if timezone.is_aware(value) else value
-        return local.strftime('%d.%m.%Y %H:%M')
-    except Exception:  # noqa: BLE001
-        return str(value)
+    local = timezone.localtime(value) if timezone.is_aware(value) else value
+    return local.strftime('%d.%m.%Y %H:%M')
 
 
 def _base_url() -> str:
@@ -60,22 +60,35 @@ def max_invite(client_phone) -> str:
     return f' Уведомления о статусе заказа в MAX: {link}'
 
 
+def _sm_first_name(sm_name: str) -> str:
+    parts = (sm_name or '').split(maxsplit=1)
+    return parts[0] if parts else 'сервис-менеджер'
+
+
 def request_created(sm_name: str, sm_phone: str, client_phone: str = '') -> str:
-    """При взятии заявки СМ: клиенту обещаем звонок СМ в течение 2 раб. дней."""
-    name = (sm_name or 'сервис-менеджер').strip()
+    """При подаче заявки: клиенту обещаем звонок СМ в течение 2 раб. дней."""
+    name = _sm_first_name(sm_name)
     phone = (sm_phone or '').strip()
     tail = f' {phone}' if phone else ''
     return f'Вам позвонит {name}{tail} по замеру в течение 2 раб. дн.{max_invite(client_phone)}'
 
 
-def measurement_scheduled(measurement_date) -> str:
+def _measurement_window(start, end):
+    label = _format_dt(start)
+    if end:
+        end_date, end_time = _format_dt(end).split(' ')
+        label += '–' + (end_time if label.startswith(end_date) else _format_dt(end))
+    return label
+
+
+def measurement_scheduled(measurement_date, measurement_end=None) -> str:
     """При назначении даты замера."""
-    return f'Замер назначен на {_format_dt(measurement_date)}'
+    return f'Замер назначен на {_measurement_window(measurement_date, measurement_end)}'
 
 
-def measurement_rescheduled(measurement_date) -> str:
+def measurement_rescheduled(measurement_date, measurement_end=None) -> str:
     """При перепланировке замера на новую дату."""
-    return f'Замер перенесён на {_format_dt(measurement_date)}'
+    return f'Замер перенесён на {_measurement_window(measurement_date, measurement_end)}'
 
 
 def measurement_done(measurement) -> str:
@@ -85,7 +98,7 @@ def measurement_done(measurement) -> str:
 
 def call_failed(sm_name: str, sm_phone: str) -> str:
     """При недозвоне до клиента по замеру."""
-    name = (sm_name or 'сервис-менеджер').strip()
+    name = _sm_first_name(sm_name)
     phone = (sm_phone or '').strip()
     tail = f', {phone}' if phone else ''
     return f'Мы не дозвонились по замеру. Перезвоните пожалуйста {name}{tail}'

@@ -228,6 +228,11 @@ class Order(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Итого со скидкой',
     )
+    refusal = models.JSONField(default=dict, blank=True, verbose_name='Причина отказа от заказа')
+    manual_order_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Сумма заказа при ручном создании',
+    )
     commercial_offer = models.FileField(
         upload_to='orders/commercial_offers/',
         null=True,
@@ -376,6 +381,9 @@ class Order(models.Model):
             return old_status
 
         self.status = new_status
+        if old_status == OrderStatus.CANCELLED and new_status != OrderStatus.CANCELLED:
+            self.refusal = {}
+            extra_update_fields = [*(extra_update_fields or []), 'refusal']
         if new_status == OrderStatus.CANCELLED:
             self.status_before_installation = ''
         self.last_activity_at = timezone.now()
@@ -392,12 +400,13 @@ class Order(models.Model):
             description=description,
             old_status=old_status,
             new_status=new_status,
+            meta={'refusal': self.refusal} if new_status == OrderStatus.CANCELLED else None,
         )
         if notify:
             self._notify_status_change(old_status, new_status, actor=actor)
         return old_status
 
-    def set_installation_status(self, new_status, actor=None, description=''):
+    def set_installation_status(self, new_status, actor=None, description='', *, notify=True):
         """Синхронизирует поле статуса заказа с текущим состоянием монтажей."""
         from django.utils import timezone
 
@@ -423,7 +432,8 @@ class Order(models.Model):
             description=description or f'Статус заказа изменён на «{self.get_status_display()}»',
             old_status=old_status, new_status=self.status,
         )
-        self._notify_status_change(old_status, self.status, actor=actor)
+        if notify:
+            self._notify_status_change(old_status, self.status, actor=actor)
 
     def get_status_display_for_ui(self):
         """Отображаемую подпись с датой для статуса запланированного монтажа."""
@@ -468,8 +478,12 @@ class Order(models.Model):
     def mark_completed(self, actor=None):
         return self.change_status(OrderStatus.COMPLETED, actor=actor, description='Заказ выполнен')
 
-    def mark_cancelled(self, actor=None):
-        return self.change_status(OrderStatus.CANCELLED, actor=actor, description='Заказ отменён (не актуален)')
+    def mark_cancelled(self, refusal, actor=None):
+        if self.status == OrderStatus.CANCELLED and self.refusal == refusal:
+            return self.status
+        self.refusal = refusal
+        return self.change_status(OrderStatus.CANCELLED, actor=actor, description='Заказ не актуален',
+                                  extra_update_fields=['refusal'])
 
     def measurements(self):
         """Все замеры заказа по порядку (первичный, затем повторные)."""
@@ -863,6 +877,7 @@ class Measurement(models.Model):
         blank=True,
         verbose_name='Дата и время замера',
     )
+    measurement_end = models.DateTimeField(null=True, blank=True, verbose_name='Окончание интервала замера')
     signature_photo = models.FileField(
         upload_to='orders/signatures/',
         null=True,
@@ -945,6 +960,15 @@ class Measurement(models.Model):
         return self.request.irrelevant_confirmed_at
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(measurement_end__isnull=True) | (
+                    models.Q(measurement_date__isnull=False) & models.Q(measurement_end__gt=models.F('measurement_date'))
+                ),
+                name='measurement_end_after_start',
+                violation_error_message='Окончание интервала должно быть позже начала.',
+            ),
+        ]
         verbose_name = 'Замер'
         verbose_name_plural = 'Замеры'
         ordering = ['-created_at']
@@ -955,7 +979,7 @@ class Measurement(models.Model):
     # Поля замера, которые не переносятся в повторный: своя дата, статус
     # выполнения/обработки, подпись и ссылки — у нового замера свои
     REPEAT_SKIP_FIELDS = {
-        'id', 'previous', 'measurement_date', 'signature_photo', 'client_access_token',
+        'id', 'previous', 'measurement_date', 'measurement_end', 'signature_photo', 'client_access_token',
         'short_code', 'is_draft', 'draft_saved_at', 'is_done', 'done_at', 'is_processed',
         'processed_at', 'updated_after_done_at', 'repeat_count', 'repeat_requested_at',
         'repeat_reason', 'created_at', 'updated_at',
@@ -1293,8 +1317,13 @@ class PrettyOffer(models.Model):
         одной строкой, поэтому складываем их со стеклом; правка менеджера,
         если она есть, перебивает посчитанное.
         """
+        from .kp_totals import PARTS, legacy_append, legacy_totals
         order = self.order
-        goods_parts = [order.goods_amount, order.products_amount, order.glass_amount]
+        if legacy_append(order):
+            amounts = legacy_totals(order)
+        else:
+            amounts = {key: getattr(order, key) for key in (*PARTS, 'total_amount', 'total_with_discount')}
+        goods_parts = [amounts[key] for key in ('goods_amount', 'products_amount', 'glass_amount')]
         goods = sum((part for part in goods_parts if part is not None), Decimal('0'))
         if all(part is None for part in goods_parts):
             goods = None
@@ -1302,15 +1331,15 @@ class PrettyOffer(models.Model):
             'goods_amount': self.goods_amount_override if self.goods_amount_override is not None else goods,
             'services_amount': (
                 self.services_amount_override
-                if self.services_amount_override is not None else order.services_amount
+                if self.services_amount_override is not None else amounts['services_amount']
             ),
             'total_amount': (
                 self.total_amount_override
-                if self.total_amount_override is not None else order.total_amount
+                if self.total_amount_override is not None else amounts['total_amount']
             ),
             'total_with_discount': (
                 self.total_with_discount_override
-                if self.total_with_discount_override is not None else order.total_with_discount
+                if self.total_with_discount_override is not None else amounts['total_with_discount']
             ),
         }
 

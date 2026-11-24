@@ -8,6 +8,7 @@
 import shutil
 import tempfile
 from datetime import date
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -54,11 +55,16 @@ class InstallerAccessTest(InstallerTestBase):
         response = self.client_for(self.inst1).get(f'/api/v1/installations/{other.id}/')
         self.assertEqual(response.status_code, 404)
 
-    def test_installer_views_colleagues_schedule(self):
+    def test_installer_schedule_is_limited_to_own_visits(self):
         response = self.client_for(self.inst2).get('/api/v1/installations/schedule/', {
             'date_from': '2026-11-01', 'date_to': '2026-11-30', 'installers': self.inst1.id,
         })
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+        own = self.client_for(self.inst1).get('/api/v1/installations/schedule/', {
+            'date_from': '2026-11-01', 'date_to': '2026-11-30',
+        })
+        self.assertEqual([row['installation_id'] for row in own.data], [self.inst.id])
 
     def test_installer_cannot_edit_or_assign(self):
         c = self.client_for(self.inst1)
@@ -74,9 +80,11 @@ class InstallerAccessTest(InstallerTestBase):
 
 class CallFailedTest(InstallerTestBase):
     def test_installer_call_failed_sms(self):
+        self.inst1.phone_number = '+79991112233'
+        self.inst1.save(update_fields=['phone_number'])
         response = self.post(self.inst1, 'installer_call_failed')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertIn('Монтажник до вас не дозвонился', self.send.call_args.args[1])
+        self.assertEqual(self.send.call_args.args[1], 'не дозвонились по монтажу. Перезвоните пжл:) +79991112233')
         self.assertIsNotNone(response.data['installer_notified_at'])
         # Не свой монтаж — нельзя
         self.assertEqual(self.post(self.inst2, 'installer_call_failed').status_code, 404)
@@ -142,7 +150,11 @@ class CompleteTest(InstallerTestBase):
 
     def test_partial_then_next_visit_needs_new_act(self):
         self.upload(self.inst1)
-        self.assertEqual(self.post(self.inst1, 'complete_partial').status_code, 200)
+        result = self.post(self.inst1, 'complete_partial', {'reason': 'client_postponed'})
+        self.assertEqual(result.status_code, 200, result.data)
+        event = self.inst.events.get(kind=EventKind.PARTIALLY_COMPLETED)
+        self.assertIn('Клиент отложил', event.description)
+        self.assertFalse(self.order.action_reminders.exists())
         self.inst.refresh_from_db()
         self.assertEqual(self.inst.status, InstallationStatus.PARTIALLY_DONE)
 
@@ -153,6 +165,43 @@ class CompleteTest(InstallerTestBase):
         self.assertEqual(self.post(self.inst1, 'complete').status_code, 403)
         self.upload(self.inst2)
         self.assertEqual(self.post(self.inst2, 'complete').status_code, 200)
+
+    def test_partial_requires_a_listed_reason(self):
+        self.upload(self.inst1)
+        for payload in ({}, {'reason': 'другое'}, {'reason': ''}):
+            self.assertEqual(self.post(self.inst1, 'complete_partial', payload).status_code, 400)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.status, InstallationStatus.PLANNED)
+        self.assertFalse(self.order.action_reminders.exists())
+
+    @patch('users.push_utils.send_push_notification')
+    def test_short_delivery_creates_one_manager_task(self, push):
+        self.upload(self.inst1)
+        payload = {'reason': 'short_delivery', 'visit_id': self.inst.current_visit.pk}
+        with self.captureOnCommitCallbacks(execute=True):
+            result = self.post(self.inst1, 'complete_partial', payload)
+        self.assertEqual(result.status_code, 200, result.data)
+        event = self.inst.events.get(kind=EventKind.PARTIALLY_COMPLETED)
+        self.assertIn('Недопоставка', event.description)
+        self.assertEqual(event.meta, payload)
+        self.assertEqual(self.post(self.inst1, 'complete_partial', payload).status_code, 200)
+        task = self.order.action_reminders.get()
+        self.assertEqual(task.created_by, self.manager)
+        self.assertFalse(task.done)
+        self.assertTrue(task.notified)
+        self.assertIn('Оформить повторный монтаж', task.action_text)
+        self.assertEqual(push.call_args.kwargs['user'], self.manager)
+        self.assertIn(f'repeat_from={self.inst.pk}', push.call_args.kwargs['url'])
+
+    @patch('users.push_utils.send_push_notification')
+    def test_complaint_only_records_reason(self, push):
+        self.upload(self.inst1)
+        with self.captureOnCommitCallbacks(execute=True):
+            result = self.post(self.inst1, 'complete_partial', {'reason': 'complaint'})
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertIn('Рекламация', self.inst.events.get(kind=EventKind.PARTIALLY_COMPLETED).description)
+        self.assertFalse(self.order.action_reminders.exists())
+        push.assert_not_called()
 
     def test_installer_deletes_only_own_files(self):
         own = self.upload(self.inst1, kind='result', name='door.jpg').data['id']

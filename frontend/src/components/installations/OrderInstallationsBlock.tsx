@@ -112,6 +112,12 @@ const OrderInstallationsBlock = ({ orderId, orderStatus, notNeededAt, canCreate,
                 </span>
                 <span className="text-sm text-gray-600 truncate w-full sm:w-auto">{it.work_description}</span>
               </Link>
+              {canCreate && (
+                <Link to={`/orders/installations/new?order=${orderId}&repeat_from=${it.id}`}
+                  className="inline-block mt-2 text-sm font-medium text-primary-700 hover:underline">
+                  Оформить повторный монтаж
+                </Link>
+              )}
             </li>
           ))}
         </ul>

@@ -1,3 +1,4 @@
+import type { ComplaintAssignment } from '../types/complaints'
 import apiClient from './client'
 import {
   Complaint,
@@ -31,7 +32,7 @@ export const complaintsAPI = {
     const cacheKey = `complaints_list_${params.toString()}`
     
     try {
-    const response = await apiClient.get(`/complaints/?${params.toString()}`)
+      const response = await apiClient.get(`/complaints/?${params.toString()}`)
       
       // Сохраняем в кеш при успешном запросе
       if (response.data?.results) {
@@ -39,9 +40,11 @@ export const complaintsAPI = {
         await complaintUtils.saveList(response.data.results)
         await cacheUtils.set(cacheKey, response.data, 5 * 60 * 1000) // 5 минут
         console.log(`[ComplaintsAPI] Данные сохранены в IndexedDB и кеш`)
+      } else if (filters?.overdue && Array.isArray(response.data)) {
+        await cacheUtils.set(cacheKey, response.data, 5 * 60 * 1000)
       }
       
-    return response.data
+      return response.data
     } catch (error: any) {
       console.log(`[ComplaintsAPI] Ошибка загрузки рекламаций:`, error.message || error)
       
@@ -51,6 +54,15 @@ export const complaintsAPI = {
         throw error
       }
       
+      // Для просрочек общий список IndexedDB может содержать записи за пределами фильтра.
+      if (filters?.overdue) {
+        if (!navigator.onLine || error.code === 'ERR_NETWORK') {
+          const cached = await cacheUtils.getStale(cacheKey)
+          if (cached) return cached
+        }
+        throw error
+      }
+
       // Если офлайн или ошибка сети, пытаемся получить из кеша или IndexedDB
       if (!navigator.onLine || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
         console.log(`[ComplaintsAPI] Офлайн режим или ошибка сети, загружаем из кеша/IndexedDB`)
@@ -276,6 +288,9 @@ export const complaintsAPI = {
     const response = await apiClient.post(`/complaints/${id}/request_reorder/`, { comment })
     return response.data
   },
+
+  scheduleTeam: async (id: number, assignments: ComplaintAssignment[]): Promise<Complaint> =>
+    (await apiClient.post(`/complaints/${id}/plan_installation/`, { assignments })).data,
 
   planInstallation: async (
     id: number,

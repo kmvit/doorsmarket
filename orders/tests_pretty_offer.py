@@ -294,6 +294,46 @@ class PrettyOfferFlowTest(TestCase):
 
     # ---------- суммы ----------
 
+    def test_append_combines_factory_totals_and_excludes_removed_delivery(self):
+        url = f'/api/v1/orders/{self.order.pk}/append_from_parsed/'
+        payload = {
+            'kp_number': 'Дополнительное КП', 'items': [{'model_name': 'Дверь', 'amount': '1000.10'}],
+            'original_line_totals': {'goods_amount': '1000.10', 'services_amount': '200',
+                                     'glass_amount': '0', 'products_amount': '0'},
+            'totals': {'goods_amount': '1000.10', 'services_amount': '200',
+                       'total_amount': '1200.10', 'total_with_discount': '1100.10'},
+        }
+        for _ in range(2):
+            response = self.client.post(url, payload, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
+        self.assertEqual(response.status_code, 201, response.data)
+        totals = response.data['totals']
+        self.assertEqual(Decimal(totals['total_amount']), Decimal('970650.20'))
+        self.assertEqual(Decimal(totals['total_with_discount']), Decimal('828370.20'))
+        self.assertEqual(Decimal(totals['goods_amount']), Decimal('949200.20'))
+        self.assertEqual(Decimal(totals['services_amount']), Decimal('21450'))
+
+        response = self.client.get('/api/v1/workshop/', {'amount_min': '828370.20', 'amount_max': '828370.20'})
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data['results'] if isinstance(response.data, dict) else response.data
+        self.assertEqual([(r['id'], r['order_amount']) for r in rows], [(self.order.pk, '828370.20')])
+
+    def test_old_append_rebuilds_priced_lines_and_preserves_manual_discounted_total(self):
+        self.order.log_activity('items_changed', description='Добавлено КП № 2: позиций 1, сопутствующих 0')
+        self.order.items.update(amount=100)
+        self.order.addons.update(price=10)
+        offer = PrettyOffer.objects.create(order=self.order)
+        totals = offer.resolved_totals()
+        self.assertEqual(totals['total_amount'], Decimal('335'))
+        self.assertIsNone(totals['total_with_discount'])
+        self.assertFalse(self.client.get('/api/v1/workshop/', {'amount_min': '0'}).data)
+        offer.total_with_discount_override = Decimal('310')
+        offer.save()
+        rows = self.client.get('/api/v1/workshop/', {'amount_max': '310'}).data
+        self.assertEqual(rows[0]['order_amount'], '310.00')
+        self.assertEqual(offer.resolved_totals()['total_with_discount'], Decimal('310'))
+
     def test_totals_come_from_order_and_can_be_overridden(self):
         self.client.post(f'/api/v1/orders/{self.order.pk}/pretty-offer/')
         offer = PrettyOffer.objects.get(order=self.order)

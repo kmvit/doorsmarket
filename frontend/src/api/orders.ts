@@ -3,7 +3,7 @@ import {
   Order, OrderListItem, CreateOrderData, OrderFilters,
   MeasurementRequest, CreateMeasurementRequestData,
   OrderActionReminder, CreateActionReminderData,
-  WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
+  OrderRefusal, WorkshopOrder, ParsedKpData, OrderAttachment, OrderActivityLog, OrderStatus,
   OrderFolderCount, OrderManager, Designer, CreateDesignerData,
 } from '../types/orders'
 import { orderUtils, withOfflineFallback } from '../services/offline'
@@ -87,6 +87,15 @@ export const ordersAPI = {
     })
   },
 
+  assignmentManagers: async (): Promise<OrderManager[]> => {
+    const response = await apiClient.get('/orders/assignment_managers/')
+    return response.data
+  },
+
+  changeAssignment: async (id: number, changes: { salon?: number; manager?: number }): Promise<void> => {
+    await apiClient.patch(`/orders/${id}/`, changes)
+  },
+
   getFolderCounts: async (opts?: { mine?: boolean }): Promise<OrderFolderCount[]> => {
     const params: Record<string, any> = {}
     if (opts?.mine) params.mine = 'true'
@@ -112,7 +121,13 @@ export const ordersAPI = {
     })
   },
 
-  create: async (data: CreateOrderData): Promise<Order> => {
+  create: async (data: CreateOrderData, files: File[] = []): Promise<Order> => {
+    if (files.length) {
+      const body = new FormData()
+      body.append('order_data', JSON.stringify(data))
+      for (const file of files) body.append('files', file)
+      return requestWithQueue('POST', '/orders/', body, { 'Content-Type': 'multipart/form-data' })
+    }
     return requestWithQueue('POST', '/orders/', data)
   },
 
@@ -253,7 +268,7 @@ export const ordersAPI = {
   transition: async (
     orderId: number,
     status: OrderStatus,
-    opts?: { production_start_date?: string | null; production_deadline?: string | null },
+    opts?: { refusal?: OrderRefusal; production_start_date?: string | null; production_deadline?: string | null },
   ): Promise<Order> => {
     return requestWithQueue('POST', `/orders/${orderId}/transition/`, {
       status,
@@ -323,6 +338,7 @@ export const remindersAPI = {
   markDone: async (
     id: number,
     options?: {
+      refusal?: OrderRefusal
       new_status?: string
       next_action_text?: string
       next_action_due_at?: string
@@ -341,8 +357,12 @@ export const remindersAPI = {
 }
 
 export const workshopAPI = {
-  list: async (params?: { userId?: number; mine?: boolean; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; salons?: string[]; cities?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
+  list: async (params?: { userId?: number; mine?: boolean; refusal_reason?: string; purchase_reason?: string; amount_min?: string; amount_max?: string; with_reminder_today?: boolean; with_reminder_tomorrow?: boolean; with_overdue_reminder?: boolean; status?: string[]; managers?: string[]; salons?: string[]; cities?: string[]; search?: string }): Promise<WorkshopOrder[]> => {
     const queryParams: Record<string, any> = {}
+    if (params?.refusal_reason) queryParams.refusal_reason = params.refusal_reason
+    if (params?.purchase_reason) queryParams.purchase_reason = params.purchase_reason
+    if (params?.amount_min) queryParams.amount_min = params.amount_min
+    if (params?.amount_max) queryParams.amount_max = params.amount_max
     if (params?.mine) queryParams.mine = 'true'
     if (params?.with_reminder_today) queryParams.with_reminder_today = 'true'
     if (params?.with_reminder_tomorrow) queryParams.with_reminder_tomorrow = 'true'

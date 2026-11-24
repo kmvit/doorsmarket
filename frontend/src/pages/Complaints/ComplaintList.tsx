@@ -228,7 +228,7 @@ const ComplaintList = () => {
         <div className="text-xs">
           <div className="font-semibold text-gray-800">
             Отгрузка {complaint.planned_shipping_date ? new Date(complaint.planned_shipping_date).toLocaleDateString('ru-RU') : '—'}, 
-            монтаж {complaint.planned_installation_date ? formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end) : '—'}
+            монтаж {complaint.planned_installation_date ? (complaint.installation_window_text || formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end)) : '—'}
             {complaint.installer_assigned && `, монтажник ${complaint.installer_assigned.first_name || complaint.installer_assigned.username}`}
           </div>
         </div>
@@ -239,7 +239,7 @@ const ComplaintList = () => {
     if (status === 'installation_planned') {
       return (
         <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-          Монтаж запланирован на {complaint.planned_installation_date ? formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end) : '—'}
+          Монтаж запланирован на {complaint.planned_installation_date ? (complaint.installation_window_text || formatInstallationWindow(complaint.planned_installation_date, complaint.planned_installation_end)) : '—'}
           {complaint.installer_assigned && `, монтажник ${complaint.installer_assigned.first_name || complaint.installer_assigned.username}`}
         </span>
       )
@@ -426,6 +426,15 @@ const ComplaintList = () => {
                   className="mr-2"
                 />
                 Кроме завершенных
+              </label>
+              <label className="inline-flex items-center px-4 py-2 bg-red-50 text-red-700 rounded-xl cursor-pointer hover:bg-red-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(localFilters.overdue)}
+                  onChange={(e) => handleFilterChange('overdue', e.target.checked || undefined)}
+                  className="mr-2"
+                />
+                Просрочено
               </label>
               <button
                 onClick={handleApplyFilters}

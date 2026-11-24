@@ -33,6 +33,16 @@ def can_schedule_installations(user):
     return user.can_manage_service or user.role == 'admin'
 
 
+def can_unassign_installation(user, inst):
+    if can_schedule_installations(user):
+        return True
+    if user.role != 'manager':
+        return False
+    if user.salon_id:
+        return inst.order.salon_id == user.salon_id
+    return inst.order.manager_id == user.id
+
+
 def manager_installations_scope(queryset, user):
     if user.salon_id:
         return queryset.filter(order__salon_id=user.salon_id)

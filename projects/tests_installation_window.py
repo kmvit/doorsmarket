@@ -57,6 +57,18 @@ class InstallationWindowTest(TestCase):
         )
         self.assertIsNotNone(response.data['planned_installation_end'])
 
+    def test_day_off_conflicts_with_complaint_in_either_order(self, *_):
+        self.api.force_authenticate(self.installer)
+        url = '/api/v1/installations/calendar-blocks/'
+        payload = {'installer_id': self.installer.pk, 'date_from': '2030-05-14', 'date_to': '2030-05-14'}
+        block = self.api.post(url, payload, format='json')
+        self.assertEqual(block.status_code, 201, block.data)
+        self.assertEqual(self._plan(self.sm, installation_date='2030-05-14T09:00').status_code, 400)
+        self.api.force_authenticate(self.installer)
+        self.assertEqual(self.api.delete(f"{url}{block.data['id']}/").status_code, 204)
+        self.assertEqual(self._plan(self.installer, installation_date='2030-05-14T09:00').status_code, 200)
+        self.assertEqual(self.api.post(url, payload, format='json').status_code, 400)
+
     def test_sm_plans_interval(self, *_):
         response = self._plan(self.sm, installation_date='2030-05-14T09:00', installation_end='2030-05-14T11:00')
         self.assertEqual(response.status_code, 200, response.data)

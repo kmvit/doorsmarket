@@ -17,7 +17,7 @@ from .models import (
     ComplaintComment,
     ShippingRegistry,
     Notification,
-    ComplaintStatus,
+    ComplaintStatus, OVERDUE_COMPLAINT_STATUSES,
 )
 from .decorators import role_required, complaint_access_required
 
@@ -235,6 +235,10 @@ def complaint_list(request):
     for complaint in installer_complaints:
         complaint.check_installer_overdue()
     
+    overdue = request.GET.get('overdue') in ('true', '1')
+    if overdue:
+        complaints = complaints.filter(status__in=OVERDUE_COMPLAINT_STATUSES)
+
     # Получаем данные для фильтров
     reasons = ComplaintReason.objects.filter(is_active=True)
     statuses = Complaint._meta.get_field('status').choices
@@ -269,6 +273,7 @@ def complaint_list(request):
         'cities': cities,
         'selected_city_id': selected_city_id,
         'exclude_closed': exclude_closed,
+        'overdue': overdue,
         'created_by_me': bool(my_complaints_filter),
         'my_orders': bool(assigned_filter),
     }
@@ -362,7 +367,12 @@ def complaint_detail(request, pk):
                     from datetime import datetime
                     installation_date = datetime.fromisoformat(installation_date)
                     installer = User.objects.get(id=installer_id)
-                    complaint.plan_installation_by_sm(installer, installation_date)
+                    from rest_framework.exceptions import ValidationError
+                    try:
+                        complaint.plan_installation_by_sm(installer, installation_date)
+                    except ValidationError as exc:
+                        messages.error(request, str(exc.detail['detail']))
+                        return redirect('projects:complaint_detail', pk=complaint.id)
                     messages.success(request, f'Монтаж запланирован на {installation_date.strftime("%d.%m.%Y %H:%M")}, монтажник: {installer.get_full_name() or installer.username}')
                 else:
                     messages.error(request, 'Укажите дату монтажа и монтажника')
@@ -1092,9 +1102,12 @@ def installer_planning(request):
                 if action == 'reschedule' and complaint.planned_installation_date:
                     # Перенос даты монтажа
                     old_date = complaint.planned_installation_date
-                    complaint.planned_installation_date = new_installation_date
-                    complaint.planned_installation_end = None  # веб-форма задаёт только время начала
-                    complaint.save()
+                    with transaction.atomic():
+                        complaint.check_installer_calendar(request.user, new_installation_date)
+                        complaint.installation_dates_only = False
+                        complaint.planned_installation_date = new_installation_date
+                        complaint.planned_installation_end = None
+                        complaint.save()
                     
                     # Создаем комментарий о переносе
                     ComplaintComment.objects.create(

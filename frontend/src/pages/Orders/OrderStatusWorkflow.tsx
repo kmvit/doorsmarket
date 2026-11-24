@@ -1,3 +1,5 @@
+import OrderRefusalDialog from '../../components/orders/OrderRefusalDialog'
+import { refusalSummary } from '../../components/orders/OrderRefusalFields'
 import { useState } from 'react'
 import { ordersAPI } from '../../api/orders'
 import {
@@ -26,6 +28,7 @@ const PRODUCTION_STATUSES: OrderStatus[] = [
 ]
 
 const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
+  const [showRefusal, setShowRefusal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showProdModal, setShowProdModal] = useState(false)
   const [startDate, setStartDate] = useState(order.production_start_date || '')
@@ -103,6 +106,11 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
         </span>
       </div>
 
+      {order.status === 'cancelled' && <p className="mb-3 text-sm break-words">Причина отказа: {refusalSummary(order.refusal)}</p>}
+      {showRefusal && <OrderRefusalDialog onClose={() => setShowRefusal(false)} onSave={async refusal => {
+        await ordersAPI.transition(order.id, 'cancelled', { refusal })
+        onChanged()
+      }} />}
       {/* UI-подсказка по статусу */}
       {hint && (
         <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
@@ -178,9 +186,7 @@ const OrderStatusWorkflow = ({ order, canManage, onChanged }: Props) => {
           )}
           {canCancel && (
             <button
-              onClick={() => {
-                if (window.confirm('Пометить заказ как «Не актуален»?')) doTransition('cancelled')
-              }}
+              onClick={() => setShowRefusal(true)}
               disabled={busy}
               className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-60"
             >

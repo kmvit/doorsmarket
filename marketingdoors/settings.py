@@ -243,10 +243,12 @@ SMS_RU_API_ID = os.getenv('SMS_RU_API_ID', '')
 # Рекламаций не касается. Выключить: ORDERS_SMS_ENABLED=False в .env, затем рестарт.
 ORDERS_SMS_ENABLED = os.getenv('ORDERS_SMS_ENABLED', 'True').strip().lower() in ('1', 'true', 'yes', 'on')
 
-# СМС клиенту по МОНТАЖАМ. На время тестирования блока выключены (по умолчанию):
-# сообщение не уходит, но пишется в историю монтажа с пометкой. Включить:
-# INSTALLATIONS_SMS_ENABLED=True в .env, затем рестарт.
-INSTALLATIONS_SMS_ENABLED = os.getenv('INSTALLATIONS_SMS_ENABLED', 'False').strip().lower() in ('1', 'true', 'yes', 'on')
+# Без переопределения отправляем согласованные шаблоны монтажа.
+# Явный True/False по-прежнему включает/отключает все сообщения блока.
+_installations_sms = os.getenv('INSTALLATIONS_SMS_ENABLED')
+INSTALLATIONS_SMS_ENABLED = (
+    None if _installations_sms is None else _installations_sms.strip().lower() in ('1', 'true', 'yes', 'on')
+)
 
 # Бот MAX: уведомления клиенту уходят в MAX, если клиент подключил бота, иначе SMS.
 # Пустой токен — бот выключен, всё идёт по SMS. Вебхук: manage.py max_webhook subscribe

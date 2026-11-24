@@ -1,3 +1,5 @@
+import type { Complaint } from '../../types/complaints'
+import { complaintsAPI } from '../../api/complaints'
 import { canManageService } from '../../types/auth'
 import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from './ModalPortal'
@@ -9,13 +11,24 @@ import MonthCalendar, { monthGridRange, monthStart } from './MonthCalendar'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 
-interface Props {
+interface InstallationProps {
+  complaint?: never
   installation: Pick<Installation, 'id' | 'client_name' | 'address' | 'current_visit' | 'status'>
   /** Предвыбор из календаря монтажника: монтажник и даты */
   preset?: { installers?: number[]; dateFrom?: string; dateTo?: string }
   onClose: () => void
   onDone: (inst: Installation) => void
 }
+
+interface ComplaintProps {
+  complaint: Complaint
+  installation?: never
+  preset?: InstallationProps['preset']
+  onClose: () => void
+  onDone: (complaint: Complaint) => void
+}
+
+type Props = InstallationProps | ComplaintProps
 
 const dayInRange = (day: string, from: string, to: string) => day >= from && day <= to
 
@@ -24,13 +37,18 @@ const dayInRange = (day: string, from: string, to: string) => day >= from && day
  * когда выбранные монтажники уже заняты, — на один день монтажей может быть
  * несколько, поэтому это подсказка, а не запрет.
  */
-const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
+const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props) => {
   const setUser = useAuthStore((state) => state.setUser)
   useBodyScrollLock(true)
   // Запланированный монтаж правим (тот же выезд); частично завершённому — новый выезд
-  const visit = installation.status === 'planned' ? installation.current_visit : null
+  const visit = installation?.status === 'planned' ? installation.current_visit : null
+  const target = complaint ?? installation
+  const editing = Boolean(visit || complaint?.planned_installation_date)
+  const [delegate, setDelegate] = useState(false)
   const [installers, setInstallers] = useState<Installer[]>([])
   const [assignments, setAssignments] = useState(() => {
+    if (complaint?.installation_assignments?.length) return complaint.installation_assignments
+    if (!preset && complaint?.installer_assigned) return [{ installer_id: complaint.installer_assigned.id, date_from: '', date_to: '' }]
     if (visit) return visit.installers.map((u) => ({ installer_id: u.id, ...installerPeriod(visit, u.id) }))
     return (preset?.installers ?? []).map((id) => ({
       installer_id: id,
@@ -58,10 +76,10 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
     let cancelled = false
     const [from, to] = monthGridRange(month)
     installationsAPI.getSchedule(from, to, [activeId])
-      .then((rows) => { if (!cancelled) setBusy(rows.filter((v) => v.installation_id !== installation.id)) })
+      .then((rows) => { if (!cancelled) setBusy(rows.filter((v) => complaint ? v.complaint_id !== complaint.id : v.installation_id !== installation?.id)) })
       .catch(() => { if (!cancelled) setBusy([]) })
     return () => { cancelled = true }
-  }, [activeId, month, installation.id])
+  }, [activeId, month, installation?.id, complaint?.id])
 
   const busyOn = (day: string) => busy.filter((v) => dayInRange(day, v.date_from, v.date_to))
 
@@ -90,6 +108,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
   }
 
   const toggle = (id: number) => {
+    setDelegate(false)
     if (assignments.some((row) => row.installer_id === id)) {
       const remaining = assignments.filter((row) => row.installer_id !== id)
       setAssignments(remaining)
@@ -107,7 +126,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
   const save = async () => {
     setError(null)
     if (!assignments.length) { setError('Выберите монтажника'); return }
-    if (assignments.some((row) => !row.date_from || (row.date_to && row.date_to < row.date_from))) {
+    if (!delegate && assignments.some((row) => !row.date_from || (row.date_to && row.date_to < row.date_from))) {
       setError('Укажите корректные даты для каждого монтажника')
       return
     }
@@ -121,9 +140,17 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         setError(`Сервер видит текущий аккаунт «${currentUser.username}» с ролью «${currentUser.role}». Для назначения нужен сервис-менеджер.`)
         return
       }
-      onDone(await installationsAPI.assign(installation.id, assignments.map((row) => ({
-        ...row, date_to: row.date_to || row.date_from,
-      }))))
+      const periods = assignments.map(({ installer_id, date_from, date_to }) => ({
+        installer_id, date_from, date_to: date_to || date_from,
+      }))
+      if (complaint) {
+        const updated = delegate
+          ? await complaintsAPI.planInstallation(complaint.id, periods[0].installer_id, '', true)
+          : await complaintsAPI.scheduleTeam(complaint.id, periods)
+        onDone(updated)
+      } else {
+        onDone(await installationsAPI.assign(installation.id, periods))
+      }
     } catch (err) {
       setError(apiErrorText(err, 'Не удалось назначить монтаж'))
     } finally {
@@ -143,9 +170,9 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              {visit ? 'Изменить назначение' : 'Назначить монтаж'} #{installation.id}
+              {editing ? 'Изменить назначение' : 'Назначить монтаж'} #{target.id}
             </h2>
-            <p className="text-sm text-gray-500">{installation.client_name}{installation.address && ` · ${installation.address}`}</p>
+            <p className="text-sm text-gray-500">{target.client_name}{target.address && ` · ${target.address}`}</p>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
@@ -189,7 +216,11 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
           </div>
         )}
 
-        {active && <>
+        {complaint && assignments.length === 1 && <label className="mb-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={delegate} onChange={e => setDelegate(e.target.checked)} />
+          Дату и время запланирует монтажник
+        </label>}
+        {active && !delegate && <>
         <div className="mb-2 flex flex-wrap items-end gap-3">
           <label className="text-sm text-gray-700">
             С
@@ -220,7 +251,7 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
           renderDay={(day) => {
             return <div className="space-y-1 mt-0.5">{busyOn(day).map((v) => (
               <div key={v.id} title={scheduleVisitTitle(v)} className={`rounded-md px-1.5 py-1 text-[11px] leading-tight ${
-                v.kind === 'complaint'
+                v.block_id ? 'bg-amber-100 text-amber-950' : v.kind === 'complaint'
                   ? 'bg-rose-100 text-rose-900 border-l-2 border-rose-500'
                   : INSTALLATION_STATUS_COLOR[v.status as keyof typeof INSTALLATION_STATUS_COLOR]
               }`}>
@@ -233,12 +264,12 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         </div>
         <p className="text-xs text-gray-500 mt-1">
           <span className="inline-block w-3 h-3 bg-amber-100 align-middle mr-1 rounded-sm" />
-          у этого монтажника уже есть монтаж
+          монтажник занят
         </p>
 
         {conflicts.length > 0 && (
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            <p className="font-medium mb-1">В эти дни уже назначено:</p>
+            <p className="font-medium mb-1">Занятость в выбранные дни</p>
             <ul className="space-y-0.5">
               {conflicts.map((v) => (
                 <li key={v.id}>
@@ -257,9 +288,9 @@ const AssignModal = ({ installation, preset, onClose, onDone }: Props) => {
         <div className="flex justify-end gap-2 mt-4">
           <button type="button" onClick={onClose}
             className="px-4 py-2 text-sm rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50">Отмена</button>
-          <button type="button" onClick={save} disabled={isSaving}
+          <button type="button" onClick={save} disabled={isSaving || (!delegate && conflicts.some(v => v.block_id))}
             className="px-5 py-2 text-sm font-medium text-white rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
-            {isSaving ? 'Сохранение…' : visit ? 'Сохранить' : 'Назначить'}
+            {isSaving ? 'Сохранение…' : editing ? 'Сохранить' : 'Назначить'}
           </button>
         </div>
       </div>

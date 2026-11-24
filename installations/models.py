@@ -4,6 +4,24 @@ from django.conf import settings
 from django.db import models
 
 
+class InstallerCalendarBlock(models.Model):
+    class Kind(models.TextChoices):
+        DAY_OFF = 'day_off', 'Выходной'
+        OTHER_WORK = 'other_work', 'Другая занятость'
+
+    installer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    date_from = models.DateField()
+    date_to = models.DateField()
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    comment = models.CharField(max_length=500, blank=True)
+
+
+class PartialCompletionReason(models.TextChoices):
+    CLIENT_POSTPONED = 'client_postponed', 'Клиент отложил'
+    COMPLAINT = 'complaint', 'Рекламация'
+    SHORT_DELIVERY = 'short_delivery', 'Недопоставка'
+
+
 class InstallationStatus(models.TextChoices):
     NOT_PLANNED = 'not_planned', 'Не запланирован'
     PLANNED = 'planned', 'Запланирован'

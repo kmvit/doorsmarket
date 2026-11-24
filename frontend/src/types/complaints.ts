@@ -100,7 +100,22 @@ export type ComplaintStatus =
 
 export type ComplaintType = 'manager' | 'installer' | 'factory'
 
+export const canPlanComplaintStatus = (status: string) => [
+  'on_warehouse', 'shipping_planned', 'waiting_installer_date', 'needs_planning',
+  'installer_not_planned', 'installation_planned', 'both_planned', 'installer_overdue',
+].includes(status)
+
+export interface ComplaintAssignment {
+  installer_id: number
+  date_from: string
+  date_to: string
+  name?: string
+}
+
 export interface Complaint {
+  installation_window_text?: string
+  installation_assignments?: ComplaintAssignment[]
+  installation_dates_only?: boolean
   id: number
   created_at: string
   updated_at: string
@@ -155,6 +170,9 @@ export interface Complaint {
 }
 
 export interface ComplaintListItem {
+  installation_assignments?: ComplaintAssignment[]
+  installation_dates_only?: boolean
+  installation_window_text?: string
   id: number
   order_number: string
   client_name: string
@@ -209,6 +227,7 @@ export interface ComplaintFilters {
   my_complaints?: boolean
   my_orders?: boolean
   needs_planning?: boolean
+  overdue?: boolean
   exclude_closed?: boolean
   city?: number
   search?: string

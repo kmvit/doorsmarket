@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from projects.api_views import scope_complaints_for_user
-from projects.models import INSTALLATION_STAGE_STATUSES, Complaint, ComplaintStatus
+from projects.models import INSTALLATION_STAGE_STATUSES, Complaint, ComplaintStatus, format_visit_period
 
 # То, что у СМ в папке «Запланировать монтаж», и весь этап монтажа
 COMPLAINT_INSTALLATION_STATUSES = {ComplaintStatus.SHIPPING_PLANNED, *INSTALLATION_STAGE_STATUSES}
@@ -25,7 +25,7 @@ def complaint_installations(user, params):
     qs = scope_complaints_for_user(
         Complaint.objects.select_related('manager', 'installer_assigned').prefetch_related('defective_products'),
         user,
-    ).filter(status__in=COMPLAINT_INSTALLATION_STATUSES)
+    ).prefetch_related('additional_visits__installer').filter(status__in=COMPLAINT_INSTALLATION_STATUSES)
     if params.get('folder') == 'to_assign':
         if not user.can_manage_service:
             return qs.none()
@@ -49,6 +49,13 @@ def complaint_installations(user, params):
 
 def complaint_row(c):
     start, end = c.planned_installation_date, c.planned_installation_end
+    periods = c.installer_periods()
+    team_schedule = []
+    if len(periods) > 1:
+        for installer, first, last in periods:
+            window = (c.installation_window_text if installer.pk == c.installer_assigned_id and not c.installation_dates_only
+                      else format_visit_period(first, last))
+            team_schedule.append(f'{_name(installer)} · {window}')
     return {
         'id': c.id,
         'status': c.status,
@@ -60,6 +67,7 @@ def complaint_row(c):
         'contact_phone': c.contact_phone,
         'manager_name': _name(c.manager),
         'installer_name': _name(c.installer_assigned),
+        'team_schedule': team_schedule,
         'installer_id': c.installer_assigned_id,
         'products': ', '.join(p.product_name for p in c.defective_products.all() if p.product_name),
         'date': timezone.localtime(start).date().isoformat() if start else None,
@@ -68,27 +76,36 @@ def complaint_row(c):
     }
 
 
+def scheduled_complaints(installer_ids, date_from, date_to):
+    primary = Q(installer_assigned_id__in=installer_ids, planned_installation_date__date__lte=date_to) & (
+        Q(planned_installation_date__date__gte=date_from) | Q(planned_installation_end__date__gte=date_from)
+    )
+    extra = Q(additional_visits__installer_id__in=installer_ids, additional_visits__date_from__lte=date_to,
+              additional_visits__date_to__gte=date_from)
+    return Complaint.objects.filter(primary | extra, status__in=COMPLAINT_INSTALLATION_STATUSES).distinct()
+
+
 def complaint_visits(installer_ids, date_from, date_to):
-    """Рекламационные выезды в графиках: монтажник назначен, дата в периоде."""
-    qs = Complaint.objects.select_related('installer_assigned').prefetch_related('defective_products').filter(
-        status__in=COMPLAINT_INSTALLATION_STATUSES, installer_assigned_id__in=installer_ids,
-        planned_installation_date__isnull=False,
+    qs = scheduled_complaints(installer_ids, date_from, date_to).select_related('installer_assigned').prefetch_related(
+        'defective_products', 'additional_visits__installer',
     )
     rows = []
     for c in qs:
-        day = timezone.localtime(c.planned_installation_date).date()
-        if not (date_from <= day <= date_to):
-            continue
-        u = c.installer_assigned
-        rows.append({
-            'id': f'c{c.id}', 'kind': 'complaint', 'complaint_id': c.id, 'installation_id': None,
-            'date_from': day.isoformat(), 'date_to': day.isoformat(),
-            'installers': [{'id': u.id, 'full_name': _name(u), 'phone_number': u.phone_number}],
-            'status': c.status, 'status_display': c.get_status_display(), 'order': None,
-            'client_name': c.client_name, 'address': c.address,
-            'work_description': ', '.join(p.product_name for p in c.defective_products.all() if p.product_name)
-                                or 'Рекламация',
-            'contact_name': c.contact_person, 'contact_phone': c.contact_phone,
-            'window': c.installation_window_text,
-        })
+        for u, start, end in c.installer_periods():
+            if u.pk not in installer_ids or start > date_to or end < date_from:
+                continue
+            primary = u.pk == c.installer_assigned_id
+            rows.append({
+                'id': f'c{c.id}' if primary else f'c{c.id}-{u.pk}', 'kind': 'complaint',
+                'complaint_id': c.id, 'installation_id': None,
+                'date_from': start.isoformat(), 'date_to': end.isoformat(),
+                'installers': [{'id': u.id, 'full_name': _name(u), 'phone_number': u.phone_number}],
+                'status': c.status, 'status_display': c.get_status_display(), 'order': None,
+                'client_name': c.client_name, 'address': c.address,
+                'work_description': ', '.join(p.product_name for p in c.defective_products.all() if p.product_name)
+                                    or 'Рекламация',
+                'contact_name': c.contact_person, 'contact_phone': c.contact_phone,
+                'window': c.installation_window_text if primary and not c.installation_dates_only
+                          else format_visit_period(start, end),
+            })
     return rows

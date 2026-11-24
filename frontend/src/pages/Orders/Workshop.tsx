@@ -1,3 +1,4 @@
+import { refusalSummary } from '../../components/orders/OrderRefusalFields'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { workshopAPI } from '../../api/orders'
@@ -5,11 +6,9 @@ import MultiSelect from '../../components/common/MultiSelect'
 import PeopleFilters, { canFilterByPeople, EMPTY_PEOPLE_FILTER, PeopleFilterValue } from '../../components/orders/PeopleFilters'
 import { formatPaymentMonth } from '../../components/orders/OrderSalesFieldsBlock'
 import { useAuthStore } from '../../store/authStore'
-import { WorkshopOrder, OrderStatus, OrderProbability, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
+import { WorkshopOrder, REFUSAL_REASONS, PURCHASE_REASONS, OrderStatus, OrderProbability, ORDER_STATUS_DISPLAY, ORDER_STATUS_COLOR, ORDER_STATUS_ORDER } from '../../types/orders'
 
-// «Не актуален» в наработки не попадает, поэтому и в фильтре его нет
 const WORKSHOP_STATUS_OPTIONS = ORDER_STATUS_ORDER
-  .filter((value) => value !== 'cancelled')
   .map((value) => ({ value, label: ORDER_STATUS_DISPLAY[value] }))
 
 const PROBABILITY_COLOR: Record<OrderProbability, string> = {
@@ -17,6 +16,10 @@ const PROBABILITY_COLOR: Record<OrderProbability, string> = {
   medium: 'bg-amber-100 text-amber-700',
   low: 'bg-gray-100 text-gray-600',
 }
+
+const rubles = new Intl.NumberFormat('ru-RU', {
+  style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 2,
+})
 
 const Workshop = () => {
   const navigate = useNavigate()
@@ -26,8 +29,13 @@ const Workshop = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [amountMin, setAmountMin] = useState('')
+  const [amountMax, setAmountMax] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<OrderStatus[]>([])
+  const [refusalReason, setRefusalReason] = useState('')
+  const [purchaseReason, setPurchaseReason] = useState('')
+  const showRefusals = statusFilter.includes('cancelled')
   const { user } = useAuthStore()
   // Город / салон / менеджер — для руководителя и админа
   const canFilterByManager = canFilterByPeople(user?.role)
@@ -39,33 +47,47 @@ const Workshop = () => {
   const [withOverdue, setWithOverdue] = useState(reminderParam === 'overdue')
 
   useEffect(() => {
+    if (amountMin && amountMax && Number(amountMin) > Number(amountMax)) {
+      setError('Сумма «от» не может быть больше суммы «до».')
+      setOrders([])
+      setIsLoading(false)
+      return
+    }
     let cancelled = false
     const load = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const data = await workshopAPI.list({
-        userId: user?.id,
-        mine: mine || undefined,
-        with_reminder_today: withReminderToday || undefined,
-        with_reminder_tomorrow: withReminderTomorrow || undefined,
-        with_overdue_reminder: withOverdue || undefined,
-        status: statusFilter,
-        managers: canFilterByManager ? people.managers : undefined,
-        salons: canFilterByManager ? people.salons : undefined,
-        cities: canFilterByManager ? people.cities : undefined,
-        search: search || undefined,
-      })
-      if (!cancelled) setOrders(data)
-    } catch (err: any) {
-      if (!cancelled) setError(err.message || 'Ошибка загрузки')
-    } finally {
-      if (!cancelled) setIsLoading(false)
-    }
+      setIsLoading(true)
+      setError(null)
+      try {
+        const data = await workshopAPI.list({
+          userId: user?.id,
+          mine: mine || undefined,
+          amount_min: amountMin || undefined,
+          amount_max: amountMax || undefined,
+          with_reminder_today: withReminderToday || undefined,
+          with_reminder_tomorrow: withReminderTomorrow || undefined,
+          with_overdue_reminder: withOverdue || undefined,
+          status: statusFilter,
+          refusal_reason: refusalReason || undefined,
+          purchase_reason: purchaseReason || undefined,
+          managers: canFilterByManager ? people.managers : undefined,
+          salons: canFilterByManager ? people.salons : undefined,
+          cities: canFilterByManager ? people.cities : undefined,
+          search: search || undefined,
+        })
+        if (!cancelled) setOrders(data)
+      } catch (err: any) {
+        if (!cancelled) {
+          setOrders([])
+          const fields = err.response?.data
+          setError(fields?.amount_min?.[0] || fields?.amount_max?.[0] || err.message || 'Ошибка загрузки')
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
     }
     const t = setTimeout(load, 300)
     return () => { cancelled = true; clearTimeout(t) }
-  }, [search, statusFilter, people, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue, user?.id])
+  }, [search, refusalReason, purchaseReason, amountMin, amountMax, statusFilter, people, canFilterByManager, mine, withReminderToday, withReminderTomorrow, withOverdue, user?.id])
 
   const formatDate = (d: string | null) => {
     if (!d) return '—'
@@ -100,11 +122,40 @@ const Workshop = () => {
           <MultiSelect
             options={WORKSHOP_STATUS_OPTIONS}
             value={statusFilter}
-            onChange={setStatusFilter}
+            onChange={values => {
+              setStatusFilter(values)
+              if (!values.includes('cancelled')) {
+                setRefusalReason('')
+                setPurchaseReason('')
+              }
+            }}
             placeholder="Все"
             className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2"
           />
         </div>
+        {showRefusals && <label className="text-xs font-medium text-gray-600">Причина отказа
+          <select className="mt-1 block rounded-lg border-gray-300 text-sm" value={refusalReason}
+            onChange={e => { setRefusalReason(e.target.value); setPurchaseReason('') }}>
+            <option value="">Все причины</option>
+            {Object.entries(REFUSAL_REASONS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>}
+        {showRefusals && refusalReason === 'bought_elsewhere' && <label className="text-xs font-medium text-gray-600">Почему купил в другом месте
+          <select className="mt-1 block rounded-lg border-gray-300 text-sm" value={purchaseReason}
+            onChange={e => setPurchaseReason(e.target.value)}>
+            <option value="">Все причины покупки</option>
+            {Object.entries(PURCHASE_REASONS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>}
+        <fieldset>
+          <legend className="mb-1 text-xs font-medium text-gray-600">Сумма заказа, ₽</legend>
+          <div className="flex gap-2">
+            <input type="number" inputMode="decimal" min="0" step="0.01" aria-label="Сумма заказа от" placeholder="От"
+              value={amountMin} onChange={e => setAmountMin(e.target.value)} className="w-28 rounded-lg border-gray-300 text-sm" />
+            <input type="number" inputMode="decimal" min="0" step="0.01" aria-label="Сумма заказа до" placeholder="До"
+              value={amountMax} onChange={e => setAmountMax(e.target.value)} className="w-28 rounded-lg border-gray-300 text-sm" />
+          </div>
+        </fieldset>
         <PeopleFilters role={user?.role} value={people} onChange={setPeople} />
         <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="rounded border-gray-300 text-primary-600" />
@@ -132,7 +183,7 @@ const Workshop = () => {
         <div className="flex justify-center items-center h-48">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
         </div>
-      ) : orders.length === 0 ? (
+      ) : error ? null : orders.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
           <div className="text-5xl mb-4">📌</div>
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Наработок нет</h2>
@@ -155,6 +206,7 @@ const Workshop = () => {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Активность</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Следующее действие</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">№ КП</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Сумма заказа</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -184,6 +236,7 @@ const Workshop = () => {
                         <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${ORDER_STATUS_COLOR[o.status]}`}>
                           {o.status_display}
                         </span>
+                        {o.status === 'cancelled' && <div className="mt-1 min-w-36 break-words text-xs text-gray-600">{refusalSummary(o.refusal)}</div>}
                       </td>
                       <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.manager?.full_name}>{o.manager?.full_name || '—'}</td>
                       <td className="px-3 py-2 max-w-[180px]">
@@ -225,6 +278,9 @@ const Workshop = () => {
                         )}
                       </td>
                       <td className="px-3 py-2 text-gray-600 text-xs">{o.kp_number || '—'}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                        {o.order_amount == null ? '—' : rubles.format(Number(o.order_amount))}
+                      </td>
                     </tr>
                   )
                 })}

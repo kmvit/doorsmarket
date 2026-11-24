@@ -55,7 +55,7 @@
       <div class="muted small">к договору № {{ order.kp_number|default:"—" }}{% if order.kp_date %} от {{ order.kp_date|date:"d.m.Y" }}{% endif %}</div>
     </div>
     <div class="small muted" style="text-align:right;">
-      {% if m.measurement_date %}Дата замера: <b>{{ m.measurement_date|date:"d.m.Y H:i" }}</b><br>{% endif %}
+      {% if m.measurement_date %}Дата замера: <b>{{ m.measurement_date|date:"d.m.Y H:i" }}{% if m.measurement_end %}–{{ m.measurement_end|date:"H:i" }}{% endif %}</b><br>{% endif %}
       Сервис-менеджер: <b>{{ sm_name|default:"—" }}</b>
     </div>
   </div>

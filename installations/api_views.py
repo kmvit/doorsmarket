@@ -4,6 +4,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.db import transaction
 from django.db.models import Q
 
 from marketingdoors.search import NumberAwareSearchFilter
@@ -12,12 +13,12 @@ from orders.api_views import apply_people_filters, get_orders_queryset_for_user,
 from . import services
 from . import sms
 from .access import (
-    CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
+    can_unassign_installation, CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
     can_schedule_installations, can_see_installations, installations_for_user, is_installer_of, manager_installations_scope,
 )
 from .models import (
     CLOSED_INSTALLATION_STATUSES, RATING_FIELDS, ActReview, EventKind, Installation, InstallationFile,
-    InstallationStatus, InstallationVisit,
+    InstallationStatus, InstallationVisit, InstallerCalendarBlock,
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
@@ -140,6 +141,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def get_queryset(self):
         request = self.request
         qs = installations_for_user(request.user)
+        if self.action in ('assign', 'unassign'):
+            return qs.select_for_update(of=('self', 'order'))
         if self.action != 'list':
             return qs
         params = request.query_params
@@ -172,19 +175,41 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         inst = installations_for_user(self.request.user).get(pk=inst.pk)
         return InstallationDetailSerializer(inst, context=self.get_serializer_context()).data
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         if request.user.role not in CREATE_ROLES:
             return Response({'detail': 'Монтаж оформляет менеджер.'}, status=status.HTTP_403_FORBIDDEN)
         order = _order_for(request.user, request.data.get('order'))
         if order is None:
             return Response({'order': ['Заказ не найден.']}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = self.get_serializer(data=request.data)
+        source = None
+        source_files = []
+        if 'repeat_from' in request.data:
+            source_id = request.data['repeat_from']
+            if not str(source_id).isdigit():
+                return _bad('Некорректный номер исходного монтажа.')
+            source = order.installations.filter(pk=source_id).first()
+            if source is None:
+                return _bad('Исходный монтаж не найден в этом заказе.')
+            source_files = list(source.files.all())
+        payload = request.data
+        if source:
+            payload = {field: getattr(source, field) for field in EDITABLE_FIELDS}
+            payload['address'] = order.address
+            payload.update({key: request.data[key] for key in ('order', 'address', *EDITABLE_FIELDS)
+                            if key in request.data})
+            for key in ('planned_delivery_date', 'planned_delivery_date_end'):
+                if payload[key] == '':
+                    payload[key] = None
+        serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
         data = {k: v for k, v in serializer.validated_data.items() if k != 'order'}
         address = data.pop('address').strip()
 
         files_by_kind = {k: request.FILES.getlist(k) for k in services.UPLOAD_KINDS}
-        missing = services.missing_required_files(order, files_by_kind)
+        available = {kind for kind, files in files_by_kind.items() if files}
+        available.update(f.kind for f in source_files)
+        missing = services.missing_required_files(order, available)
         if missing:
             return Response(
                 {'files': [f'Приложите: {", ".join(missing)}.']},
@@ -194,6 +219,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         order.save(update_fields=['address', 'updated_at'])
         inst = services.create_installation(
             order=order, data=data, files_by_kind=files_by_kind, actor=request.user,
+            source=source, source_files=source_files,
         )
         return Response(self._detail(inst), status=status.HTTP_201_CREATED)
 
@@ -308,6 +334,57 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             for u in qs
         ])
 
+    @action(detail=False, methods=['post'], url_path='calendar-blocks')
+    @transaction.atomic
+    def calendar_blocks(self, request):
+        own = request.user.role == INSTALLER_ROLE
+        if not own and not can_schedule_installations(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        serializer = InstallerAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        installer_id = data['installer_id']
+        if not self._installers_qs(request).filter(pk=installer_id).exists():
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        comment = request.data.get('comment', '')
+        if not isinstance(comment, str) or len(comment.strip()) > 500 or (not own and not comment.strip()):
+            return _bad('Укажите причину занятости (до 500 символов).')
+        start, end = data['date_from'], data['date_to']
+        services.check_calendar_blocks({installer_id: (start, end)})
+        visits = InstallationVisit.objects.filter(installers=installer_id).exclude(
+            installation__status=InstallationStatus.IRRELEVANT,
+        ).filter(
+            Q(date_from__lte=end, date_to__gte=start) |
+            Q(previous_date_from__lte=end, previous_date_to__gte=start),
+        )
+        for visit in visits:
+            visit_start, visit_end = visit.dates_for(installer_id)
+            if visit_start <= end and start <= visit_end:
+                return _bad('На выбранные дни уже назначен монтаж.')
+            if (visit.previous_date_from and visit.previous_date_to
+                    and (not visit.installer_dates or visit.reschedule_requested_by_id == installer_id)
+                    and visit.previous_date_from <= end and start <= visit.previous_date_to):
+                return _bad('Сначала подтвердите перенос монтажа с выбранных дней.')
+        from .complaints import scheduled_complaints
+        if scheduled_complaints([installer_id], start, end).exists():
+            return _bad('На выбранные дни уже назначен выезд по рекламации.')
+        block = InstallerCalendarBlock.objects.create(
+            **data, kind=InstallerCalendarBlock.Kind.DAY_OFF if own else InstallerCalendarBlock.Kind.OTHER_WORK,
+            comment='' if own else comment.strip(),
+        )
+        return Response({'id': block.pk}, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['delete'], url_path=r'calendar-blocks/(?P<block_id>[0-9]+)')
+    def remove_calendar_block(self, request, block_id=None):
+        own = request.user.role == INSTALLER_ROLE
+        if not own and not can_schedule_installations(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        kind = InstallerCalendarBlock.Kind.DAY_OFF if own else InstallerCalendarBlock.Kind.OTHER_WORK
+        deleted, _ = InstallerCalendarBlock.objects.filter(
+            pk=block_id, installer__in=self._installers_qs(request), kind=kind,
+        ).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT if deleted else status.HTTP_404_NOT_FOUND)
+
     @action(detail=False, methods=['get'])
     def schedule(self, request):
         """
@@ -369,6 +446,17 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 rows.append(row if row['complaint_id'] in visible_complaints else _busy_schedule_row(row, len(rows)))
         else:
             rows += complaint_rows
+        blocks = InstallerCalendarBlock.objects.filter(
+            installer_id__in=installer_ids, date_from__lte=date_to, date_to__gte=date_from,
+        ).select_related('installer')
+        for block in blocks:
+            rows.append({
+                'id': f'block-{block.pk}', 'block_id': block.pk, 'kind': block.kind,
+                'date_from': block.date_from.isoformat(), 'date_to': block.date_to.isoformat(),
+                'installers': [StaffSerializer(block.installer).data], 'installation_id': None, 'order': None,
+                'client_name': block.get_kind_display(), 'work_description': block.comment, 'address': '',
+                'status': '', 'status_display': block.get_kind_display(), 'contact_name': '', 'contact_phone': '',
+            })
         return Response(sorted(rows, key=lambda r: r['date_from']))
 
     @action(detail=False, methods=['get'])
@@ -378,6 +466,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response([complaint_row(c) for c in complaint_installations(request.user, request.query_params)])
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def assign(self, request, pk=None):
         """СМ назначает монтаж: assignments с периодом каждого монтажника или общий период."""
         if not can_schedule_installations(request.user):
@@ -416,10 +505,13 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response(self._detail(inst))
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def unassign(self, request, pk=None):
-        if not can_schedule_installations(request.user):
-            return _forbidden('Графики правит сервис-менеджер.')
+        if request.user.role != 'manager' and not can_schedule_installations(request.user):
+            return _forbidden('Вернуть монтаж на назначение может менеджер или сервис-менеджер.')
         inst = self.get_object()
+        if not can_unassign_installation(request.user, inst):
+            return _forbidden('Можно вернуть на назначение только монтаж по доступному вам заказу.')
         if inst.status != InstallationStatus.PLANNED:
             return _bad('Монтаж не стоит в графике.')
         services.unassign(inst, request.user)
@@ -569,17 +661,30 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         services.reject_reschedule(inst, (request.data.get('comment') or '').strip()[:500], request.user)
         return Response(self._detail(inst))
 
+    @transaction.atomic
     def _complete(self, request, partial):
-        inst = self.get_object()
+        visible = self.get_object()
+        inst = Installation.objects.select_for_update(of=('self', 'order')).select_related(
+            'order', 'order__manager',
+        ).get(pk=visible.pk)
         if (error := self._installer_or_sm(request, inst)):
             return error
+        visit_id = request.data.get('visit_id')
+        visit = inst.current_visit
+        if visit_id is not None and (visit is None or str(visit_id) != str(visit.pk)):
+            return _bad('Выезд изменился. Обновите карточку монтажа.')
+        reason = request.data.get('reason')
+        if (partial and inst.status == InstallationStatus.PARTIALLY_DONE and visit_id is not None
+                and inst.events.filter(kind=EventKind.PARTIALLY_COMPLETED,
+                                       meta__visit_id=visit.pk, meta__reason=reason).exists()):
+            return Response(self._detail(inst))
         if inst.status not in WORK_STATUSES:
             return _bad('Завершить можно запланированный монтаж.')
         if not services.has_current_act(inst):
             if inst.files.filter(visit=inst.current_visit, kind='act', review_status=ActReview.PENDING).exists():
                 return _bad('Сначала проверьте подпись в акте, который приложил клиент.')
             return _bad('Сначала прикрепите акт выполненных работ с подписью клиента.')
-        services.complete(inst, partial=partial, actor=request.user)
+        services.complete(inst, partial=partial, actor=request.user, reason=reason)
         return Response(self._detail(inst))
 
     # ---------- Этап 4: акт на подпись клиенту ----------

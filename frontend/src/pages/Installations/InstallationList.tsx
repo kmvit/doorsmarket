@@ -1,4 +1,7 @@
-import { hasManagerPermissions } from '../../types/auth'
+import { canPlanComplaintStatus } from '../../types/complaints'
+import { complaintsAPI } from '../../api/complaints'
+import type { Complaint } from '../../types/complaints'
+import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
@@ -44,6 +47,7 @@ const InstallationList = () => {
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null)
   const [pickingOrder, setPickingOrder] = useState(false)
+  const [assigningComplaint, setAssigningComplaint] = useState<Complaint | null>(null)
   const [assigning, setAssigning] = useState<Installation | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const folder = searchParams.get('folder') || ''
@@ -391,14 +395,21 @@ const InstallationList = () => {
                       <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-rose-100 text-rose-800">
                         {c.status_display}
                       </span>
-                      {c.window && (
+                      {c.team_schedule?.length ? c.team_schedule.map(line => (
+                        <div key={line} className="mt-1 text-xs text-gray-700 whitespace-nowrap">{line}</div>
+                      )) : c.window && (
                         <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
                           <span className="font-semibold">{c.window}</span>
                           {c.installer_name && <> · {c.installer_name}</>}
                         </div>
                       )}
-                      {c.needs_planning && (
-                        <div className="mt-1 text-xs font-medium text-rose-700">Запланировать в рекламации →</div>
+                      {canManageService(user) && canPlanComplaintStatus(c.status) && (
+                        <button type="button" className="mt-1 text-xs font-medium text-primary-600 hover:underline"
+                          onClick={async e => {
+                            e.stopPropagation()
+                            try { setAssigningComplaint(await complaintsAPI.getDetail(c.id)) }
+                            catch { setError('Не удалось загрузить рекламацию') }
+                          }}>{c.needs_planning ? 'Назначить' : 'Изменить'}</button>
                       )}
                     </td>
                     <td className={td}>
@@ -426,6 +437,8 @@ const InstallationList = () => {
       )}
 
       {viewing && <FileViewer fileUrl={viewing.url} fileName={viewing.name} onClose={() => setViewing(null)} />}
+      {assigningComplaint && <AssignModal complaint={assigningComplaint} onClose={() => setAssigningComplaint(null)}
+        onDone={() => { setAssigningComplaint(null); load() }} />}
       {assigning && (
         <AssignModal
           installation={assigning}

@@ -44,9 +44,9 @@ class SendActTest(ClientActTestBase):
         self.assertEqual(self.inst.status, InstallationStatus.AWAITING_SIGNATURE)
         self.assertTrue(self.inst.client_code)
         text = self.send.call_args.args[1]
-        self.assertIn('Подпишите пожалуйста акт', text)
+        self.assertIn('монтаж завершен. Подпишите акт по ссылке', text)
         self.assertIn(f'/m/{self.inst.client_code}', text)
-        self.assertTrue(response.data['client_link'].endswith(f'/m/{self.inst.client_code}'))
+        self.assertIsNone(response.data['client_link'])  # ссылка для клиента скрыта в ответе монтажнику
         # Акт без подписи в заказ не попадает
         self.assertFalse(OrderAttachment.objects.filter(order=self.order).exists())
 

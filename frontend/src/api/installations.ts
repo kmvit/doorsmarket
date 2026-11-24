@@ -4,7 +4,7 @@ import { requestWithQueue } from '../services/sync'
 import {
   Installation, InstallationEvent, InstallationFields, InstallationFile, InstallationFileKind,
   ComplaintInstallationRow, InstallationFilters, InstallationFolderCount, InstallationPrefill, Installer,
-  PublicActPage, RatingReport, ScheduleVisit,
+  PublicActPage, RatingReport, ScheduleVisit, PartialCompletionReason,
 } from '../types/installations'
 
 const LONG_TTL = 7 * 24 * 60 * 60 * 1000
@@ -69,15 +69,17 @@ export const installationsAPI = {
     orderId: number,
     fields: InstallationFields,
     files: Partial<Record<InstallationFileKind, File[]>>,
+    repeatFrom?: number,
   ): Promise<Installation> => {
     const form = new FormData()
     form.append('order', String(orderId))
+    if (repeatFrom) form.append('repeat_from', String(repeatFrom))
     form.append('address', fields.address)
     form.append('is_paid', fields.is_paid ? 'true' : 'false')
     form.append('work_description', fields.work_description)
     form.append('collection_finish', fields.collection_finish)
-    if (fields.planned_delivery_date) form.append('planned_delivery_date', fields.planned_delivery_date)
-    if (fields.planned_delivery_date_end) form.append('planned_delivery_date_end', fields.planned_delivery_date_end)
+    if (repeatFrom || fields.planned_delivery_date) form.append('planned_delivery_date', fields.planned_delivery_date || '')
+    if (repeatFrom || fields.planned_delivery_date_end) form.append('planned_delivery_date_end', fields.planned_delivery_date_end || '')
     form.append('already_on_site', fields.already_on_site ? 'true' : 'false')
     form.append('desired_date_comment', fields.desired_date_comment)
     form.append('contact_name', fields.contact_name)
@@ -117,8 +119,8 @@ export const installationsAPI = {
 
   // Завершение тоже через очередь: в поле связи может не быть. Очередь идёт по
   // порядку, поэтому акт, приложенный офлайн, попадёт на сервер раньше
-  complete: async (id: number, partial: boolean): Promise<Installation> =>
-    requestWithQueue('POST', `/installations/${id}/${partial ? 'complete_partial' : 'complete'}/`, {}),
+  complete: async (id: number, visitId: number, reason?: PartialCompletionReason): Promise<Installation> =>
+    requestWithQueue('POST', `/installations/${id}/${reason ? 'complete_partial' : 'complete'}/`, { visit_id: visitId, reason }),
 
   deleteFile: async (fileId: number): Promise<void> => {
     await apiClient.delete(`/installation-files/${fileId}/`)
@@ -140,6 +142,11 @@ export const installationsAPI = {
       request: async () => asList<Installer>((await apiClient.get('/installations/installers/')).data),
       ttl: LONG_TTL,
     }),
+
+  addCalendarBlock: (installer: number, from: string, to: string, comment: string) =>
+    apiClient.post('/installations/calendar-blocks/', { installer_id: installer, date_from: from, date_to: to, comment }),
+
+  removeCalendarBlock: (id: number) => apiClient.delete(`/installations/calendar-blocks/${id}/`),
 
   getSchedule: async (dateFrom: string, dateTo: string, installers?: number[]): Promise<ScheduleVisit[]> => {
     const params: Record<string, string> = { date_from: dateFrom, date_to: dateTo }

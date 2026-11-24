@@ -1,3 +1,5 @@
+import { useAuthStore } from '../store/authStore'
+import { formatPeriod } from '../types/installations'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../store/complaintsStore'
@@ -8,6 +10,7 @@ import { formatInstallationTime } from '../utils/installationWindow'
 
 const InstallerTasks = () => {
   const navigate = useNavigate()
+  const installerId = useAuthStore(state => state.user?.id)
   const [searchParams] = useSearchParams()
   const { complaints, isLoading, fetchComplaints, setFilters } = useComplaintsStore()
   const [excludeClosed, setExcludeClosed] = useState(true)
@@ -35,7 +38,7 @@ const InstallerTasks = () => {
         urlFilters.needs_planning = true
       } else if (filter === 'planned') {
         // В Django: status__in=['installation_planned', 'both_planned']
-        urlFilters.status = 'installation_planned'
+        urlFilters.status = ['installation_planned', 'both_planned']
       } else if (filter === 'completed') {
         // В Django: status__in=['under_sm_review', 'completed']
         // API не поддерживает несколько статусов, используем один
@@ -240,7 +243,7 @@ const InstallerTasks = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {complaints.map((complaint: any) => (
+                  {complaints.map((complaint) => (
                     <tr key={complaint.id} className="hover:bg-gray-50 transition-colors">
                       <td
                         className="px-6 py-4 whitespace-nowrap cursor-pointer"
@@ -280,7 +283,10 @@ const InstallerTasks = () => {
                         className="px-6 py-4 whitespace-nowrap cursor-pointer"
                         onClick={() => navigate(`/complaints/${complaint.id}`)}
                       >
-                        {complaint.planned_installation_date ? (
+                        {complaint.installation_dates_only ? (
+                          complaint.installation_assignments?.filter(row => row.installer_id === installerId)
+                            .map(row => formatPeriod(row.date_from, row.date_to)).join(', ') || complaint.installation_window_text
+                        ) : complaint.planned_installation_date ? (
                           <>
                             <div className="text-sm font-medium text-gray-900">
                               {new Date(complaint.planned_installation_date).toLocaleDateString('ru-RU')}

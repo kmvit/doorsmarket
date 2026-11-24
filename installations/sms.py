@@ -10,6 +10,7 @@ from orders.models import ActivityKind
 from .models import EventKind
 
 BRAND = 'Академия Дверей.'
+DEFAULT_SMS_PURPOSES = {'scheduled', 'call_failed', 'installer_call_failed', 'act_sign_request', 'rating_request'}
 
 
 def _format_date(value):
@@ -29,9 +30,8 @@ def staff_name_phone(user):
     return name, (user.phone_number or '').strip()
 
 
-def installation_scheduled(date_from, sm):
-    return (f'{BRAND} По Вашему заказу запланирован монтаж на {_format_date(date_from)}. '
-            f'Руководитель сервисной службы {_contact(*staff_name_phone(sm))}')
+def installation_scheduled(date_from):
+    return f'Монтаж назначен на {_format_date(date_from)}'
 
 
 def installation_rescheduled(date_from, sm):
@@ -39,14 +39,9 @@ def installation_rescheduled(date_from, sm):
             f'Руководитель сервисной службы {_contact(*staff_name_phone(sm))}')
 
 
-def call_failed(sm):
-    return (f'{BRAND} Мы не дозвонились до вас по монтажу. '
-            f'Перезвоните пожалуйста {_contact(*staff_name_phone(sm))}')
-
-
-def installer_call_failed(installer):
-    return (f'{BRAND} Монтажник до вас не дозвонился по согласованию времени встречи. '
-            f'Перезвоните пожалуйста {_contact(*staff_name_phone(installer))}')
+def call_failed(caller):
+    phone = (caller.phone_number or '').strip()
+    return f'не дозвонились по монтажу. Перезвоните пжл:) {phone}'.rstrip()
 
 
 def client_link(installation):
@@ -56,8 +51,7 @@ def client_link(installation):
 
 
 def act_sign_request(installation):
-    return (f'{BRAND} Монтаж по вашему заказу завершен. Подпишите пожалуйста акт выполненных работ, '
-            f'пройдя по ссылке {client_link(installation)}')
+    return f'монтаж завершен. Подпишите акт по ссылке {client_link(installation)}'
 
 
 def act_rejected(installation, reason):
@@ -66,8 +60,7 @@ def act_rejected(installation, reason):
 
 
 def rating_request(installation):
-    return (f'{BRAND} Монтаж по вашему заказу завершен. Оцените пожалуйста нашу работу, '
-            f'пройдя по ссылке {client_link(installation)}')
+    return f'монтаж завершен. Оцените по ссылке {client_link(installation)}'
 
 
 def send(installation, message, *, actor=None, purpose=''):
@@ -78,7 +71,9 @@ def send(installation, message, *, actor=None, purpose=''):
     from maxbot.sending import send_client_message
 
     phone = installation.contact_phone or installation.order.contact_phone
-    enabled = getattr(settings, 'INSTALLATIONS_SMS_ENABLED', False)
+    enabled = settings.INSTALLATIONS_SMS_ENABLED
+    if enabled is None:
+        enabled = purpose in DEFAULT_SMS_PURPOSES
     channel = None
     if enabled and phone:
         try:

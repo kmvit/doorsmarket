@@ -334,6 +334,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     last_activity_kind_display = serializers.CharField(source='get_last_activity_kind_display', read_only=True)
     is_overdue = serializers.SerializerMethodField()
     measurement_date = serializers.SerializerMethodField()
+    measurement_end = serializers.SerializerMethodField()
     service_manager_name = serializers.SerializerMethodField()
     designer = DesignerSerializer(read_only=True)
 
@@ -343,7 +344,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'manager', 'salon', 'salon_name',
             'kp_number', 'kp_date', 'client_name', 'contact_phone', 'address',
             'status', 'status_display', 'status_before_installation', 'is_overdue',
-            'measurement_date', 'service_manager_name',
+            'measurement_date', 'measurement_end', 'service_manager_name',
             # Для папки «Выплаты дизайнерам»
             'has_designer', 'designer', 'designer_paid_amount', 'designer_paid_at',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
@@ -358,6 +359,10 @@ class OrderListSerializer(serializers.ModelSerializer):
         """Назначенное время выезда — списку папок «Сегодня/Завтра замер»."""
         measurement = self._measurement(obj)
         return measurement.measurement_date if measurement else None
+
+    def get_measurement_end(self, obj):
+        measurement = self._measurement(obj)
+        return measurement.measurement_end if measurement else None
 
     def get_service_manager_name(self, obj):
         measurement = self._measurement(obj)
@@ -384,6 +389,7 @@ def measurement_brief(m):
         'id': m.id,
         'previous_id': m.previous_id,
         'measurement_date': m.measurement_date,
+        'measurement_end': m.measurement_end,
         'is_done': m.is_done,
         'done_at': m.done_at,
         'is_processed': m.is_processed,
@@ -424,7 +430,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'floor_readiness', 'comment',
             'goods_amount', 'glass_amount', 'products_amount', 'services_amount',
             'total_amount', 'discount_amount', 'total_with_discount',
-            'status', 'status_display', 'status_before_installation', 'commercial_offer_url', 'items', 'addons',
+            'status', 'status_display', 'status_before_installation', 'refusal', 'commercial_offer_url', 'items', 'addons',
             'attachments',
             'production_start_date', 'production_deadline', 'is_overdue',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
@@ -471,17 +477,60 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         return None
 
 
+class OrderRefusalSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=['bought_elsewhere', 'postponed', 'other'])
+    store = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    purchase_reason = serializers.ChoiceField(
+        choices=['price', 'lead_time', 'in_stock', 'color', 'model', 'service', 'other'], required=False,
+    )
+    detail = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+    def validate(self, attrs):
+        reason = attrs.get('reason')
+        if not reason:
+            raise serializers.ValidationError('Укажите причину отказа от заказа.')
+        result = {'reason': reason}
+        if reason == 'bought_elsewhere':
+            if not attrs.get('store'):
+                raise serializers.ValidationError('Укажите, где клиент купил.')
+            if not attrs.get('purchase_reason'):
+                raise serializers.ValidationError('Укажите, почему клиент купил в другом месте.')
+            result.update(store=attrs['store'], purchase_reason=attrs['purchase_reason'])
+        if reason == 'other' or result.get('purchase_reason') == 'other':
+            if not attrs.get('detail'):
+                raise serializers.ValidationError('Опишите причину отказа.')
+            result['detail'] = attrs['detail']
+        return result
+
+
+def validated_refusal(data):
+    if not data:
+        raise serializers.ValidationError({'detail': 'Укажите причину отказа от заказа.'})
+    serializer = OrderRefusalSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
 class OrderCreateSerializer(serializers.ModelSerializer):
+    refusal = OrderRefusalSerializer(required=False, write_only=True)
     items = OrderItemWriteSerializer(many=True, required=False)
     addons = OrderAddonWriteSerializer(many=True, required=False)
     next_action_text = serializers.CharField(write_only=True, required=False, allow_blank=True)
     next_action_due_at = serializers.DateTimeField(write_only=True, required=False, allow_null=True)
 
+    # При создании ответственным становится автор заказа.
+    def get_fields(self):
+        fields = super().get_fields()
+        if self.instance is not None:
+            fields['manual_order_amount'].read_only = True
+            fields['manager'] = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+        return fields
+
     class Meta:
         model = Order
         fields = [
             # id — только для ответа: по нему форма создания открывает новый заказ
-            'id',
+            'id', 'manual_order_amount', 'refusal',
             'salon', 'kp_number', 'kp_date', 'client_name', 'contact_phone',
             'address', 'lift_available', 'stairs_available', 'carry_to_entrance',
             'floor_number', 'floor_readiness',
@@ -491,8 +540,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             *ORDER_SALES_FIELDS,
         ]
 
+        extra_kwargs = {'manual_order_amount': {'min_value': 0}}
+
     def validate(self, attrs):
         attrs = validate_order_sales_fields(attrs, self.instance)
+        target = attrs.get('status')
+        if target == 'cancelled' and (self.instance is None or self.instance.status != 'cancelled'):
+            if not attrs.get('refusal'):
+                raise serializers.ValidationError({'detail': 'Укажите причину отказа от заказа.'})
+            attrs['status_before_installation'] = ''
+        elif self.instance and self.instance.status == 'cancelled' and target and target != 'cancelled':
+            attrs['refusal'] = {}
+        elif 'refusal' in attrs and (target or getattr(self.instance, 'status', None)) != 'cancelled':
+            raise serializers.ValidationError({'detail': 'Причина отказа указывается для неактуального заказа.'})
         # При CREATE — «следующее действие» обязательно
         if self.instance is None:
             if not (attrs.get('next_action_text') or '').strip():
@@ -699,8 +759,19 @@ class OrderActivityLogSerializer(serializers.ModelSerializer):
         return f'{u.first_name} {u.last_name}'.strip() or u.username
 
 
+class WorkshopAmountRangeSerializer(serializers.Serializer):
+    amount_min = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0, required=False)
+    amount_max = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0, required=False)
+
+    def validate(self, attrs):
+        if 'amount_min' in attrs and 'amount_max' in attrs and attrs['amount_min'] > attrs['amount_max']:
+            raise serializers.ValidationError('Сумма «от» не может быть больше суммы «до».')
+        return attrs
+
+
 class WorkshopOrderSerializer(serializers.ModelSerializer):
     """Сериализатор для списка наработок (Workshop) — Лист 3 в ТЗ."""
+    order_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, allow_null=True)
     manager = OrderManagerSerializer(read_only=True)
     salon_name = serializers.CharField(source='salon.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display_for_ui', read_only=True)
@@ -714,7 +785,7 @@ class WorkshopOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'created_at', 'client_name', 'address', 'status', 'status_display',
+            'id', 'refusal', 'order_amount', 'created_at', 'client_name', 'address', 'status', 'status_display',
             'last_activity_at', 'last_activity_kind', 'last_activity_kind_display',
             'contact_phone', 'kp_number', 'manager', 'salon_name', 'comment',
             'next_action_at', 'next_action_text', 'last_comment',
@@ -869,6 +940,20 @@ class MeasurementOpeningWriteSerializer(serializers.ModelSerializer):
         return validate_opening_panels(self, attrs)
 
 
+def validate_measurement_window(start, end):
+    if end and (not start or end <= start):
+        raise serializers.ValidationError({'detail': 'Окончание интервала должно быть позже начала.'})
+
+
+class MeasurementScheduleSerializer(serializers.Serializer):
+    measurement_date = serializers.DateTimeField(allow_null=True, required=False)
+    measurement_end = serializers.DateTimeField(allow_null=True, required=False)
+
+    def validate(self, attrs):
+        validate_measurement_window(attrs.get('measurement_date'), attrs.get('measurement_end'))
+        return attrs
+
+
 class MeasurementSerializer(serializers.ModelSerializer):
     """Полный сериализатор замера для CRUD."""
     openings = MeasurementOpeningSerializer(many=True, read_only=True)
@@ -906,11 +991,18 @@ class MeasurementSerializer(serializers.ModelSerializer):
     # Повторные замеры: от какого замера этот и есть ли по заявке замер новее
     newer_measurement_id = serializers.SerializerMethodField()
 
+    def validate(self, attrs):
+        validate_measurement_window(
+            attrs.get('measurement_date', getattr(self.instance, 'measurement_date', None)),
+            attrs.get('measurement_end', getattr(self.instance, 'measurement_end', None)),
+        )
+        return attrs
+
     class Meta:
         model = Measurement
         fields = [
             'id', 'request', 'order_id', 'service_manager', 'service_manager_name',
-            'measurement_date', 'signature_photo', 'signature_photo_url', 'signatures',
+            'measurement_date', 'measurement_end', 'signature_photo', 'signature_photo_url', 'signatures',
             'client_access_token', 'short_code', 'is_draft', 'draft_saved_at',
             'is_done', 'done_at', 'is_processed', 'processed_at', 'updated_after_done_at',
             'repeat_count', 'repeat_requested_at', 'repeat_reason',
@@ -1040,7 +1132,7 @@ class MeasurementListSerializer(serializers.ModelSerializer):
             'id', 'order_id', 'client_name', 'address',
             'contact_name', 'contact_position', 'contact_phone',
             'desired_date', 'payer_display',
-            'measurement_date', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
+            'measurement_date', 'measurement_end', 'is_draft', 'is_done', 'done_at', 'is_processed', 'processed_at',
             'updated_after_done_at',
             'is_irrelevant', 'irrelevant_requested_at',
             'repeat_count', 'previous',

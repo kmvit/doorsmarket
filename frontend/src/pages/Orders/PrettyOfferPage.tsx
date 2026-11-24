@@ -502,6 +502,11 @@ const PrettyOfferPage = () => {
                 </div>
               ))}
             </div>
+            {offer.totals.total_amount != null && offer.totals.total_with_discount == null && (
+              <p className="mt-3 text-sm text-amber-700">
+                Итог со скидкой неизвестен. Укажите сумму по исходным КП, если она должна быть в предложении.
+              </p>
+            )}
             <p className="text-xs text-gray-500 mt-3">
               Слева — что уйдёт в КП. В поле справа впишите свою сумму, если её нужно поправить;
               пустое поле означает «взять из КП».

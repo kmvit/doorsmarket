@@ -1,3 +1,4 @@
+import { formatMeasurementTime } from '../../utils/measurementTime'
 import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
@@ -676,7 +677,7 @@ const MeasurementForm = () => {
           <div className="flex items-center gap-3 mt-2 text-sm">
             {m.measurement_date ? (
               <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-800 font-medium">
-                Назначен на {new Date(m.measurement_date).toLocaleString('ru-RU')}
+                Назначен на {formatMeasurementTime(m.measurement_date, m.measurement_end)}
               </span>
             ) : (
               <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-medium">
@@ -1622,6 +1623,7 @@ const MeasurementForm = () => {
         <ScheduleMeasurementModal
           measurementId={m.id}
           initialDate={m.measurement_date}
+          initialEnd={m.measurement_end}
           contactName={m.contact_name}
           onClose={() => setShowSchedule(false)}
           onScheduled={() => {

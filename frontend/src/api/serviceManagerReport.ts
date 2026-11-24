@@ -42,7 +42,7 @@ export interface ServiceManagerReport {
     distance_sum: string
     total: string
   }
-  tariff: { openings: { up_to: number; amount: string }[]; distance_rate: string }
+  city_tariffs: { city_id: number; city_name: string; openings: { up_to: number; amount: string }[]; distance_rate: string }[]
   service_managers: ServiceManagerReportRow[]
 }
 

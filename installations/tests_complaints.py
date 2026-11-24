@@ -98,3 +98,44 @@ class ComplaintInstallationsTest(ScheduleTestBase):
         Complaint.objects.filter(pk=self.to_plan.pk).update(status=ComplaintStatus.NEEDS_PLANNING)
         rows = self.client_for(self.sm).get('/api/v1/installations/complaints/').data
         self.assertEqual(next(r for r in rows if r['id'] == self.to_plan.id)['status_display'], 'Нужно запланировать')
+
+    def test_team_periods_are_atomic_and_visible_to_each_installer(self):
+        from unittest.mock import patch
+
+        url = f'/api/v1/complaints/{self.to_plan.pk}/plan_installation/'
+        assignments = [
+            {'installer_id': self.inst1.pk, 'date_from': '2030-05-10', 'date_to': '2030-05-12'},
+            {'installer_id': self.inst2.pk, 'date_from': '2030-05-14', 'date_to': '2030-05-16'},
+        ]
+        sm = self.client_for(self.sm)
+        self.assertEqual(self.client_for(self.inst1).post(url, {'assignments': assignments}, format='json').status_code, 404)
+        self.assertEqual(sm.post(url, {'assignments': [assignments[0], assignments[0]]}, format='json').status_code, 400)
+        block_url = '/api/v1/installations/calendar-blocks/'
+        day_off = {**assignments[1], 'date_from': '2030-05-15', 'date_to': '2030-05-15'}
+        installer = self.client_for(self.inst2)
+        block = installer.post(block_url, day_off, format='json')
+        self.assertEqual(block.status_code, 201, block.data)
+        with patch('projects.models.send_client_message') as sms:
+            self.assertEqual(sm.post(url, {'assignments': assignments}, format='json').status_code, 400)
+            self.to_plan.refresh_from_db()
+            self.assertEqual(self.to_plan.status, ComplaintStatus.SHIPPING_PLANNED)
+            sms.assert_not_called()
+            installer.delete(f"{block_url}{block.data['id']}/")
+            for _ in range(2):
+                result = sm.post(url, {'assignments': assignments}, format='json')
+                self.assertEqual(result.status_code, 200, result.data)
+                self.assertEqual([r['date_to'] for r in result.data['installation_assignments']], ['2030-05-12', '2030-05-16'])
+            listing = sm.get('/api/v1/installations/complaints/').data
+            row = next(row for row in listing if row['id'] == self.to_plan.pk)
+            self.assertEqual(row['team_schedule'], ['Иван · 10.05.2030–12.05.2030', 'Олег · 14.05.2030–16.05.2030'])
+            self.assertEqual(sms.call_count, 1)
+            self.assertIn('14.05.2030–16.05.2030', sms.call_args.args[1])
+            self.assertEqual(installer.get(f'/api/v1/complaints/{self.to_plan.pk}/').status_code, 200)
+            schedule = installer.get('/api/v1/installations/schedule/', {
+                'date_from': '2030-05-15', 'date_to': '2030-05-15',
+            }).data
+            self.assertEqual([(r['complaint_id'], r['date_from'], r['date_to']) for r in schedule],
+                             [(self.to_plan.pk, '2030-05-14', '2030-05-16')])
+            self.assertEqual(installer.post(block_url, day_off, format='json').status_code, 400)
+            self.assertEqual(sm.post(url, {'assignments': assignments[:1]}, format='json').status_code, 200)
+            self.assertEqual(installer.post(block_url, day_off, format='json').status_code, 201)

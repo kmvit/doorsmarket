@@ -79,11 +79,10 @@ class AssignTest(ScheduleTestBase):
         self.assertEqual((visit.date_from, visit.date_to), (date(2026, 11, 10), date(2026, 11, 11)))
         self.assertEqual(set(visit.installers.all()), {self.inst1, self.inst2})
         self.assertEqual(response.data['current_visit']['date_from'], '2026-11-10')
-        # СМС контактному лицу монтажа: дата и руководитель сервисной службы
+        # СМС контактному лицу монтажа: дата первого выезда
         phone, text = send.call_args.args
         self.assertEqual(phone, '+79995554433')
-        self.assertIn('запланирован монтаж на 10.11.2026', text)
-        self.assertIn('Пётр Петров, +79990001122', text)
+        self.assertEqual(text, 'Монтаж назначен на 10.11.2026')
         self.assertTrue(self.order.activity_logs.filter(kind=ActivityKind.SMS_SENT).exists())
 
     def test_reassign_keeps_one_visit_and_sms_only_on_date_change(self):
@@ -122,6 +121,44 @@ class AssignTest(ScheduleTestBase):
         self.assertEqual(self.inst.status, InstallationStatus.NOT_PLANNED)
         self.assertFalse(InstallationVisit.objects.exists())
 
+    def test_manager_returns_failed_visit_to_service_manager(self):
+        self.assign()
+        response = self.post(self.manager, 'unassign')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['status'], 'not_planned')
+        self.assertIsNone(response.data['current_visit'])
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.ON_WAREHOUSE)
+        self.assertTrue(self.inst.events.filter(kind=EventKind.UNASSIGNED, actor=self.manager,
+                                               old_status='planned', new_status='not_planned').exists())
+        sm = self.client_for(self.sm)
+        url = '/api/v1/installations/'
+        self.assertEqual([r['id'] for r in sm.get(url, {'folder': 'to_assign'}).data], [self.inst.pk])
+        self.assertEqual(sm.get(url, {'folder': 'planned'}).data, [])
+        self.assertEqual(self.post(self.manager, 'unassign').status_code, 400)
+        self.assertEqual(self.assign(installers=[self.inst2.pk]).status_code, 200)
+
+    def test_other_salon_manager_cannot_return_visit(self):
+        self.assign()
+        other = Salon.objects.create(name='Другой салон', city=self.city)
+        colleague = User.objects.create_user(username='other', role='manager', salon=other)
+        detail = self.client_for(colleague).get(f'/api/v1/installations/{self.inst.pk}/')
+        self.assertFalse(detail.data['can_unassign'])
+        self.assertEqual(self.post(colleague, 'unassign').status_code, 403)
+        self.assertTrue(InstallationVisit.objects.filter(installation=self.inst).exists())
+
+    def test_return_after_partial_work_preserves_completed_visit(self):
+        self.assign()
+        first = InstallationVisit.objects.get()
+        Installation.objects.filter(pk=self.inst.pk).update(status=InstallationStatus.PARTIALLY_DONE)
+        self.assign(installers=[self.inst2.pk])
+        response = self.post(self.manager, 'unassign')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['status'], 'partially_done')
+        self.assertEqual(list(self.inst.visits.values_list('pk', flat=True)), [first.pk])
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.INSTALLATION_PARTIALLY_COMPLETED)
+
     def test_partially_done_gets_new_visit(self):
         self.assign()
         Installation.objects.filter(pk=self.inst.pk).update(status=InstallationStatus.PARTIALLY_DONE)
@@ -130,6 +167,13 @@ class AssignTest(ScheduleTestBase):
 
 
 class SmsSwitchTest(ScheduleTestBase):
+    @override_settings(INSTALLATIONS_SMS_ENABLED=None)
+    def test_default_sends_assignment_only_when_first_scheduled(self):
+        self.assign()
+        self.assign(date_from='2026-11-12', date_to='2026-11-12')
+        self.send.assert_called_once_with('+79995554433', 'Монтаж назначен на 10.11.2026')
+
+
     @override_settings(INSTALLATIONS_SMS_ENABLED=False)
     def test_sms_disabled_is_only_logged(self):
         response = self.assign()
@@ -143,7 +187,7 @@ class SmsSwitchTest(ScheduleTestBase):
     def test_call_failed_sms(self):
         response = self.post(self.sm, 'notify_call_failed')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertIn('не дозвонились', self.send.call_args.args[1])
+        self.assertEqual(self.send.call_args.args[1], 'не дозвонились по монтажу. Перезвоните пжл:) +79990001122')
         self.assertEqual(self.post(self.manager, 'notify_call_failed').status_code, 403)
 
 
@@ -244,3 +288,49 @@ class ScheduleViewTest(ScheduleTestBase):
     def test_schedule_requires_period(self):
         response = self.client_for(self.sm).get('/api/v1/installations/schedule/')
         self.assertEqual(response.status_code, 400)
+
+
+class CalendarBlockTests(ScheduleTestBase):
+    url = '/api/v1/installations/calendar-blocks/'
+
+    def block(self, actor, installer, comment=''):
+        return self.client_for(actor).post(self.url, {
+            'installer_id': installer.pk, 'date_from': '2026-11-10',
+            'date_to': '2026-11-11', 'comment': comment,
+        }, format='json')
+
+    def test_personal_day_off_blocks_assignment_until_removed(self):
+        result = self.block(self.inst1, self.inst1)
+        self.assertEqual(result.status_code, 201, result.data)
+        self.assertEqual(self.assign().status_code, 400)
+        self.assertEqual(self.block(self.inst2, self.inst1).status_code, 403)
+        self.assertEqual(self.block(self.sm, self.inst1, 'Выставка').status_code, 400)
+        url = f"{self.url}{result.data['id']}/"
+        self.assertEqual(self.client_for(self.inst2).delete(url).status_code, 404)
+        self.assertEqual(self.client_for(self.inst1).delete(url).status_code, 204)
+        self.assertEqual(self.assign().status_code, 200)
+        self.assertEqual(self.block(self.inst1, self.inst1).status_code, 400)
+
+    def test_manager_block_is_visible_and_scoped(self):
+        self.assertEqual(self.block(self.manager, self.inst1, 'Выставка').status_code, 403)
+        self.assertEqual(self.block(self.sm, self.foreign_installer, 'Выставка').status_code, 403)
+        self.assertEqual(self.block(self.sm, self.inst1, ' ').status_code, 400)
+        result = self.block(self.sm, self.inst1, 'Выставка')
+        self.assertEqual(result.status_code, 201, result.data)
+        rows = self.client_for(self.inst1).get('/api/v1/installations/schedule/', {
+            'date_from': '2026-11-11', 'date_to': '2026-11-12',
+        }).data
+        self.assertEqual([(row['kind'], row['work_description']) for row in rows], [('other_work', 'Выставка')])
+        url = f"{self.url}{result.data['id']}/"
+        self.assertEqual(self.client_for(self.inst1).delete(url).status_code, 404)
+        self.assertEqual(self.client_for(self.sm).delete(url).status_code, 204)
+
+    def test_reschedule_checks_every_installer_on_shared_visit(self):
+        self.assertEqual(self.block(self.inst2, self.inst2).status_code, 201)
+        self.assertEqual(self.assign(installers=[self.inst1.pk, self.inst2.pk],
+                                     date_from='2026-11-13', date_to='2026-11-13').status_code, 200)
+        response = self.post(self.inst1, 'reschedule', {
+            'date_from': '2026-11-11', 'date_to': '2026-11-12', 'reason': 'Просьба клиента',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(InstallationVisit.objects.get().date_from, date(2026, 11, 13))

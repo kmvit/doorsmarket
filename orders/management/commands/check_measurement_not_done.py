@@ -6,6 +6,7 @@ Cron: дата назначенного замера прошла, но заме
 Рекомендуется через crontab раз в час.
 """
 from django.core.management.base import BaseCommand
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from orders.models import OrderStatus, Measurement
@@ -17,9 +18,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         now = timezone.now()
-        measurements = Measurement.objects.filter(
+        measurements = Measurement.objects.alias(deadline=Coalesce('measurement_end', 'measurement_date')).filter(
             is_done=False,
-            measurement_date__lt=now,
+            deadline__lt=now,
             request__order__status=OrderStatus.MEASUREMENT_SCHEDULED,
             # Признанный неактуальным замер снят с работы — просрочки по нему
             # быть не может, и в «Не выполнен» он попадать не должен.

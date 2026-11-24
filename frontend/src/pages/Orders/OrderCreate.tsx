@@ -21,6 +21,7 @@ const OrderCreate = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<CreateTab>('kp')
+  const [files, setFiles] = useState<File[]>([])
   const [nextActionText, setNextActionText] = useState('')
   const [nextActionDueAt, setNextActionDueAt] = useState('')
   const [nextActionError, setNextActionError] = useState(false)
@@ -90,7 +91,7 @@ const OrderCreate = () => {
         ...salesFieldsPayload(sales),
         next_action_text: nextActionText.trim(),
         next_action_due_at: new Date(nextActionDueAt).toISOString(),
-      } as any)
+      }, files)
       navigate(`/orders/${order.id}`)
     } catch (err: any) {
       const detail = err.response?.data
@@ -182,6 +183,12 @@ const OrderCreate = () => {
                 required
               />
             </div>
+            <label className="block text-sm font-medium text-gray-700">
+              Сумма заказа, ₽
+              <input type="number" min="0" max="9999999999.99" step="0.01" inputMode="decimal"
+                value={form.manual_order_amount ?? ''} className={`${inputCls} mt-1`}
+                onChange={e => setField('manual_order_amount', e.target.value || null)} />
+            </label>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
               <input
@@ -288,6 +295,34 @@ const OrderCreate = () => {
               minRows={3}
             />
           </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <label htmlFor="order-files" className="block text-sm font-semibold text-gray-700 mb-3">
+            Файлы заказа
+          </label>
+          <input
+            id="order-files" type="file" multiple disabled={isSubmitting}
+            className="block max-w-full text-sm text-gray-700"
+            onChange={(event) => {
+              const added = Array.from(event.target.files || [])
+              setFiles(previous => [...previous, ...added])
+              event.target.value = ''
+            }}
+          />
+          {files.length > 0 && (
+            <ul className="mt-3 space-y-2 text-sm">
+              {files.map((file, index) => (
+                <li key={index} className="flex items-center justify-between gap-3">
+                  <span className="break-all">{file.name}</span>
+                  <button type="button" disabled={isSubmitting} aria-label={`Убрать ${file.name}`}
+                    className="text-red-600" onClick={() => setFiles(previous => previous.filter((_, i) => i !== index))}>
+                    Убрать
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Позиции */}

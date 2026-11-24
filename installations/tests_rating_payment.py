@@ -29,7 +29,8 @@ class RatingPaymentBase(InstallerTestBase):
 
     def finish(self, partial=False):
         self.upload(self.inst1, kind='act', name='Акт.jpg')
-        response = self.post(self.inst1, 'complete_partial' if partial else 'complete')
+        response = self.post(self.inst1, 'complete_partial' if partial else 'complete',
+                             {'reason': 'client_postponed'} if partial else {})
         self.assertEqual(response.status_code, 200, response.data)
         self.inst.refresh_from_db()
 
@@ -42,7 +43,7 @@ class RatingTest(RatingPaymentBase):
     def test_completion_sends_rating_link(self):
         self.finish()
         text = self.send.call_args.args[1]
-        self.assertIn('Оцените пожалуйста нашу работу', text)
+        self.assertIn('монтаж завершен. Оцените по ссылке', text)
         self.assertIn(f'/m/{self.inst.client_code}', text)
 
     def test_partial_completion_does_not_ask_for_rating(self):

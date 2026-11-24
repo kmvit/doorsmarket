@@ -1,9 +1,11 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 
-from orders.models import ActivityKind, Measurement
+from orders.models import ActivityKind, Measurement, OrderActionReminder
 
-from .models import ActReview, EventKind, Installation, InstallationFile, InstallationFileKind, InstallationStatus
+from .models import ActReview, EventKind, Installation, InstallationFile, InstallationFileKind, InstallationStatus, InstallerCalendarBlock, PartialCompletionReason
 
 # Виды файлов, которые можно приложить при оформлении (ключи multipart-формы)
 UPLOAD_KINDS = [k for k, _ in InstallationFileKind.choices]
@@ -40,24 +42,35 @@ def prefill(order):
     }
 
 
-def missing_required_files(order, files_by_kind):
+def missing_required_files(order, available_kinds):
     """Обязательные виды файлов, которых нет среди загружаемых."""
     labels = dict(InstallationFileKind.choices)
-    return [labels[k] for k in required_file_kinds(order) if not files_by_kind.get(k)]
+    return [labels[k] for k in required_file_kinds(order) if k not in available_kinds]
 
 
 @transaction.atomic
-def create_installation(*, order, data, files_by_kind, actor):
+def create_installation(*, order, data, files_by_kind, actor, source=None, source_files=()):
     inst = Installation.objects.create(order=order, created_by=actor, **data)
     for kind, files in files_by_kind.items():
         for f in files:
             InstallationFile.objects.create(
                 installation=inst, kind=kind, file=f, name=f.name[:255], uploaded_by=actor,
             )
-    inst.log(EventKind.CREATED, actor=actor, description='Монтаж оформлен', new_status=inst.status)
+    InstallationFile.objects.bulk_create([
+        InstallationFile(installation=inst, kind=f.kind, file=f.file.name, name=f.name, uploaded_by=actor)
+        for f in source_files
+    ])
+    description = 'Монтаж оформлен'
+    order_description = f'Оформлен монтаж #{inst.id}'
+    meta = {}
+    if source:
+        description = f'Оформлен повторный монтаж по монтажу #{source.pk}'
+        order_description = f'Оформлен повторный монтаж #{inst.pk} по монтажу #{source.pk}'
+        meta['source_installation_id'] = source.pk
+    inst.log(EventKind.CREATED, actor=actor, description=description, new_status=inst.status, meta=meta)
     order.log_activity(
         ActivityKind.INSTALLATION_CREATED, actor=actor,
-        description=f'Оформлен монтаж #{inst.id}', meta={'installation_id': inst.id},
+        description=order_description, meta={'installation_id': inst.id, **meta},
     )
     # Решение «монтаж не нужен» снимается: монтаж всё-таки оформили
     if order.installation_not_needed_at:
@@ -96,22 +109,22 @@ def _push(user, title, body, url, actor=None):
         logging.getLogger(__name__).error('Ошибка push по монтажу: %s', exc)
 
 
-def _set_status(inst, new_status, actor, kind, description, extra_fields=()):
+def _set_status(inst, new_status, actor, kind, description, extra_fields=(), *, meta=None):
     old = inst.status
     inst.status = new_status
     inst.save(update_fields=['status', 'updated_at', *extra_fields])
-    inst.log(kind, actor=actor, description=description, old_status=old, new_status=new_status)
-    sync_order_status(inst.order, actor=actor)
+    inst.log(kind, actor=actor, description=description, old_status=old, new_status=new_status, meta=meta)
+    sync_order_status(inst.order, actor=actor, notify=kind != EventKind.PARTIALLY_COMPLETED)
 
 
-def sync_order_status(order, actor=None):
+def sync_order_status(order, actor=None, *, notify=True):
     """Сохраняет монтажный статус в самом заказе, пока монтажи в работе."""
     from orders.models import OrderStatus
 
     statuses = list(order.installations.exclude(status=InstallationStatus.IRRELEVANT)
                     .values_list('status', flat=True))
     if not statuses:
-        order.set_installation_status(None, actor=actor)
+        order.set_installation_status(None, actor=actor, notify=notify)
         return
 
     if InstallationStatus.PARTIALLY_DONE in statuses:
@@ -131,7 +144,7 @@ def sync_order_status(order, actor=None):
     else:
         target = None
 
-    order.set_installation_status(target, actor=actor)
+    order.set_installation_status(target, actor=actor, notify=notify)
 
 
 def city_installers(city_id):
@@ -156,6 +169,18 @@ def _installer_names(installers):
     return ', '.join(f'{u.first_name} {u.last_name}'.strip() or u.username for u in installers)
 
 
+def check_calendar_blocks(periods):
+    # Создание отметок и назначение монтажей синхронизируются по монтажнику.
+    list(get_user_model().objects.select_for_update().filter(pk__in=periods)
+         .order_by('pk').values_list('pk', flat=True))
+    for installer_id, (start, end) in periods.items():
+        block = InstallerCalendarBlock.objects.filter(
+            installer_id=installer_id, date_from__lte=end, date_to__gte=start,
+        ).first()
+        if block:
+            raise ValidationError({'detail': f'{block.get_kind_display()}: {_format_period(block.date_from, block.date_to)}.'})
+
+
 @transaction.atomic
 def assign(inst, *, installers, periods, actor, individual_dates=False):
     """
@@ -167,6 +192,7 @@ def assign(inst, *, installers, periods, actor, individual_dates=False):
     from .models import InstallationVisit
 
     visit = inst.current_visit if inst.status == InstallationStatus.PLANNED else None
+    check_calendar_blocks(periods)
     old_from = visit.date_from if visit else None
     old_installers = set(visit.installers.values_list('id', flat=True)) if visit else set()
     old_periods = {pk: visit.dates_for(pk) for pk in old_installers}
@@ -201,7 +227,7 @@ def assign(inst, *, installers, periods, actor, individual_dates=False):
               f'Монтаж #{inst.id} снят с вашего графика', inst.order.client_name, url, actor)
 
     if old_from is None:
-        sms.send(inst, sms.installation_scheduled(visit.date_from, actor), actor=actor, purpose='scheduled')
+        sms.send(inst, sms.installation_scheduled(visit.date_from), actor=actor, purpose='scheduled')
     elif old_from != visit.date_from:
         sms.send(inst, sms.installation_rescheduled(visit.date_from, actor), actor=actor, purpose='rescheduled')
     return visit
@@ -220,8 +246,13 @@ def _drop_current_visit(inst, actor):
 
 @transaction.atomic
 def unassign(inst, actor):
+    visit = inst.current_visit
+    # После частичного выполнения назначение создаёт следующий выезд. При его
+    # отмене предыдущий этап по-прежнему входит в папку «Назначить монтаж».
+    partial = visit is not None and any(v.pk != visit.pk for v in inst.visits.all())
     _drop_current_visit(inst, actor)
-    _set_status(inst, InstallationStatus.NOT_PLANNED, actor, EventKind.UNASSIGNED, 'Снят с графика монтажников')
+    status = InstallationStatus.PARTIALLY_DONE if partial else InstallationStatus.NOT_PLANNED
+    _set_status(inst, status, actor, EventKind.UNASSIGNED, 'Выезд снят с графика. Монтаж возвращён на назначение.')
 
 
 @transaction.atomic
@@ -321,7 +352,7 @@ def city_service_managers(inst):
 
 def installer_call_failed(inst, actor):
     from . import sms
-    return sms.send(inst, sms.installer_call_failed(actor), actor=actor, purpose='installer_call_failed')
+    return sms.send(inst, sms.call_failed(actor), actor=actor, purpose='installer_call_failed')
 
 
 @transaction.atomic
@@ -344,6 +375,8 @@ def reschedule_by_installer(inst, *, date_from, date_to, reason, actor):
 
 
 def _move_installer_dates(visit, installer_id, date_from, date_to):
+    affected = [installer_id] if visit.installer_dates else visit.installers.values_list('pk', flat=True)
+    check_calendar_blocks({pk: (date_from, date_to) for pk in affected})
     if visit.installer_dates:
         periods = {int(pk): visit.dates_for(pk) for pk in visit.installer_dates}
         periods[installer_id] = (date_from, date_to)
@@ -411,13 +444,34 @@ def has_unsigned_act(inst):
     return visit is not None and inst.files.filter(visit=visit, kind=InstallationFileKind.ACT_UNSIGNED).exists()
 
 
-def complete(inst, *, partial, actor):
+def _notify_repeat_installation(reminder, inst):
+    from users.push_utils import send_push_notification
+    if send_push_notification(
+        user=inst.order.manager, title=f'Недопоставка по заказу #{inst.order_id}',
+        body=reminder.action_text,
+        url=f'/orders/installations/new?order={inst.order_id}&repeat_from={inst.pk}',
+        data={'orderId': inst.order_id, 'reminderId': reminder.pk},
+    ):
+        OrderActionReminder.objects.filter(pk=reminder.pk).update(notified=True)
+
+
+def complete(inst, *, partial, actor, reason=None):
     if partial:
+        if reason not in PartialCompletionReason.values:
+            raise ValidationError({'detail': 'Выберите причину частичного завершения монтажа.'})
+        label = PartialCompletionReason(reason).label
         _set_status(inst, InstallationStatus.PARTIALLY_DONE, actor, EventKind.PARTIALLY_COMPLETED,
-                    'Часть работ выполнена, монтаж продолжится')
-    else:
-        _set_status(inst, InstallationStatus.DONE, actor, EventKind.COMPLETED, 'Монтаж завершён')
-        request_rating(inst, actor)
+                    f'Монтаж завершён частично. Причина: {label}',
+                    meta={'reason': reason, 'visit_id': inst.current_visit.pk})
+        if reason == PartialCompletionReason.SHORT_DELIVERY:
+            reminder = OrderActionReminder.objects.create(
+                order=inst.order, created_by=inst.order.manager, due_at=timezone.now(),
+                action_text=f'Оформить повторный монтаж по монтажу #{inst.pk}. Причина: недопоставка.',
+            )
+            transaction.on_commit(lambda: _notify_repeat_installation(reminder, inst), robust=True)
+        return
+    _set_status(inst, InstallationStatus.DONE, actor, EventKind.COMPLETED, 'Монтаж завершён')
+    request_rating(inst, actor)
     _push(inst.order.manager, f'Монтаж #{inst.id}: {inst.get_status_display().lower()}',
           inst.order.client_name, f'/orders/installations/{inst.id}', actor)
 

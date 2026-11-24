@@ -1,3 +1,4 @@
+import { formatMeasurementTime } from '../../utils/measurementTime'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { measurementsAPI, openingReworkText } from '../../api/measurements'
@@ -144,7 +145,7 @@ const MeasurementBlankPrint = () => {
           </div>
           <div className="text-xs text-gray-500 text-right">
             {m.measurement_date && (
-              <>Дата замера: <b className="text-gray-900">{new Date(m.measurement_date).toLocaleString('ru-RU')}</b><br /></>
+              <>Дата замера: <b className="text-gray-900">{formatMeasurementTime(m.measurement_date, m.measurement_end)}</b><br /></>
             )}
             Сервис-менеджер: <b className="text-gray-900">{smName}</b>
           </div>

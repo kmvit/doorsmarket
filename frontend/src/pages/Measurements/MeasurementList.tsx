@@ -1,3 +1,4 @@
+import { formatMeasurementTime } from '../../utils/measurementTime'
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { measurementsAPI } from '../../api/measurements'
@@ -80,11 +81,6 @@ const MeasurementList = () => {
     const t = setTimeout(load, 300)
     return () => clearTimeout(t)
   }, [load])
-
-  const formatDate = (d: string | null) => {
-    if (!d) return '—'
-    return new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-  }
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
@@ -218,7 +214,7 @@ const MeasurementList = () => {
                     </td>
                     <td className="px-3 py-2">
                       {m.measurement_date ? (
-                        <span className="text-sm text-gray-900">{formatDate(m.measurement_date)}</span>
+                        <span className="text-sm text-gray-900">{formatMeasurementTime(m.measurement_date, m.measurement_end, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       ) : (
                         <span className="text-xs text-amber-700">не назначен</span>
                       )}

@@ -69,6 +69,30 @@ class InstallerOverdueTest(TestCase):
         complaint.refresh_from_db()
         self.assertEqual(complaint.status, ComplaintStatus.INSTALLER_OVERDUE)
 
+    def test_overdue_filter_after_refresh_and_with_status_selection(self, *_):
+        late = self._complaint('manager')
+        late.plan_installation_by_sm(self.installer, timezone.now() - timedelta(days=1))
+        expected = {late.pk}
+        for status in (
+            ComplaintStatus.INSTALLER_NOT_PLANNED, ComplaintStatus.FACTORY_RESPONSE_OVERDUE,
+            ComplaintStatus.SM_RESPONSE_OVERDUE, ComplaintStatus.SHIPPING_OVERDUE,
+            ComplaintStatus.MOSCOW_SERVICE_OVERDUE,
+        ):
+            complaint = self._complaint('manager')
+            Complaint.objects.filter(pk=complaint.pk).update(status=status)
+            expected.add(complaint.pk)
+        ordinary = self._complaint('manager')
+
+        def ids(**params):
+            response = self.client.get('/api/v1/complaints/', params)
+            self.assertEqual(response.status_code, 200)
+            rows = response.data if isinstance(response.data, list) else response.data['results']
+            return {row['id'] for row in rows}
+
+        self.assertEqual(ids(overdue='true'), expected)
+        self.assertEqual(ids(overdue='true', status='installer_overdue'), {late.pk})
+        self.assertEqual(ids(overdue='false'), expected | {ordinary.pk})
+
     def test_future_installation_not_overdue(self, *_):
         complaint = self._complaint('manager')
         complaint.plan_installation_by_sm(self.installer, timezone.now() + timedelta(days=2))

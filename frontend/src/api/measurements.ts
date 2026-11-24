@@ -352,16 +352,18 @@ export const measurementsAPI = {
     })
   },
 
-  createFromRequest: async (requestId: number, measurementDate?: string | null): Promise<Measurement> => {
+  createFromRequest: async (requestId: number, measurementDate?: string | null, measurementEnd?: string | null): Promise<Measurement> => {
     return requestWithQueue('POST', '/measurements/create_from_request/', {
       request_id: requestId,
       measurement_date: measurementDate,
+      measurement_end: measurementEnd,
     })
   },
 
-  schedule: async (id: number, measurementDate: string): Promise<Measurement> => {
+  schedule: async (id: number, measurementDate: string, measurementEnd?: string | null): Promise<Measurement> => {
     return requestWithQueue('POST', `/measurements/${id}/schedule/`, {
       measurement_date: measurementDate,
+      measurement_end: measurementEnd,
     })
   },
 

@@ -13,7 +13,7 @@ const formatKm = (km: string | number) => `${Number(km).toLocaleString('ru-RU', 
 /**
  * Отчёт по замерам для расчёта зарплаты сервис-менеджеров — по образцу
  * «Отчет по замерам.xlsx». Тарифы считает сервер: сумма по замеру — по шкале
- * от количества проёмов (проёмы + панели), удалённость — км × 30 ₽, если не
+ * от количества проёмов (проёмы + панели), удалённость — км × ставку города, если не
  * оплачена на месте. Итого по замеру = сумма + удалённость.
  */
 const ServiceManagerReport = () => {
@@ -157,14 +157,17 @@ const ServiceManagerReport = () => {
           <details className="text-xs text-gray-500">
             <summary className="cursor-pointer select-none">Как считается</summary>
             <div className="mt-2 space-y-1">
-              <div>
-                Сумма по замеру — по количеству проёмов (все проёмы и все панели):{' '}
-                {report.tariff.openings.map((t, i) => {
-                  const from = i === 0 ? 1 : report.tariff.openings[i - 1].up_to + 1
-                  return `${from}–${t.up_to} — ${formatRub(t.amount)}`
-                }).join(', ')}.
-              </div>
-              <div>Удалённость — {formatRub(report.tariff.distance_rate)} за км, если не оплачена на месте.</div>
+              <div>Ставка за замер зависит от города салона и количества проёмов с учётом панелей.</div>
+              {report.city_tariffs.map((tariff) => (
+                <div key={tariff.city_id}>
+                  <strong>{tariff.city_name}</strong>
+                  <div>{tariff.openings.map((t, i) => {
+                    const from = i === 0 ? 1 : tariff.openings[i - 1].up_to + 1
+                    return `${from}–${t.up_to} — ${formatRub(t.amount)}`
+                  }).join(', ')}</div>
+                  <div>Удалённость — {formatRub(tariff.distance_rate)} за км, если не оплачена на месте.</div>
+                </div>
+              ))}
               <div>Итого по замеру = сумма по замеру + удалённость. Итого за месяц — сумма по всем замерам.</div>
               <div>Замер, оплаченный клиентом на месте, в отчёте виден, но в зарплату не идёт.</div>
             </div>

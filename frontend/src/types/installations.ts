@@ -128,7 +128,8 @@ export const installerPeriod = (visit: InstallationVisit, installerId?: number |
 /** Выезд в календаре монтажника: монтаж или рекламация (kind) */
 export interface ScheduleVisit extends Omit<InstallationVisit, 'id'> {
   id: number | string
-  kind: 'installation' | 'complaint' | 'busy'
+  kind: 'installation' | 'complaint' | 'busy' | 'day_off' | 'other_work'
+  block_id?: number
   complaint_id?: number
   window?: string
   installation_id: number | null
@@ -153,6 +154,7 @@ export interface ComplaintInstallationRow {
   contact_name: string
   contact_phone: string
   manager_name: string
+  team_schedule?: string[]
   installer_name: string
   installer_id: number | null
   products: string
@@ -200,6 +202,8 @@ export interface Installation {
   created_by_name?: string
   order_status_display?: string
   measurement_blank_required?: boolean
+  can_repeat?: boolean
+  can_unassign?: boolean
   order_manager_id?: number
   visits?: InstallationVisit[]
   installer_notified_at?: string | null
@@ -340,3 +344,11 @@ export const formatPeriodForInstaller = (visit: InstallationVisit, installerId?:
 
 export const formatVisitAssignments = (visit: InstallationVisit): string =>
   visit.installers.map((u) => `${u.full_name} · ${formatPeriodForInstaller(visit, u.id)}`).join('; ')
+
+export const PARTIAL_COMPLETION_REASONS = {
+  client_postponed: 'Клиент отложил',
+  complaint: 'Рекламация',
+  short_delivery: 'Недопоставка',
+} as const
+
+export type PartialCompletionReason = keyof typeof PARTIAL_COMPLETION_REASONS

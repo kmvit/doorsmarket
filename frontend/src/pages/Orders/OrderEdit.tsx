@@ -1,3 +1,5 @@
+import OrderRefusalFields, { refusalComplete, refusalSummary } from '../../components/orders/OrderRefusalFields'
+import { OrderRefusal } from '../../types/orders'
 import { hasManagerPermissions } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
@@ -25,6 +27,7 @@ const OrderEdit = () => {
   const [sales, setSales] = useState<SalesFieldsValue>(EMPTY_SALES_FIELDS)
   const [salesError, setSalesError] = useState(false)
 
+  const [refusal, setRefusal] = useState<OrderRefusal>({})
   const [form, setForm] = useState<CreateOrderData>({
     salon: 0,
     kp_number: '',
@@ -129,10 +132,15 @@ const OrderEdit = () => {
       setError(salesProblem)
       return
     }
+    const cancelling = form.status === 'cancelled' && order?.status !== 'cancelled'
+    if (cancelling && !refusalComplete(refusal)) {
+      setError('Заполните причину отказа.')
+      return
+    }
     setIsSubmitting(true)
     setError(null)
     try {
-      await ordersAPI.fullUpdate(Number(id), { ...form, ...salesFieldsPayload(sales) })
+      await ordersAPI.fullUpdate(Number(id), { ...form, ...salesFieldsPayload(sales), ...(cancelling ? { refusal } : {}) })
       navigate(`/orders/${id}`)
     } catch (err: any) {
       const detail = err.response?.data
@@ -221,8 +229,11 @@ const OrderEdit = () => {
               >
                 <option value="draft">Черновик</option>
                 <option value="active">Создан</option>
-                <option value="cancelled">Отменён</option>
+                <option value="cancelled">Не актуален</option>
               </select>
+              {form.status === 'cancelled' && (order?.status === 'cancelled'
+                ? <p className="mt-2 text-sm">{refusalSummary(order.refusal)}</p>
+                : <OrderRefusalFields value={refusal} onChange={setRefusal} />)}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Клиент *</label>

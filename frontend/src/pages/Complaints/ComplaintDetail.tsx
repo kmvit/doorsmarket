@@ -1,3 +1,6 @@
+import { canPlanComplaintStatus } from '../../types/complaints'
+import AssignModal from '../../components/installations/AssignModal'
+import { formatPeriod } from '../../types/installations'
 import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
@@ -49,8 +52,6 @@ const ComplaintDetail = () => {
     productionReview?: boolean
   }>({})
   const [formData, setFormData] = useState<{
-    installerId?: string
-    dateByInstaller?: boolean
     newInstallerId?: string
     productionDeadline?: string
     shippingDate?: string
@@ -247,32 +248,7 @@ const ComplaintDetail = () => {
           await complaintsAPI.approve(Number(id))
           break
         case 'plan_installation':
-          // Если это СМ планирует, нужен installerId, если монтажник - он планирует сам
-          if (canManageService(user)) {
-            if (!formData.installerId) {
-              alert('Укажите монтажника')
-              return
-            }
-            // Дата нужна, только если её НЕ оставляют на монтажника
-            if (!formData.dateByInstaller) {
-              const windowError = validateInstallationWindow(installationWindow)
-              if (windowError) {
-                alert(`${windowError} или отметьте «Дату запланирует монтажник»`)
-                return
-              }
-            }
-            const smWindow = installationWindowToApi(installationWindow)
-            await complaintsAPI.planInstallation(
-              Number(id),
-              Number(formData.installerId),
-              smWindow.start,
-              !!formData.dateByInstaller,
-              smWindow.end,
-            )
-            setShowForms({ ...showForms, planInstallation: false })
-            setFormData({ ...formData, installerId: '', dateByInstaller: false })
-            setInstallationWindow(emptyInstallationWindow)
-          } else if (user?.role === 'installer') {
+          if (user?.role === 'installer') {
             // Монтажник планирует сам
             const windowError = validateInstallationWindow(installationWindow)
             if (windowError) {
@@ -856,6 +832,9 @@ const ComplaintDetail = () => {
                   </div>
                   <div className="ml-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-1">Монтаж запланирован</h3>
+                    {currentComplaint.installation_dates_only || (currentComplaint.installation_assignments?.length ?? 0) > 1 ? currentComplaint.installation_assignments?.map(row =>
+                      <p key={row.installer_id} className="text-sm text-gray-800">{row.name} · {formatPeriod(row.date_from, row.date_to)}</p>
+                    ) : <>
                     <p className="text-lg font-bold text-gray-900">{formatDateOnly(currentComplaint.planned_installation_date)}</p>
                     <p className="text-sm text-gray-600">{formatInstallationTime(currentComplaint.planned_installation_date, currentComplaint.planned_installation_end)}</p>
                     {currentComplaint.installer_assigned && (
@@ -865,6 +844,7 @@ const ComplaintDetail = () => {
                           : currentComplaint.installer_assigned.username}
                       </p>
                     )}
+                    </>}
                   </div>
                 </div>
               </div>
@@ -949,82 +929,21 @@ const ComplaintDetail = () => {
                 {/* Действия для СМ */}
                 {canManageService(user) && (
                   <>
-                    {/* Планирование монтажа (когда товар на складе или отгрузка запланирована) */}
-                    {(currentComplaint.status === 'on_warehouse' || currentComplaint.status === 'shipping_planned') && (
-                      <>
-                        {!showForms.planInstallation ? (
-                          <Button
-                            onClick={() => setShowForms({ ...showForms, planInstallation: true })}
-                            className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white"
-                          >
-                            <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            Монтаж запланирован
-                          </Button>
-                        ) : (
-                          <div className="p-4 border-2 border-orange-200 rounded-xl bg-orange-50">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Планирование монтажа</h4>
-                            <div className="space-y-3">
-                              <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={!!formData.dateByInstaller}
-                                  onChange={(e) => setFormData({ ...formData, dateByInstaller: e.target.checked })}
-                                  className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                                />
-                                Дату и время запланирует монтажник
-                              </label>
-                              {!formData.dateByInstaller && (
-                                <InstallationWindowInput value={installationWindow} onChange={setInstallationWindow} />
-                              )}
-                              {formData.dateByInstaller && (
-                                <p className="text-xs text-gray-600">
-                                  Монтажнику придёт уведомление — он сам назначит дату и время. Статус: «Ожидает дату от монтажника».
-                                </p>
-                              )}
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Монтажник <span className="text-red-500">*</span></label>
-                                <select
-                                  value={formData.installerId || ''}
-                                  onChange={(e) => setFormData({ ...formData, installerId: e.target.value })}
-                                  required
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                >
-                                  <option value="">Выберите монтажника</option>
-                                  {installers.map((installer) => (
-                                    <option key={installer.id} value={installer.id}>
-                                      {installer.first_name && installer.last_name
-                                        ? `${installer.first_name} ${installer.last_name}`
-                                        : installer.username}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex space-x-2">
-                                <Button
-                                  onClick={() => handleAction('plan_installation')}
-                                  disabled={isProcessing}
-                                  className="flex-1 bg-orange-600 text-white hover:bg-orange-700"
-                                >
-                                  Сохранить
-                                </Button>
-                                <Button
-                                  onClick={() => setShowForms({ ...showForms, planInstallation: false })}
-                                  variant="outline"
-                                  className="flex-1"
-                                >
-                                  Отмена
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
+                    {canPlanComplaintStatus(currentComplaint.status) && <>
+                      <Button onClick={() => setShowForms({ ...showForms, planInstallation: true })}
+                        className="w-full bg-primary-600 text-white hover:bg-primary-700">
+                        {currentComplaint.planned_installation_date ? 'Изменить назначение' : 'Назначить монтаж'}
+                      </Button>
+                      {showForms.planInstallation && <AssignModal complaint={currentComplaint}
+                        onClose={() => setShowForms({ ...showForms, planInstallation: false })}
+                        onDone={() => {
+                          setShowForms({ ...showForms, planInstallation: false })
+                          fetchComplaint(currentComplaint.id)
+                        }} />}
+                    </>}
 
                     {/* Заменить монтажника */}
-                    {currentComplaint.installer_assigned && 
+                    {currentComplaint.installer_assigned && !canPlanComplaintStatus(currentComplaint.status) &&
                      !['completed', 'closed', 'resolved'].includes(currentComplaint.status) && (
                       <>
                         {!showForms.changeInstaller ? (
@@ -1679,7 +1598,7 @@ const ComplaintDetail = () => {
                               Перенести дату монтажа
                             </h4>
                             <p className="text-xs text-gray-600 mb-3">
-                              Текущая дата: <strong>{formatInstallationWindow(currentComplaint.planned_installation_date, currentComplaint.planned_installation_end)}</strong>
+                              Текущая дата: <strong>{currentComplaint.installation_window_text || formatInstallationWindow(currentComplaint.planned_installation_date, currentComplaint.planned_installation_end)}</strong>
                             </p>
                             <div className="mb-3">
                               <InstallationWindowInput

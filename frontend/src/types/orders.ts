@@ -340,6 +340,7 @@ export interface OrderMeasurementBrief {
   id: number
   previous_id: number | null
   measurement_date: string | null
+  measurement_end?: string | null
   is_done: boolean
   done_at: string | null
   is_processed: boolean
@@ -347,7 +348,26 @@ export interface OrderMeasurementBrief {
   service_manager_name: string | null
 }
 
+export const REFUSAL_REASONS = {
+  bought_elsewhere: 'Купил в другом месте',
+  postponed: 'Отложил покупку на неопределённый срок',
+  other: 'Другое',
+} as const
+
+export const PURCHASE_REASONS = {
+  price: 'Дорого', lead_time: 'Долго', in_stock: 'Нужно в наличии', color: 'Не выбрал цвет',
+  model: 'Не выбрал модель', service: 'Не понравилось обслуживание', other: 'Другое',
+} as const
+
+export interface OrderRefusal {
+  reason?: keyof typeof REFUSAL_REASONS
+  store?: string
+  purchase_reason?: keyof typeof PURCHASE_REASONS
+  detail?: string
+}
+
 export interface Order {
+  refusal?: OrderRefusal
   id: number
   created_at: string
   updated_at: string
@@ -410,6 +430,7 @@ export interface OrderListItem {
   is_overdue?: boolean
   /** Назначенное время выезда на замер (null — замер ещё не назначен) */
   measurement_date?: string | null
+  measurement_end?: string | null
   service_manager_name?: string | null
   last_activity_at: string | null
   last_activity_kind: ActivityKind
@@ -441,6 +462,10 @@ export interface CreateOrderItemData {
 }
 
 export interface CreateOrderData extends Partial<OrderSalesFields> {
+  refusal?: OrderRefusal
+  manual_order_amount?: string | null
+  next_action_text?: string
+  next_action_due_at?: string
   salon: number
   kp_number?: string
   kp_date?: string | null
@@ -560,6 +585,8 @@ export interface CreateActionReminderData {
 }
 
 export interface WorkshopOrder {
+  refusal?: OrderRefusal
+  order_amount: string | null
   id: number
   created_at: string
   client_name: string
