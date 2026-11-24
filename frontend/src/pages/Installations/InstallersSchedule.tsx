@@ -1,3 +1,4 @@
+import BusyInstallers from '../../components/installations/BusyInstallers'
 import { canManageService } from '../../types/auth'
 import { complaintsAPI } from '../../api/complaints'
 import type { Complaint } from '../../types/complaints'
@@ -100,7 +101,8 @@ const InstallersSchedule = () => {
   const editable = canEditSchedule(user)
 
   // Монтажник всегда видит только свой график; выбор коллег доступен сотрудникам.
-  const installerId = user?.role === 'installer'
+  const overview = editable && !self && searchParams.get('installer') === 'all'
+  const installerId = overview ? null : user?.role === 'installer'
     ? user.id
     : Number(searchParams.get('installer')) || installers[0]?.id || null
   const current = installers.find((u) => u.id === installerId)
@@ -112,13 +114,13 @@ const InstallersSchedule = () => {
   useEffect(() => {
     let cancelled = false
     setVisits([])
-    if (!installerId) return
+    if (!overview && !installerId) return
     const [from, to] = monthGridRange(month)
-    installationsAPI.getSchedule(from, to, [installerId])
+    installationsAPI.getSchedule(from, to, installerId ? [installerId] : undefined)
       .then(rows => { if (!cancelled) setVisits(rows) })
       .catch(() => { if (!cancelled) setError('Не удалось загрузить график') })
     return () => { cancelled = true }
-  }, [installerId, month, revision])
+  }, [installerId, overview, month, revision])
 
   const resetSelection = () => {
     setRange(null)
@@ -143,7 +145,7 @@ const InstallersSchedule = () => {
     }
   }
 
-  const selectInstaller = (id: number) => {
+  const selectInstaller = (id: number | 'all') => {
     resetSelection()
     setSearchParams({ installer: String(id) }, { replace: true })
   }
@@ -172,6 +174,14 @@ const InstallersSchedule = () => {
           {/* Список монтажников: на телефоне — лентой над календарём */}
           {user?.role !== 'installer' && <aside className="lg:w-56 shrink-0">
             <ul className="flex lg:flex-col gap-2 overflow-x-auto pb-1">
+              {editable && <li className="shrink-0">
+                <button type="button" aria-pressed={overview} onClick={() => selectInstaller('all')}
+                  className={`w-full text-left px-3 py-2 rounded-xl border text-sm whitespace-nowrap ${overview
+                    ? 'bg-primary-600 border-primary-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-700 hover:border-primary-300'}`}>
+                  Все монтажники
+                </button>
+              </li>}
               {installers.map((u) => (
                 <li key={u.id} className="shrink-0">
                   <button
@@ -227,11 +237,14 @@ const InstallersSchedule = () => {
                 <MonthCalendar
                   month={month}
                   onMonthChange={setMonth}
-                  onDayClick={editable || self ? pickDay : undefined}
+                  onDayClick={!overview && (editable || self) ? pickDay : undefined}
                   dayClassName={(day) => (range && day >= range.from && day <= range.to ? 'bg-primary-50 ring-1 ring-inset ring-primary-400' : '')}
-                  renderDay={(day) => (
+                  renderDay={(day) => {
+                    const entries = visitsOn(day)
+                    if (overview) return <BusyInstallers visits={entries} installers={installers} onSelect={selectInstaller} />
+                    return (
                     <div className="space-y-1 mt-0.5">
-                      {visitsOn(day).map((v) => v.block_id ? (
+                      {entries.map((v) => v.block_id ? (
                         <div key={v.id} className="rounded-md bg-amber-100 px-1.5 py-1 text-xs text-amber-950">
                           <strong>{v.client_name}</strong>
                           {v.work_description && <div className="break-words">{v.work_description}</div>}
@@ -259,7 +272,8 @@ const InstallersSchedule = () => {
                         </Link>
                       ))}
                     </div>
-                  )}
+                    )
+                  }}
                 />
               </div>
             </div>
