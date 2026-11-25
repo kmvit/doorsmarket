@@ -239,6 +239,55 @@ class CitySalonFilterTest(TestCase):
             row = next(row for row in rows(response) if row['id'] == order.id)
             self.assertEqual(row['status_display'], 'Монтаж запланирован на 17.11.2026')
 
+    def test_order_list_uses_repeat_visit_of_same_or_separate_installation(self):
+        from installations.models import Installation, InstallationStatus, InstallationVisit
+
+        order = self.orders[self.s3]
+        order.status = OrderStatus.INSTALLATION_SCHEDULED
+        order.save(update_fields=['status'])
+        self.client.force_authenticate(self.admin)
+
+        def check(installation, day):
+            InstallationVisit.objects.create(installation=installation, date_from=day, date_to=day)
+            response = self.client.get('/api/v1/orders/')
+            self.assertEqual(response.status_code, 200)
+            row = next(row for row in rows(response) if row['id'] == order.pk)
+            self.assertEqual(row['status_display'], f'Монтаж запланирован на {day:%d.%m.%Y}')
+
+        today = timezone.localdate()
+        first = Installation.objects.create(order=order, status=InstallationStatus.PLANNED)
+        check(first, today - timedelta(days=1))
+        check(first, today + timedelta(days=8))
+        repeat = Installation.objects.create(order=order, status=InstallationStatus.PLANNED)
+        check(repeat, today + timedelta(days=5))
+
+    def test_past_visit_with_open_complaint_displays_complaint_until_reassigned(self):
+        from installations.models import Installation, InstallationStatus, InstallationVisit
+        from projects.models import ComplaintReason, ComplaintStatus, ProductionSite
+
+        order = self.orders[self.s3]
+        order.status = OrderStatus.INSTALLATION_SCHEDULED
+        order.save(update_fields=['status'])
+        installer_job = Installation.objects.create(order=order, status=InstallationStatus.PLANNED)
+        day = timezone.localdate() - timedelta(days=1)
+        visit = InstallationVisit.objects.create(installation=installer_job, date_from=day, date_to=day)
+        manager = self.managers[self.s3]
+        complaint = Complaint(
+            source_order=order, manager=manager, initiator=manager, recipient=manager,
+            production_site=ProductionSite.objects.create(name='Фабрика'),
+            reason=ComplaintReason.objects.create(name='Брак'), status=ComplaintStatus.IN_PRODUCTION,
+        )
+        Complaint.objects.bulk_create([complaint])
+        self.assertEqual(order.get_status_display_for_ui(),
+                         f'Рекламация №{complaint.pk} · Заказ в производстве. Монтаж был назначен на {day:%d.%m.%Y}')
+        visit.date_to = timezone.localdate()
+        visit.save(update_fields=['date_to'])
+        self.assertEqual(order.get_status_display_for_ui(), f'Монтаж запланирован на {day:%d.%m.%Y}')
+        visit.date_to = day
+        visit.save(update_fields=['date_to'])
+        Complaint.objects.filter(pk=complaint.pk).update(status=ComplaintStatus.CLOSED)
+        self.assertEqual(order.get_status_display_for_ui(), f'Монтаж запланирован на {day:%d.%m.%Y}')
+
     def test_leader_salon_filter_and_city_cannot_widen_access(self):
         self.client.force_authenticate(self.leader)
         self.assertEqual(self.ids('/api/v1/orders/', {'salon__in': str(self.s2.id)}), self.order_ids(self.s2))

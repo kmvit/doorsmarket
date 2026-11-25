@@ -436,17 +436,37 @@ class Order(models.Model):
             self._notify_status_change(old_status, self.status, actor=actor)
 
     def get_status_display_for_ui(self):
-        """Отображаемую подпись с датой для статуса запланированного монтажа."""
-        if self.status == OrderStatus.INSTALLATION_SCHEDULED:
-            from installations.models import Installation, InstallationStatus
+        """Показывает последнее назначение, в том числе повторный выезд."""
+        if self.status in (OrderStatus.INSTALLATION_SCHEDULED, OrderStatus.INSTALLATION_PARTIALLY_COMPLETED):
+            from django.utils import timezone
+            from installations.models import InstallationStatus, InstallationVisit
 
-            visit = Installation.objects.filter(
-                order_id=self.pk, status=InstallationStatus.PLANNED,
-                visits__date_from__isnull=False,
-            ).order_by('visits__date_from').values_list('visits__date_from', flat=True).first()
+            today = timezone.localdate()
+            latest_for_installation = InstallationVisit.objects.filter(
+                installation_id=models.OuterRef('installation_id'),
+            ).order_by('-pk').values('pk')[:1]
+            visit = InstallationVisit.objects.filter(
+                installation__order_id=self.pk, installation__status=InstallationStatus.PLANNED,
+                pk=models.Subquery(latest_for_installation),
+            ).order_by(
+                models.Case(models.When(date_to__gte=today, then=0), default=1), '-pk',
+            ).values_list('date_from', 'date_to').first()
             if visit:
-                date = visit.strftime('%d.%m.%Y')
-                return f'Монтаж запланирован на {date}'
+                start, end = visit
+                label = f'Монтаж запланирован на {start:%d.%m.%Y}'
+                if self.status == OrderStatus.INSTALLATION_PARTIALLY_COMPLETED:
+                    label = f'{self.get_status_display()} · {label}'
+                if end < today:
+                    from projects.models import ComplaintStatus
+
+                    complaint = self.complaints.exclude(status__in=(
+                        ComplaintStatus.COMPLETED, ComplaintStatus.CLOSED,
+                        ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED,
+                    )).only('id', 'status').order_by('-pk').first()
+                    if complaint:
+                        return (f'Рекламация №{complaint.pk} · {complaint.get_status_display()}. '
+                                f'Монтаж был назначен на {start:%d.%m.%Y}')
+                return label
         return self.get_status_display()
 
     def mark_paid(self, actor=None):
