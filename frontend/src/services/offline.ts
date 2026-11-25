@@ -18,6 +18,8 @@ export interface PendingRequest {
   // После успешной синхронизации сервер вернёт настоящий id, и очередь заменит tempId
   // на него в других запросах, которые на него ссылаются (например, вложение к проёму).
   tempId?: number
+  workPhoto?: { installation: number; visit: number; owner: number; name: string }
+  sendingSince?: number
 }
 
 // Действие из очереди, которое сервер отклонил при синхронизации.

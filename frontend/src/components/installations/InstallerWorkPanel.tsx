@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { liveQuery } from 'dexie'
+import { db } from '../../services/offline'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { QUEUED_MESSAGE } from '../../services/sync'
+import { QUEUED_MESSAGE, requestQueue, workPhotoIsSending } from '../../services/sync'
 import { Installation, PARTIAL_COMPLETION_REASONS, PartialCompletionReason, formatPeriod, formatPeriodForInstaller, installerPeriod } from '../../types/installations'
 import { selectCanCreateComplaint, useAuthStore } from '../../store/authStore'
 import ModalPortal from './ModalPortal'
@@ -9,6 +11,8 @@ import FileViewer from '../common/FileViewer'
 
 interface Props {
   inst: Installation
+  onRemove: (id: number, name: string) => Promise<void>
+  onFilesChanged: () => Promise<void>
   onChanged: (inst?: Installation) => void
 }
 
@@ -25,7 +29,7 @@ const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50
  * перенести дату, приложить акт и фото результата (в т.ч. без связи),
  * завершить полностью или частично, завести рекламацию.
  */
-const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
+const InstallerWorkPanel = ({ inst, onChanged, onRemove, onFilesChanged }: Props) => {
   const visit = inst.current_visit
   const installerId = useAuthStore((state) => state.user?.id)
   const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
@@ -39,6 +43,37 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const [notice, setNotice] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null)
 
+  const [pendingPhotos, setPendingPhotos] = useState<{ id: number; name: string; sending: boolean }[]>([])
+  const visitId = visit?.id
+  useEffect(() => {
+    if (!visitId || !installerId) return
+    let previous: number[] = []
+    const sub = liveQuery(async () => {
+      const rows = await db.pendingRequests.where('url').equals('/installation-files/').filter(row =>
+        row.workPhoto?.installation === inst.id && row.workPhoto.visit === visitId && row.workPhoto.owner === installerId
+      ).toArray()
+      return rows.map(row => ({ id: row.id!, name: row.workPhoto!.name, sending: workPhotoIsSending(row) }))
+    }).subscribe({
+      next: photos => {
+        setPendingPhotos(photos)
+        if (previous.some(id => !photos.some(photo => photo.id === id))) void onFilesChanged()
+        previous = photos.map(photo => photo.id)
+      },
+      error: () => setNotice('Не удалось прочитать список фото, ожидающих отправки.'),
+    })
+    return () => sub.unsubscribe()
+  }, [inst.id, installerId, visitId, onFilesChanged])
+
+  const removePendingPhoto = async (id: number, name: string) => {
+    if (!installerId || !window.confirm(`Отменить отправку файла «${name}»?`)) return
+    try {
+      const removed = await requestQueue.cancelWorkPhoto(id, installerId)
+      setNotice(removed ? 'Отправка файла отменена.' : 'Отправка уже началась. После загрузки файл можно удалить.')
+    } catch (err) {
+      alert(apiErrorText(err, 'Не удалось отменить отправку файла'))
+    }
+  }
+
   const visitFiles = inst.files.filter((f) => f.visit === visit?.id)
   // Акт засчитывается, если его приложил сотрудник или подпись клиента проверена
   const hasAct = visitFiles.some((f) => f.kind === 'act' && (f.review_status === '' || f.review_status === 'approved'))
@@ -48,28 +83,29 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
   const awaiting = inst.status === 'awaiting_signature'
 
   const upload = async (kind: WorkKind, files: File[]) => {
-    if (!files.length) return
+    if (!files.length || !visit || !installerId) return
     setBusy(true)
     setNotice(null)
+    let uploaded = false
     let wentOffline = false
     try {
       for (const f of files) {
         try {
-          await installationsAPI.uploadWorkFile(inst.id, kind, f)
+          await installationsAPI.uploadWorkFile(inst.id, kind, f, visit.id, installerId)
+          uploaded = true
         } catch (err: any) {
           if (err?.message !== QUEUED_MESSAGE) throw err
           wentOffline = true
-          setQueued((q) => [...q, { kind, name: f.name }])
+          if (kind !== 'result') setQueued((q) => [...q, { kind, name: f.name }])
         }
       }
       if (wentOffline) {
         setNotice('Нет связи: файлы сохранены в телефоне и отправятся, когда появится интернет.')
-      } else {
-        onChanged()
       }
     } catch (err) {
       alert(apiErrorText(err, 'Не удалось загрузить файл'))
     } finally {
+      if (uploaded) await onFilesChanged()
       setBusy(false)
     }
   }
@@ -190,6 +226,31 @@ const InstallerWorkPanel = ({ inst, onChanged }: Props) => {
           {fileButton('act', '📎 Прикрепить акт с подписью клиента', !hasAct)}
           {fileButton('result', '📷 Фото/видео дверей', false)}
         </div>
+        <ul className="mt-2 space-y-1 text-sm">
+          {visitFiles.filter(file => file.kind === 'result').map(file => (
+            <li key={file.id} className="flex items-center gap-2">
+              <button type="button" disabled={!file.file_url}
+                onClick={() => file.file_url && setViewing({ url: file.file_url, name: file.name })}
+                className="min-w-0 flex-1 break-all text-left text-primary-700 hover:underline">{file.name}</button>
+              {file.uploaded_by === installerId && (
+                <button type="button" disabled={busy} className={`${btn} text-red-700`}
+                  aria-label={`Удалить ${file.name}`} onClick={async () => {
+                    setBusy(true)
+                    try { await onRemove(file.id, file.name) } finally { setBusy(false) }
+                  }}>Удалить</button>
+              )}
+            </li>
+          ))}
+          {pendingPhotos.map(photo => (
+            <li key={photo.id} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 break-all text-amber-700">
+                {photo.name} — {photo.sending ? 'отправляется' : 'ждёт связи'}
+              </span>
+              <button type="button" disabled={busy} className={`${btn} text-red-700`}
+                onClick={() => removePendingPhoto(photo.id, photo.name)}>Отменить отправку</button>
+            </li>
+          ))}
+        </ul>
         {queued.length > 0 && (
           <ul className="mt-2 text-xs text-amber-700 space-y-0.5">
             {queued.map((q, i) => <li key={i}>⏳ {QUEUED_LABEL[q.kind]}: {q.name} — ждёт связи</li>)}

@@ -75,8 +75,8 @@ const InstallationDetail = () => {
     }
   }
 
-  const remove = async (fileId: number) => {
-    if (!window.confirm('Удалить файл из пакета документов?')) return
+  const remove = async (fileId: number, name: string) => {
+    if (!window.confirm(`Удалить файл «${name}»?`)) return
     try {
       await installationsAPI.deleteFile(fileId)
       await load()
@@ -240,7 +240,7 @@ const InstallationDetail = () => {
       )}
 
       {['planned', 'awaiting_signature'].includes(inst.status) && (myVisit || sm) && (
-        <InstallerWorkPanel inst={inst} onChanged={(updated) => { if (updated) setInst(updated); load() }} />
+        <InstallerWorkPanel key={`${inst.id}-${visit?.id}-${user?.id}`} inst={inst} onRemove={remove} onFilesChanged={load} onChanged={(updated) => { if (updated) setInst(updated); load() }} />
       )}
 
       {/* Акт на оплату — монтажнику выезда и СМ, когда монтаж (частично) завершён */}
@@ -389,7 +389,7 @@ const InstallationDetail = () => {
                           {f.file_size && <span className="text-gray-400 ml-1 text-xs">{f.file_size}</span>}
                         </button>
                         {canDeleteFile(f.uploaded_by) && (
-                          <button type="button" onClick={() => remove(f.id)} className="text-xs text-red-500 hover:underline">
+                          <button type="button" onClick={() => remove(f.id, f.name)} className="text-xs text-red-500 hover:underline">
                             удалить
                           </button>
                         )}

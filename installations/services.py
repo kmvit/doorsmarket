@@ -332,11 +332,15 @@ def add_file(inst, *, kind, upload, name, actor, review_status='', log=True):
     return f
 
 
+def order_attachment_name(inst, f):
+    return f'Монтаж #{inst.id}. {f.get_kind_display()}: {f.name}'[:255]
+
+
 def _attach_to_order(inst, f):
     from orders.models import OrderAttachment
     OrderAttachment.objects.create(
         order=inst.order, file=f.file.name,
-        name=f'Монтаж #{inst.id}. {f.get_kind_display()}: {f.name}'[:255],
+        name=order_attachment_name(inst, f),
     )
 
 

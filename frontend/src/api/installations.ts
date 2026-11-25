@@ -109,12 +109,13 @@ export const installationsAPI = {
 
   // Акт и фото результата монтажник прикладывает и без связи: запрос встаёт в
   // очередь (файл хранится байтами) и уйдёт, когда сеть появится
-  uploadWorkFile: async (installationId: number, kind: 'act' | 'act_unsigned' | 'result', file: File): Promise<InstallationFile> => {
+  uploadWorkFile: async (installationId: number, kind: 'act' | 'act_unsigned' | 'result', file: File, visit: number, owner: number): Promise<InstallationFile> => {
     const form = new FormData()
     form.append('installation', String(installationId))
     form.append('kind', kind)
     form.append('file', file)
-    return requestWithQueue('POST', '/installation-files/', form, { 'Content-Type': 'multipart/form-data' })
+    return requestWithQueue('POST', '/installation-files/', form, { 'Content-Type': 'multipart/form-data' },
+      kind === 'result' ? { installation: installationId, visit, owner, name: file.name } : undefined)
   },
 
   // Завершение тоже через очередь: в поле связи может не быть. Очередь идёт по

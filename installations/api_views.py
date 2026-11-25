@@ -18,7 +18,7 @@ from .access import (
 )
 from .models import (
     CLOSED_INSTALLATION_STATUSES, RATING_FIELDS, ActReview, EventKind, Installation, InstallationFile,
-    InstallationStatus, InstallationVisit, InstallerCalendarBlock,
+    InstallationStatus, InstallationVisit, InstallerCalendarBlock, InstallationFileKind,
 )
 from .serializers import (
     EDITABLE_FIELDS, InstallationDetailSerializer, InstallationEventSerializer,
@@ -799,6 +799,7 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
                               name=serializer.validated_data.get('name') or upload.name[:255])
         return Response(self.get_serializer(f).data, status=status.HTTP_201_CREATED)
 
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         f = self.get_object()
         inst = f.installation
@@ -816,6 +817,10 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
                 status=status.HTTP_400_BAD_REQUEST,
             )
         description = f'{f.get_kind_display()}: {f.name}'
+        if f.kind == InstallationFileKind.RESULT:
+            inst.order.attachments.filter(
+                file=f.file.name, name=services.order_attachment_name(inst, f), order_item__isnull=True,
+            ).delete()
         f.delete()
         inst.log(EventKind.FILE_DELETED, actor=request.user, description=description)
         return Response(status=status.HTTP_204_NO_CONTENT)

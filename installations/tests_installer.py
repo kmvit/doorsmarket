@@ -205,10 +205,12 @@ class CompleteTest(InstallerTestBase):
 
     def test_installer_deletes_only_own_files(self):
         own = self.upload(self.inst1, kind='result', name='door.jpg').data['id']
-        sm_file = self.upload(self.sm, kind='result', name='sm.jpg').data['id']
+        sm_file = self.upload(self.sm, kind='result', name='door.jpg').data['id']
+        self.assertEqual(self.order.attachments.count(), 2)
         c = self.client_for(self.inst1)
         self.assertEqual(c.delete(f'/api/v1/installation-files/{sm_file}/').status_code, 403)
         self.assertEqual(c.delete(f'/api/v1/installation-files/{own}/').status_code, 204)
+        self.assertEqual(self.order.attachments.get().file.name, self.inst.files.get(pk=sm_file).file.name)
 
 
 class ComplaintFromInstallationTest(InstallerTestBase):

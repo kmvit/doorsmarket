@@ -287,6 +287,10 @@ class SyncFailureLog {
 
 export const syncFailures = new SyncFailureLog()
 
+// Истёкшая отметка не блокирует файл после закрытия вкладки во время отправки.
+export const workPhotoIsSending = (row: PendingRequest) =>
+  Boolean(row.sendingSince && Date.now() - row.sendingSince <= SYNC_REQUEST_TIMEOUT * 2)
+
 class RequestQueue {
   private isProcessing = false
   private listeners: Array<(count: number) => void> = []
@@ -316,6 +320,7 @@ class RequestQueue {
     data?: any,
     headers?: Record<string, string>,
     tempId?: number,
+    workPhoto?: PendingRequest['workPhoto'],
   ): Promise<PendingRequest> {
     const request: PendingRequest = {
       method,
@@ -324,6 +329,7 @@ class RequestQueue {
       headers,
       timestamp: Date.now(),
       retryCount: 0,
+      ...(workPhoto && { workPhoto }),
       ...(tempId != null ? { tempId } : {}),
     }
 
@@ -413,6 +419,13 @@ class RequestQueue {
             continue
           }
 
+          if (request.workPhoto) {
+            // Отмена и отправка соревнуются за одну запись, в том числе между вкладками.
+            const claimed = await db.pendingRequests.where('id').equals(request.id!)
+              .filter(row => !workPhotoIsSending(row))
+              .modify({ sendingSince: Date.now() })
+            if (!claimed) continue
+          }
           // Выполняем запрос
           const result = await this.executeRequest(request)
 
@@ -431,6 +444,7 @@ class RequestQueue {
           }
           this.notifyListeners()
         } catch (error: any) {
+          if (request.workPhoto) await db.pendingRequests.update(request.id!, { sendingSince: 0 })
           // Сети всё ещё нет (или запрос отвалился по таймауту) — прекращаем проход,
           // попробуем при следующем триггере. retryCount не трогаем:
           // сетевые сбои не должны приводить к потере данных
@@ -528,6 +542,13 @@ class RequestQueue {
     this.notifyListeners()
   }
 
+  async cancelWorkPhoto(id: number, owner: number): Promise<boolean> {
+    const removed = await db.pendingRequests.where('id').equals(id)
+      .filter(row => row.workPhoto?.owner === owner && !workPhotoIsSending(row)).delete()
+    if (removed) this.notifyListeners()
+    return removed > 0
+  }
+
   // Очистить очередь
   async clear(): Promise<void> {
     await db.pendingRequests.clear()
@@ -578,6 +599,7 @@ export const requestWithQueue = async <T = any>(
   url: string,
   data?: any,
   headers?: Record<string, string>,
+  workPhoto?: PendingRequest['workPhoto'],
 ): Promise<T> => {
   try {
     const config: AxiosRequestConfig = { method, url, data }
@@ -586,7 +608,7 @@ export const requestWithQueue = async <T = any>(
     return response.data
   } catch (error: any) {
     if (isNetworkError(error)) {
-      await requestQueue.add(method, url, data, headers)
+      await requestQueue.add(method, url, data, headers, undefined, workPhoto)
       throw new Error(QUEUED_MESSAGE)
     }
     throw error
