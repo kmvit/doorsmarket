@@ -57,6 +57,33 @@ class RequestSurvivesStatusChangeTest(TestCase):
             self.assertIn(self.mr.id, self._request_ids('unscheduled'), status)
             self.assertIn(self.mr.id, self._request_ids(), status)
 
+    def test_scheduled_installation_keeps_todays_unfinished_measurement(self):
+        visit = timezone.now()
+        m = Measurement.objects.create(
+            request=self.mr, service_manager=self.sm, measurement_date=visit,
+            measurement_end=visit + timedelta(hours=1),
+        )
+        self.order.set_installation_status(OrderStatus.INSTALLATION_SCHEDULED, notify=False)
+        self.assertIn(m.id, self._measurement_ids('today'))
+        self.assertIn(m.id, self._measurement_ids())
+        counts = self.client.get('/api/v1/measurements/folder_counts/').data
+        self.assertEqual(next(row['count'] for row in counts if row['folder'] == 'today'), 1)
+        ids, count = self._order_folder('today_measurement')
+        self.assertIn(self.order.pk, ids)
+        self.assertEqual(count, 1)
+
+        self.order.lift_available = True
+        self.order.stairs_available = True
+        self.order.carry_to_entrance = False
+        self.order.floor_number = '3'
+        self.order.save()
+        self.client.force_authenticate(self.sm)
+        response = self.client.post(f'/api/v1/measurements/{m.id}/mark_done/')
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, OrderStatus.INSTALLATION_SCHEDULED)
+        self.assertNotIn(m.id, self._measurement_ids('today'))
+
     def test_completed_and_cancelled_drop_request(self):
         for status in (OrderStatus.COMPLETED, OrderStatus.CANCELLED):
             self._set_status(status)

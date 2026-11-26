@@ -374,8 +374,7 @@ ORDER_FINISHED_STATUSES = [
 # заказ дальше, а замер всё ещё нужен.
 MEASUREMENT_PARKED_ORDER_STATUSES = [
     OrderStatus.DRAFT, OrderStatus.ACTIVE, OrderStatus.COMPLETED, OrderStatus.CANCELLED,
-    OrderStatus.INSTALLATION_SCHEDULED, OrderStatus.INSTALLATION_PARTIALLY_COMPLETED,
-    OrderStatus.INSTALLATION_AWAITING_SIGNATURE, OrderStatus.INSTALLATION_COMPLETED,
+    OrderStatus.INSTALLATION_COMPLETED,
 ]
 
 
@@ -383,7 +382,13 @@ MEASUREMENT_PARKED_ORDER_STATUSES = [
 # замер подали, а заказ уже оплатили, статус заказа замер не трогает — по папкам
 # замера («Заявка на замер», «Замер запланирован», …) такой заказ проходит по
 # состоянию самого замера (см. own_flow_measurement_folders).
+ACTIVE_INSTALLATION_STATUSES = (
+    OrderStatus.INSTALLATION_SCHEDULED, OrderStatus.INSTALLATION_PARTIALLY_COMPLETED,
+    OrderStatus.INSTALLATION_AWAITING_SIGNATURE,
+)
+
 ORDER_OWN_FLOW_STATUSES = [
+    *ACTIVE_INSTALLATION_STATUSES,
     OrderStatus.PAID, OrderStatus.IN_PRODUCTION, OrderStatus.ON_WAREHOUSE, OrderStatus.SHIPPED,
 ]
 
@@ -429,14 +434,17 @@ def own_flow_measurement_folders():
     left_measurement_at = {}
     logs = OrderActivityLog.objects.filter(
         order_id__in=[mr.order_id for mr in requests], kind=ActivityKind.STATUS_CHANGED,
-        new_status__in=own,
+        new_status__in=own - set(ACTIVE_INSTALLATION_STATUSES),
     ).exclude(old_status__in=own).values_list('order_id', 'created_at')
     for order_id, at in logs:
         if order_id not in left_measurement_at or at > left_measurement_at[order_id]:
             left_measurement_at[order_id] = at
 
-    def closed_before_own_flow(order_id, moment):
-        left_at = left_measurement_at.get(order_id)
+    def closed_before_own_flow(order, moment):
+        left_at = left_measurement_at.get(order.pk)
+        # Назначение монтажа само по себе не закрывает замер.
+        if left_at is None and order.status in ACTIVE_INSTALLATION_STATUSES:
+            return False
         return left_at is None or moment < left_at
 
     for mr in requests:
@@ -448,7 +456,7 @@ def own_flow_measurement_folders():
             overdue = workdays_between(started, today) > NOT_PLANNED_WORKDAYS
             put('measurement_not_planned' if overdue else 'measurement_requested', mr.order_id)
         elif not m.is_done:
-            if closed_before_own_flow(mr.order_id, m.measurement_date):
+            if closed_before_own_flow(mr.order, m.measurement_date):
                 continue
             if (m.measurement_end or m.measurement_date) < now:
                 put('measurement_not_done', mr.order_id)
@@ -460,7 +468,7 @@ def own_flow_measurement_folders():
             elif day == today + timedelta(days=1):
                 put('tomorrow_measurement', mr.order_id)
         elif not m.is_processed:
-            if not m.done_at or closed_before_own_flow(mr.order_id, m.done_at):
+            if not m.done_at or closed_before_own_flow(mr.order, m.done_at):
                 continue
             overdue = workdays_between(m.done_at, today) > NOT_PROCESSED_WORKDAYS
             put('measurement_not_processed' if overdue else 'measurement_done', mr.order_id)
