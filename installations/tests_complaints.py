@@ -5,13 +5,21 @@
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
         python manage.py test installations
 """
-from datetime import datetime
+from datetime import datetime, timedelta
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from django.core import mail
+from django.test import override_settings
 
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from projects.models import Complaint, ComplaintReason, ComplaintStatus, ProductionSite
 
 from .tests_schedule import ScheduleTestBase
+from .tests_installer import photo
+from .models import Installation, InstallationFile
 
 
 class ComplaintInstallationsTest(ScheduleTestBase):
@@ -116,13 +124,13 @@ class ComplaintInstallationsTest(ScheduleTestBase):
         block = installer.post(block_url, day_off, format='json')
         self.assertEqual(block.status_code, 201, block.data)
         with patch('projects.models.send_client_message') as sms:
-            self.assertEqual(sm.post(url, {'assignments': assignments}, format='json').status_code, 400)
+            self.assertEqual(sm.post(url, {'assignments': assignments, 'installer_work_paid': False}, format='json').status_code, 400)
             self.to_plan.refresh_from_db()
             self.assertEqual(self.to_plan.status, ComplaintStatus.SHIPPING_PLANNED)
             sms.assert_not_called()
             installer.delete(f"{block_url}{block.data['id']}/")
             for _ in range(2):
-                result = sm.post(url, {'assignments': assignments}, format='json')
+                result = sm.post(url, {'assignments': assignments, 'installer_work_paid': False}, format='json')
                 self.assertEqual(result.status_code, 200, result.data)
                 self.assertEqual([r['date_to'] for r in result.data['installation_assignments']], ['2030-05-12', '2030-05-16'])
             listing = sm.get('/api/v1/installations/complaints/').data
@@ -131,6 +139,9 @@ class ComplaintInstallationsTest(ScheduleTestBase):
             self.assertEqual(sms.call_count, 1)
             self.assertIn('14.05.2030–16.05.2030', sms.call_args.args[1])
             self.assertEqual(installer.get(f'/api/v1/complaints/{self.to_plan.pk}/').status_code, 200)
+            own_rows = installer.get('/api/v1/installations/complaints/').data
+            own_row = next(row for row in own_rows if row['id'] == self.to_plan.pk)
+            self.assertEqual(own_row['scheduled_at'], '2030-05-14')
             schedule = installer.get('/api/v1/installations/schedule/', {
                 'date_from': '2030-05-15', 'date_to': '2030-05-15',
             }).data
@@ -139,3 +150,87 @@ class ComplaintInstallationsTest(ScheduleTestBase):
             self.assertEqual(installer.post(block_url, day_off, format='json').status_code, 400)
             self.assertEqual(sm.post(url, {'assignments': assignments[:1]}, format='json').status_code, 200)
             self.assertEqual(installer.post(block_url, day_off, format='json').status_code, 201)
+
+
+    @patch('projects.models.send_sms_notification', return_value=False)
+    @patch('users.push_utils.send_push_notification', return_value=False)
+    def test_routing_requires_explicit_payment_but_unpaid_uses_existing_completion(self, *_):
+        sm = self.client_for(self.sm)
+        base = f'/api/v1/complaints/{self.new.pk}/'
+        data = {'complaint_type': 'installer', 'installer_id': self.inst1.pk}
+        missing = sm.post(base + 'process/', data, format='json')
+        self.assertEqual(missing.status_code, 400, missing.data)
+        no_order = sm.post(base + 'process/', data | {'installer_work_paid': True}, format='json')
+        self.assertEqual(no_order.status_code, 400, no_order.data)
+        self.new.refresh_from_db()
+        self.assertIsNone(self.new.installer_assigned_id)
+        response = sm.post(base + 'process/', data | {'installer_work_paid': False}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        Complaint.objects.filter(pk=self.new.pk).update(
+            planned_installation_date=timezone.now() - timedelta(hours=1),
+            status=ComplaintStatus.INSTALLATION_PLANNED,
+        )
+        installer = self.client_for(self.inst1)
+        self.assertEqual(installer.post(base + 'complete/').status_code, 200)
+        self.assertFalse(Installation.objects.filter(complaint=self.new).exists())
+        self.new.refresh_from_db()
+        self.assertEqual(self.new.status, ComplaintStatus.UNDER_SM_REVIEW)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    @patch('projects.models.send_sms_notification', return_value=False)
+    @patch('users.push_utils.send_push_notification', return_value=False)
+    def test_paid_work_uses_visit_act_order_documents_and_accountant_email(self, *_):
+        self.enterContext(override_settings(MEDIA_ROOT=self.enterContext(TemporaryDirectory())))
+        self.city.accountant_email = 'accounting@example.test'
+        self.city.save(update_fields=['accountant_email'])
+        Complaint.objects.filter(pk=self.planned.pk).update(
+            installer_work_paid=True, source_order=self.order,
+            planned_installation_date=timezone.now() - timedelta(hours=1), planned_installation_end=None,
+        )
+        InstallationFile.objects.create(
+            installation=self.inst, kind='installation_kp', name='КП на монтаж.pdf',
+            file='test/installation-offer.pdf',
+        )
+        base = f'/api/v1/complaints/{self.planned.pk}/'
+        installer = self.client_for(self.inst1)
+        stranger = self.client_for(self.inst2)
+        docs = installer.get(base).data['installer_order_documents']
+        self.assertIn('КП на монтаж.pdf', [d['name'] for d in docs])
+        self.assertEqual(stranger.post(base + 'paid_work/').status_code, 404)
+        self.assertEqual(installer.post(base + 'complete/').status_code, 400)
+
+        work = installer.post(base + 'paid_work/')
+        self.assertEqual(work.status_code, 200, work.data)
+        self.assertEqual(installer.post(base + 'paid_work/').data['id'], work.data['id'])
+        self.assertNotIn(work.data['id'], [row['id'] for row in installer.get('/api/v1/installations/').data])
+        work_url = f"/api/v1/installations/{work.data['id']}/"
+        visit = {'visit_id': work.data['current_visit']['id']}
+        order_status = self.order.status
+        self.assertEqual(installer.post(work_url + 'complete/', visit).status_code, 400)
+        self.assertEqual(stranger.post(work_url + 'complete/', visit).status_code, 404)
+        uploaded = installer.post('/api/v1/installation-files/', {
+            'installation': work.data['id'], 'kind': 'act_unsigned', 'file': photo('unsigned.jpg'),
+            **visit,
+        }, format='multipart')
+        self.assertEqual(uploaded.status_code, 201, uploaded.data)
+        self.assertEqual(installer.post(work_url + 'send_act_to_client/').status_code, 200)
+        work_record = Installation.objects.get(pk=work.data['id'])
+        client = APIClient()
+        public_url = f'/api/v1/public/installation-acts/{work_record.client_code}/'
+        self.assertEqual(client.post(public_url + 'upload/', {'file': photo()}, format='multipart').status_code, 200)
+        self.assertEqual(installer.post(work_url + 'complete/', visit).status_code, 400)
+        act = work_record.files.get(kind='act')
+        reviewed = installer.post(work_url + 'approve_act/', {'file': act.pk})
+        self.assertEqual(reviewed.status_code, 200, reviewed.data)
+        finished = installer.post(work_url + 'complete/', visit)
+        self.assertEqual(finished.status_code, 200, finished.data)
+        self.assertTrue(finished.data['payment']['available'])
+        self.planned.refresh_from_db()
+        self.order.refresh_from_db()
+        self.assertEqual(self.planned.status, ComplaintStatus.UNDER_SM_REVIEW)
+        self.assertEqual(self.order.status, order_status)
+        payment = installer.post(work_url + 'send_to_payment/', {'estimate': 'Работы — 1000 ₽'})
+        self.assertEqual(payment.status_code, 200, payment.data)
+        self.assertEqual(mail.outbox[-1].to, ['accounting@example.test'])
+        self.assertIn(f'рекламация #{self.planned.pk}', mail.outbox[-1].subject)
+        self.assertEqual(mail.outbox[-1].attachments[0].filename, 'act.jpg')

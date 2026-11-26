@@ -9,7 +9,7 @@ import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
  * клиенту, адресу, телефону или номеру КП. Показываются заказы любых статусов —
  * монтаж можно оформить по любому заказу.
  */
-const OrderPickerModal = ({ onClose, onPick }: { onClose: () => void; onPick: (orderId: number) => void }) => {
+const OrderPickerModal = ({ onClose, onPick, title = 'Заказ для монтажа' }: { onClose: () => void; onPick: (orderId: number) => void; title?: string }) => {
   useBodyScrollLock(true)
   const [search, setSearch] = useState('')
   const [orders, setOrders] = useState<OrderListItem[]>([])
@@ -40,7 +40,7 @@ const OrderPickerModal = ({ onClose, onPick }: { onClose: () => void; onPick: (o
       >
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900">Заказ для монтажа</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
             <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           </div>
           <input

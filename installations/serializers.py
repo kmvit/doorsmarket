@@ -3,7 +3,7 @@ from rest_framework import serializers
 from orders.serializers import format_file_size, infer_attachment_type
 
 from .access import CREATE_ROLES, can_unassign_installation
-from .models import RATING_FIELDS, Installation, InstallationEvent, InstallationFile, InstallationRating, InstallationVisit
+from .models import RATING_FIELDS, Installation, InstallationEvent, InstallationFile, InstallationRating, InstallationStatus, InstallationVisit
 
 
 def _user_name(user):
@@ -196,12 +196,12 @@ class InstallationDetailSerializer(InstallationListSerializer):
 
     def get_payment(self, obj):
         """Акт текущего выезда на оплату: можно ли отправить и когда уже отправляли."""
-        from .services import payment_acts, payment_recipients
+        from .services import can_send_work_for_payment, payment_acts, payment_recipients
         visit = obj.current_visit
         if visit is None:
             return None
         return {
-            'available': obj.status in ('done', 'partially_done') and payment_acts(obj).exists(),
+            'available': can_send_work_for_payment(obj) and payment_acts(obj).exists(),
             'sent_at': visit.payment_sent_at,
             'sent_by_name': _user_name(visit.payment_sent_by),
             'accountant_email': ', '.join(payment_recipients(obj)),
@@ -226,6 +226,8 @@ class InstallationDetailSerializer(InstallationListSerializer):
 
     def get_complaints(self, obj):
         """Рекламации по заказу, заведённые после оформления монтажа."""
+        if obj.complaint_id:
+            return []
         from projects.models import Complaint
         rows = Complaint.objects.filter(source_order=obj.order, created_at__gte=obj.created_at).order_by('-id')
         return [{'id': c.id, 'created_at': c.created_at, 'status_display': c.get_status_display()} for c in rows]
@@ -233,7 +235,10 @@ class InstallationDetailSerializer(InstallationListSerializer):
     def get_can_repeat(self, obj):
         from orders.api_views import get_orders_queryset_for_user
         user = self.context['request'].user
-        return user.role in CREATE_ROLES and get_orders_queryset_for_user(user).filter(pk=obj.order_id).exists()
+        return (
+            not obj.complaint_id and obj.status == InstallationStatus.PARTIALLY_DONE and user.role in CREATE_ROLES
+            and get_orders_queryset_for_user(user).filter(pk=obj.order_id).exists()
+        )
 
     def get_can_unassign(self, obj):
         return obj.status == 'planned' and can_unassign_installation(self.context['request'].user, obj)

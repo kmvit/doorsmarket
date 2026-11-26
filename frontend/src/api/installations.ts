@@ -69,17 +69,15 @@ export const installationsAPI = {
     orderId: number,
     fields: InstallationFields,
     files: Partial<Record<InstallationFileKind, File[]>>,
-    repeatFrom?: number,
   ): Promise<Installation> => {
     const form = new FormData()
     form.append('order', String(orderId))
-    if (repeatFrom) form.append('repeat_from', String(repeatFrom))
     form.append('address', fields.address)
     form.append('is_paid', fields.is_paid ? 'true' : 'false')
     form.append('work_description', fields.work_description)
     form.append('collection_finish', fields.collection_finish)
-    if (repeatFrom || fields.planned_delivery_date) form.append('planned_delivery_date', fields.planned_delivery_date || '')
-    if (repeatFrom || fields.planned_delivery_date_end) form.append('planned_delivery_date_end', fields.planned_delivery_date_end || '')
+    if (fields.planned_delivery_date) form.append('planned_delivery_date', fields.planned_delivery_date || '')
+    if (fields.planned_delivery_date_end) form.append('planned_delivery_date_end', fields.planned_delivery_date_end || '')
     form.append('already_on_site', fields.already_on_site ? 'true' : 'false')
     form.append('desired_date_comment', fields.desired_date_comment)
     form.append('contact_name', fields.contact_name)
@@ -114,6 +112,7 @@ export const installationsAPI = {
     form.append('installation', String(installationId))
     form.append('kind', kind)
     form.append('file', file)
+    form.append('visit_id', String(visit))
     return requestWithQueue('POST', '/installation-files/', form, { 'Content-Type': 'multipart/form-data' },
       kind === 'result' ? { installation: installationId, visit, owner, name: file.name } : undefined)
   },
@@ -164,7 +163,7 @@ export const installationsAPI = {
 
   action: async (
     id: number,
-    name: 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
+    name: 'repeat' | 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
       | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule'
       | 'send_act_to_client' | 'approve_act' | 'reject_act' | 'send_to_payment',
     body: Record<string, string> = {},

@@ -11,6 +11,7 @@ from marketingdoors.search import NumberAwareSearchFilter
 from orders.api_views import apply_people_filters, get_orders_queryset_for_user, requested_ids, requested_statuses
 
 from . import services
+from .complaint_work import current_assignment
 from . import sms
 from .access import (
     can_unassign_installation, CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
@@ -35,6 +36,7 @@ INSTALLATION_FOLDERS = [
     ('reschedule_requested', 'Перенос даты? Подтвердить'),
     ('awaiting_signature', 'Ожидает подписи клиента'),
     ('act_review', 'Проверить акт клиента'),
+    (InstallationStatus.PARTIALLY_DONE, InstallationStatus.PARTIALLY_DONE.label),
 ]
 
 # Монтаж в работе у монтажника: запланирован или ждёт подписи клиента
@@ -43,8 +45,9 @@ WORK_STATUSES = (InstallationStatus.PLANNED, InstallationStatus.AWAITING_SIGNATU
 
 def apply_installation_folder(qs, folder):
     if folder == 'to_assign':
-        # Ждут назначения: новые и частично завершённые (нужен следующий выезд)
-        return qs.filter(status__in=[InstallationStatus.NOT_PLANNED, InstallationStatus.PARTIALLY_DONE])
+        return qs.filter(status=InstallationStatus.NOT_PLANNED)
+    if folder == InstallationStatus.PARTIALLY_DONE:
+        return qs.filter(status=InstallationStatus.PARTIALLY_DONE)
     if folder == 'planned':
         return qs.filter(status=InstallationStatus.PLANNED)
     if folder == 'not_ready':
@@ -140,8 +143,12 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     def get_queryset(self):
         request = self.request
-        qs = installations_for_user(request.user)
-        if self.action in ('assign', 'unassign'):
+        complaint_actions = {
+            'installer_call_failed', 'complete', 'complete_partial',
+            'send_act_to_client', 'approve_act', 'reject_act', 'send_to_payment',
+        }
+        qs = installations_for_user(request.user, include_complaint_work=self.action in complaint_actions)
+        if self.action in ('assign', 'unassign', 'repeat'):
             return qs.select_for_update(of=('self', 'order'))
         if self.action != 'list':
             return qs
@@ -172,7 +179,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     def _detail(self, inst):
         # Перечитываем с prefetch — в ответе пакет документов уже с новыми файлами
-        inst = installations_for_user(self.request.user).get(pk=inst.pk)
+        inst = installations_for_user(self.request.user, include_complaint_work=bool(inst.complaint_id)).get(pk=inst.pk)
         return InstallationDetailSerializer(inst, context=self.get_serializer_context()).data
 
     @transaction.atomic
@@ -182,33 +189,25 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         order = _order_for(request.user, request.data.get('order'))
         if order is None:
             return Response({'order': ['Заказ не найден.']}, status=status.HTTP_400_BAD_REQUEST)
-        source = None
-        source_files = []
         if 'repeat_from' in request.data:
+            # Старые версии приложения отправляли повторный монтаж в создание.
             source_id = request.data['repeat_from']
             if not str(source_id).isdigit():
                 return _bad('Некорректный номер исходного монтажа.')
-            source = order.installations.filter(pk=source_id).first()
+            source = order.installations.select_related('order').select_for_update(of=('self', 'order')).filter(
+                pk=source_id, complaint__isnull=True,
+            ).first()
             if source is None:
                 return _bad('Исходный монтаж не найден в этом заказе.')
-            source_files = list(source.files.all())
-        payload = request.data
-        if source:
-            payload = {field: getattr(source, field) for field in EDITABLE_FIELDS}
-            payload['address'] = order.address
-            payload.update({key: request.data[key] for key in ('order', 'address', *EDITABLE_FIELDS)
-                            if key in request.data})
-            for key in ('planned_delivery_date', 'planned_delivery_date_end'):
-                if payload[key] == '':
-                    payload[key] = None
-        serializer = self.get_serializer(data=payload)
+            services.repeat_installation(source, request.user)
+            return Response(self._detail(source))
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = {k: v for k, v in serializer.validated_data.items() if k != 'order'}
         address = data.pop('address').strip()
 
         files_by_kind = {k: request.FILES.getlist(k) for k in services.UPLOAD_KINDS}
         available = {kind for kind, files in files_by_kind.items() if files}
-        available.update(f.kind for f in source_files)
         missing = services.missing_required_files(order, available)
         if missing:
             return Response(
@@ -219,7 +218,6 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         order.save(update_fields=['address', 'updated_at'])
         inst = services.create_installation(
             order=order, data=data, files_by_kind=files_by_kind, actor=request.user,
-            source=source, source_files=source_files,
         )
         return Response(self._detail(inst), status=status.HTTP_201_CREATED)
 
@@ -280,7 +278,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         not_needed = _bool_param(str(request.data.get('not_needed')).lower())
         if not_needed is None:
             return Response({'not_needed': ['Укажите true или false.']}, status=status.HTTP_400_BAD_REQUEST)
-        if not_needed and order.installations.exists():
+        if not_needed and order.installations.filter(complaint__isnull=True).exists():
             return Response(
                 {'detail': 'По заказу уже оформлен монтаж.'}, status=status.HTTP_400_BAD_REQUEST,
             )
@@ -351,7 +349,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             return _bad('Укажите причину занятости (до 500 символов).')
         start, end = data['date_from'], data['date_to']
         services.check_calendar_blocks({installer_id: (start, end)})
-        visits = InstallationVisit.objects.filter(installers=installer_id).exclude(
+        visits = InstallationVisit.objects.filter(installers=installer_id, installation__complaint__isnull=True).exclude(
             installation__status=InstallationStatus.IRRELEVANT,
         ).filter(
             Q(date_from__lte=end, date_to__gte=start) |
@@ -402,7 +400,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         if requested:
             installer_ids &= requested
         visits = InstallationVisit.objects.filter(
-            installers__in=installer_ids, date_from__lte=date_to, date_to__gte=date_from,
+            installers__in=installer_ids, installation__complaint__isnull=True, date_from__lte=date_to, date_to__gte=date_from,
         ).exclude(installation__status=InstallationStatus.IRRELEVANT).select_related(
             'installation', 'installation__order',
         ).prefetch_related('installers').distinct().order_by('date_from', 'id')
@@ -463,7 +461,20 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def complaints(self, request):
         """Рекламационные монтажи для общего списка (планируются в рекламациях)."""
         from .complaints import complaint_installations, complaint_row
-        return Response([complaint_row(c) for c in complaint_installations(request.user, request.query_params)])
+        installer_id = request.user.pk if request.user.role == INSTALLER_ROLE else None
+        rows = complaint_installations(request.user, request.query_params)
+        return Response([complaint_row(c, installer_id) for c in rows])
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def repeat(self, request, pk=None):
+        if request.user.role not in CREATE_ROLES:
+            return _forbidden('Повторный выезд оформляет менеджер.')
+        inst = self.get_object()
+        if _order_for(request.user, inst.order_id) is None:
+            return _forbidden('Повторный выезд оформляется по доступному заказу.')
+        services.repeat_installation(inst, request.user)
+        return Response(self._detail(inst))
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -590,8 +601,13 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     # ---------- Этап 3: монтажник ----------
 
-    def _installer_or_sm(self, request, inst):
+    def _installer_or_sm(self, request, inst, *, payment=False):
         """Действие монтажника по текущему выезду (СМ может сделать за него)."""
+        if inst.complaint_id:
+            if not payment and not current_assignment(inst, inst.complaint):
+                return _bad('Назначение изменилось. Откройте форму работ из рекламации.')
+            if request.user.role == INSTALLER_ROLE and request.user.pk != inst.complaint.installer_assigned_id:
+                return _forbidden('Оформить работу может назначенный монтажник.')
         if can_schedule_installations(request.user) or is_installer_of(request.user, inst):
             return None
         return _forbidden('Это делает монтажник, назначенный на монтаж.')
@@ -664,9 +680,17 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     @transaction.atomic
     def _complete(self, request, partial):
         visible = self.get_object()
+        complaint = None
+        if visible.complaint_id:
+            from projects.models import Complaint
+            complaint = Complaint.objects.select_for_update().get(pk=visible.complaint_id)
+            if error := complaint.completion_error():
+                return _bad(error)
         inst = Installation.objects.select_for_update(of=('self', 'order')).select_related(
             'order', 'order__manager',
         ).get(pk=visible.pk)
+        if complaint:
+            inst.complaint = complaint
         if (error := self._installer_or_sm(request, inst)):
             return error
         visit_id = request.data.get('visit_id')
@@ -742,9 +766,9 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def send_to_payment(self, request, pk=None):
         """Акт выполненных работ бухгалтеру: {estimate} — смета работ."""
         inst = self.get_object()
-        if (error := self._installer_or_sm(request, inst)):
+        if (error := self._installer_or_sm(request, inst, payment=True)):
             return error
-        if inst.status not in (InstallationStatus.DONE, InstallationStatus.PARTIALLY_DONE):
+        if not services.can_send_work_for_payment(inst):
             return _bad('На оплату отправляют завершённый (или частично завершённый) монтаж.')
         estimate = (request.data.get('estimate') or '').strip()[:5000]
         if not estimate:
@@ -773,12 +797,12 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
 
     def get_queryset(self):
         return InstallationFile.objects.filter(
-            installation__in=installations_for_user(self.request.user),
+            installation__in=installations_for_user(self.request.user, include_complaint_work=True),
         ).select_related('installation', 'installation__order')
 
     def create(self, request, *args, **kwargs):
         inst_id = request.data.get('installation')
-        inst = installations_for_user(request.user).filter(
+        inst = installations_for_user(request.user, include_complaint_work=True).filter(
             pk=inst_id if str(inst_id or '').isdigit() else None,
         ).first()
         if inst is None:
@@ -788,6 +812,12 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         kind = serializer.validated_data['kind']
+        if inst.complaint_id:
+            visit = inst.current_visit
+            requested_visit = request.data.get('visit_id')
+            if (kind not in INSTALLER_FILE_KINDS or not current_assignment(inst, inst.complaint)
+                    or str(visit.pk) != str(requested_visit)):
+                return _bad('Акт и фото прикладывают к текущему выезду по рекламации.')
         if request.user.role == INSTALLER_ROLE and (
             kind not in INSTALLER_FILE_KINDS or not is_installer_of(request.user, inst)
         ):
@@ -803,6 +833,8 @@ class InstallationFileViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin,
     def destroy(self, request, *args, **kwargs):
         f = self.get_object()
         inst = f.installation
+        if inst.complaint_id and not current_assignment(inst, inst.complaint):
+            return _bad('Назначение изменилось. Откройте форму работ из рекламации.')
         if request.user.role == INSTALLER_ROLE and f.uploaded_by_id != request.user.id:
             return _forbidden('Монтажник удаляет только свои файлы.')
         if inst.is_closed:
@@ -880,7 +912,7 @@ class PublicInstallationActView(viewsets.ViewSet):
             } if last else None,
             'signed': services.has_current_act(inst),
             # Оценка: форма открыта после завершения, клиент видит только свои оценки
-            'rating_open': inst.status == InstallationStatus.DONE and not hasattr(inst, 'rating'),
+            'rating_open': not inst.complaint_id and inst.status == InstallationStatus.DONE and not hasattr(inst, 'rating'),
             'rating': rating_scores(inst.rating) if hasattr(inst, 'rating') else None,
             'rating_fields': [{'key': k, 'label': label} for k, label in RATING_FIELDS],
         }
@@ -889,7 +921,9 @@ class PublicInstallationActView(viewsets.ViewSet):
         return Response(self._data(self._get(code)))
 
     def _check_open(self, inst):
-        if inst.status != InstallationStatus.AWAITING_SIGNATURE:
+        if inst.status != InstallationStatus.AWAITING_SIGNATURE or (
+            inst.complaint_id and not current_assignment(inst, inst.complaint)
+        ):
             return _bad('Акт по этому монтажу уже не ждёт подписи.')
         return None
 
@@ -907,7 +941,7 @@ class PublicInstallationActView(viewsets.ViewSet):
         if request.user.is_authenticated:
             return _forbidden('Оценку может отправить только клиент по ссылке из СМС.')
         inst = self._get(code)
-        if inst.status != InstallationStatus.DONE:
+        if inst.complaint_id or inst.status != InstallationStatus.DONE:
             return _bad('Оценить можно завершённый монтаж.')
         if hasattr(inst, 'rating'):
             return _bad('Вы уже оценили эту работу. Спасибо!')

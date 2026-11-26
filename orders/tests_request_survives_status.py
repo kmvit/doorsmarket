@@ -6,9 +6,10 @@
         python manage.py test orders.tests_request_survives_status
 """
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -158,6 +159,34 @@ class OwnFlowOrderMeasurementFoldersTest(TestCase):
 
     def _in(self, folder):
         return self.order.id in self._order_folder(folder)[0]
+
+    @override_settings(ORDERS_SMS_ENABLED=True)
+    @patch('users.push_utils.send_push_notification', return_value=True)
+    @patch('maxbot.sending.send_client_message', return_value='sms')
+    def test_measurement_done_sends_link_to_contact_and_push_to_manager(self, send_message, send_push):
+        from orders.sms_templates import short_pdf_url
+
+        self.manager.phone_number = '+79001112233'
+        self.manager.save(update_fields=['phone_number'])
+        response = self.client.post(f'/api/v1/measurements/{self.m.id}/mark_done/')
+        self.assertEqual(response.status_code, 200, response.data)
+        send_message.assert_called_once_with(self.mr.contact_phone, f'Ваш замер {short_pdf_url(self.m)}')
+        self.assertEqual(send_push.call_args.kwargs['user'], self.manager)
+
+    @override_settings(ORDERS_SMS_ENABLED=True)
+    @patch('maxbot.sending.send_client_message', return_value='sms')
+    def test_call_failed_sends_only_callback_number_from_order_and_measurement(self, send_message):
+        self.sm.first_name = 'Иван'
+        self.sm.phone_number = '+79001112233'
+        self.sm.save(update_fields=['first_name', 'phone_number'])
+        for endpoint in (f'orders/{self.order.pk}', f'measurements/{self.m.pk}'):
+            with self.subTest(endpoint=endpoint):
+                send_message.reset_mock()
+                response = self.client.post(f'/api/v1/{endpoint}/notify_client_call_failed/')
+                self.assertEqual(response.status_code, 200, response.data)
+                send_message.assert_called_once_with(
+                    self.mr.contact_phone, 'Не дозвонились по замеру. Перезвоните пжл +79001112233',
+                )
 
     def test_scheduled_and_tomorrow(self):
         self.assertTrue(self._in('measurement_scheduled'))

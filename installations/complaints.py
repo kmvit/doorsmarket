@@ -47,9 +47,14 @@ def complaint_installations(user, params):
     return qs.order_by('-id')
 
 
-def complaint_row(c):
+def complaint_row(c, installer_id=None):
     start, end = c.planned_installation_date, c.planned_installation_end
     periods = c.installer_periods()
+    own_start = next((first for user, first, _ in periods if user.pk == installer_id), None)
+    if own_start and (c.installation_dates_only or installer_id != c.installer_assigned_id):
+        scheduled_at = own_start.isoformat()
+    else:
+        scheduled_at = start.isoformat() if start else None
     team_schedule = []
     if len(periods) > 1:
         for installer, first, last in periods:
@@ -71,6 +76,7 @@ def complaint_row(c):
         'installer_id': c.installer_assigned_id,
         'products': ', '.join(p.product_name for p in c.defective_products.all() if p.product_name),
         'date': timezone.localtime(start).date().isoformat() if start else None,
+        'scheduled_at': scheduled_at,
         'window': c.installation_window_text if start else '',
         'needs_planning': start is None,
     }

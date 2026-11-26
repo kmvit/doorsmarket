@@ -1,3 +1,5 @@
+import InstallerPaymentChoice from '../../components/complaints/InstallerPaymentChoice'
+import OrderPickerModal from '../Installations/OrderPickerModal'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -27,7 +29,7 @@ const ComplaintEdit = () => {
   const { user } = useAuthStore()
   const { fetchComplaint } = useComplaintsStore()
   const { currentComplaint } = useComplaintsStore()
-  const { register, handleSubmit, formState: { errors }, setValue } = useForm<ComplaintCreateData & { complaint_type?: ComplaintType | ''; recipient_id?: number; installer_assigned_id?: number; commercial_offer_text?: string }>()
+  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<ComplaintCreateData & { complaint_type?: ComplaintType | ''; recipient_id?: number; installer_assigned_id?: number; commercial_offer_text?: string }>()
   const [productionSites, setProductionSites] = useState<ProductionSite[]>([])
   const [reasons, setReasons] = useState<ComplaintReason[]>([])
   const [serviceManagers, setServiceManagers] = useState<User[]>([])
@@ -39,6 +41,11 @@ const ComplaintEdit = () => {
   const [deletedProductIds, setDeletedProductIds] = useState<number[]>([])
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<number[]>([])
   const [viewingFile, setViewingFile] = useState<{ url: string; name?: string } | null>(null)
+  const [paid, setPaid] = useState<boolean | null>(null)
+  const [pickingOrder, setPickingOrder] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<number | null>(null)
+  const [existingOrder, setExistingOrder] = useState<number | null>(null)
+  const selectedType = watch('complaint_type')
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [error, setError] = useState('')
@@ -103,6 +110,8 @@ const ComplaintEdit = () => {
             setValue('manager_id', complaint.manager.id)
           }
           if (isServiceManager) {
+            setPaid(complaint.installer_work_paid ?? null)
+            setExistingOrder(complaint.source_order ?? null)
             setValue('complaint_type', (complaint.complaint_type ?? undefined) as ComplaintType | undefined)
             if (complaint.recipient) {
               setValue('recipient_id', complaint.recipient.id)
@@ -294,6 +303,8 @@ const ComplaintEdit = () => {
 
       // Сервис-менеджер может редактировать все поля
       if (isServiceManager) {
+        if (data.complaint_type === 'installer' && paid !== null) apiData.installer_work_paid = paid
+        if (selectedOrder) apiData.source_order_id = selectedOrder
         if (data.complaint_type) {
           apiData.complaint_type = data.complaint_type
         }
@@ -443,6 +454,16 @@ const ComplaintEdit = () => {
                   )}
                 </div>
                 <div>
+                  {selectedType === 'installer' && (
+                    <InstallerPaymentChoice value={paid} onChange={setPaid} />
+                  )}
+                  {selectedType === 'installer' && paid && !existingOrder && (
+                    <button type="button" onClick={() => setPickingOrder(true)} className="mb-3 text-primary-700 underline">
+                      {selectedOrder ? `Заказ №${selectedOrder}` : 'Привязать заказ'}
+                    </button>
+                  )}
+                  {pickingOrder && <OrderPickerModal title="Заказ для рекламации" onClose={() => setPickingOrder(false)}
+                    onPick={(chosen) => { setSelectedOrder(chosen); setPickingOrder(false) }} />}
                   <label className="block text-sm font-medium text-gray-700 mb-2">Назначенный монтажник</label>
                   <select
                     {...register('installer_assigned_id')}

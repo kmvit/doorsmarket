@@ -876,7 +876,7 @@ const OrderDetail = () => {
                   onClick={handleNotifyClientCallFailed}
                   disabled={notifyingClient}
                   className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg disabled:opacity-60"
-                  title="SMS клиенту: «Мы не дозвонились по замеру»"
+                  title="SMS клиенту: «Не дозвонились по замеру»"
                 >
                   {notifyingClient ? 'Отправляем…' : callNotifySent ? '↻ Повторно отправить' : '📵 Не дозвонились — уведомить'}
                 </button>

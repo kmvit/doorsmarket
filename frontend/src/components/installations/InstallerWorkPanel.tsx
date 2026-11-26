@@ -11,6 +11,8 @@ import FileViewer from '../common/FileViewer'
 
 interface Props {
   inst: Installation
+  complaintWork?: boolean
+  onReschedule?: () => void
   onRemove: (id: number, name: string) => Promise<void>
   onFilesChanged: () => Promise<void>
   onChanged: (inst?: Installation) => void
@@ -29,7 +31,7 @@ const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50
  * перенести дату, приложить акт и фото результата (в т.ч. без связи),
  * завершить полностью или частично, завести рекламацию.
  */
-const InstallerWorkPanel = ({ inst, onChanged, onRemove, onFilesChanged }: Props) => {
+const InstallerWorkPanel = ({ inst, complaintWork, onReschedule, onChanged, onRemove, onFilesChanged }: Props) => {
   const visit = inst.current_visit
   const installerId = useAuthStore((state) => state.user?.id)
   const canCreateComplaint = useAuthStore(selectCanCreateComplaint)
@@ -212,7 +214,7 @@ const InstallerWorkPanel = ({ inst, onChanged, onRemove, onFilesChanged }: Props
               <button type="button" disabled={busy} onClick={callFailed} className={btnPlain}>
                 {inst.installer_notified_at ? 'Повторно отправить уведомление' : 'Не дозвонился — отправить уведомление'}
               </button>
-              <button type="button" disabled={busy} onClick={() => setRescheduling(true)} className={btnPlain}>
+              <button type="button" disabled={busy} onClick={onReschedule ?? (() => setRescheduling(true))} className={btnPlain}>
                 Перенести дату
               </button>
             </>
@@ -315,7 +317,7 @@ const InstallerWorkPanel = ({ inst, onChanged, onRemove, onFilesChanged }: Props
         <button type="button" disabled={busy || !hasAct} onClick={() => { setReason(''); setChoosingReason(true) }} className={btnPlain}>
           Монтаж завершён частично
         </button>
-        {canCreateComplaint ? (
+        {canCreateComplaint && !complaintWork ? (
           <Link
             to={`/complaints/create?order=${inst.order}&installation=${inst.id}`}
             className={`${btn} border-red-200 text-red-700 bg-white hover:bg-red-50`}

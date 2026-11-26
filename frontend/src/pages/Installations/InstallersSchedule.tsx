@@ -2,13 +2,13 @@ import BusyInstallers from '../../components/installations/BusyInstallers'
 import { canManageService } from '../../types/auth'
 import { complaintsAPI } from '../../api/complaints'
 import type { Complaint } from '../../types/complaints'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from '../../components/installations/ModalPortal'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { apiErrorText, installationsAPI } from '../../api/installations'
 import {
-  ComplaintInstallationRow, Installation, Installer, ScheduleVisit, INSTALLATION_STATUS_COLOR, canEditSchedule, formatPeriod,
+  ComplaintInstallationRow, Installation, Installer, ScheduleVisit, INSTALLATION_STATUS_COLOR, canEditSchedule, formatPeriod, isoDate, pickPeriodDay,
 } from '../../types/installations'
 import MonthCalendar, { monthGridRange, monthStart } from '../../components/installations/MonthCalendar'
 import AssignModal from '../../components/installations/AssignModal'
@@ -87,7 +87,19 @@ const InstallersSchedule = () => {
   const { user } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
   const [installers, setInstallers] = useState<Installer[]>([])
-  const [month, setMonth] = useState(() => monthStart(new Date()))
+  const monthParam = searchParams.get('month')
+  const month = useMemo(() => {
+    const selected = monthParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)
+      ? new Date(`${monthParam}-01T00:00:00`) : new Date()
+    return monthStart(selected)
+  }, [monthParam])
+  const changeMonth = (nextMonth: Date) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('month', isoDate(nextMonth).slice(0, 7))
+    setSearchParams(next, { replace: true })
+  }
+  const scheduleSearch = new URLSearchParams(searchParams)
+  scheduleSearch.set('month', isoDate(month).slice(0, 7))
   const [visits, setVisits] = useState<ScheduleVisit[]>([])
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const [picking, setPicking] = useState(false)
@@ -147,12 +159,16 @@ const InstallersSchedule = () => {
 
   const selectInstaller = (id: number | 'all') => {
     resetSelection()
-    setSearchParams({ installer: String(id) }, { replace: true })
+    const next = new URLSearchParams(searchParams)
+    next.set('installer', String(id))
+    setSearchParams(next, { replace: true })
   }
 
   const pickDay = (day: string) => {
-    if (!range || range.from !== range.to || day < range.from) setRange({ from: day, to: day })
-    else setRange({ from: range.from, to: day })
+    setRange((previous) => {
+      const period = pickPeriodDay(day, previous ? { date_from: previous.from, date_to: previous.to } : undefined)
+      return { from: period.date_from, to: period.date_to }
+    })
   }
 
   const visitsOn = (day: string) => visits.filter((v) => v.date_from <= day && v.date_to >= day)
@@ -236,7 +252,7 @@ const InstallersSchedule = () => {
               <div className="min-w-[640px]">
                 <MonthCalendar
                   month={month}
-                  onMonthChange={setMonth}
+                  onMonthChange={changeMonth}
                   onDayClick={!overview && (editable || self) ? pickDay : undefined}
                   dayClassName={(day) => (range && day >= range.from && day <= range.to ? 'bg-primary-50 ring-1 ring-inset ring-primary-400' : '')}
                   renderDay={(day) => {
@@ -260,6 +276,7 @@ const InstallersSchedule = () => {
                         <Link
                           key={v.id}
                           to={v.kind === 'complaint' ? `/complaints/${v.complaint_id}` : `/orders/installations/${v.installation_id}`}
+                          state={self && v.kind === 'complaint' ? { installationScheduleSearch: scheduleSearch.toString() } : undefined}
                           onClick={(e) => e.stopPropagation()}
                           className={`block rounded-md px-1.5 py-1 text-[11px] leading-tight hover:ring-1 hover:ring-primary-400 ${
                             v.kind === 'complaint'

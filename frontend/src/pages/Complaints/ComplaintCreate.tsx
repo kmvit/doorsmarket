@@ -1,3 +1,5 @@
+import InstallerPaymentChoice from '../../components/complaints/InstallerPaymentChoice'
+import OrderPickerModal from '../Installations/OrderPickerModal'
 import { canManageService } from '../../types/auth'
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -49,6 +51,8 @@ const ComplaintCreate = () => {
   const [orderResults, setOrderResults] = useState<Order[]>([])
   const [orderSearching, setOrderSearching] = useState(false)
   const [orderSearched, setOrderSearched] = useState(false)
+  const [paid, setPaid] = useState<boolean | null>(null)
+  const [pickingOrder, setPickingOrder] = useState(false)
   const [sourceOrderId, setSourceOrderId] = useState<number | null>(null)
   // Защита от повторного создания рекламации при дублирующихся кликах
   const createdComplaintIdRef = useRef<number | null>(null)
@@ -411,6 +415,13 @@ const ComplaintCreate = () => {
       document_package_link: data.document_package_link || '',
     }
 
+    if (data.complaint_type === 'installer') {
+      if (paid === null || (paid && !sourceOrderId)) {
+        alert(paid === null ? 'Укажите, оплачивается ли работа монтажника.' : 'Привяжите заказ к рекламации.')
+        return
+      }
+      apiData.installer_work_paid = paid
+    }
     if (sourceOrderId) apiData.source_order_id = sourceOrderId
     if (data.manager_id) apiData.manager_id = Number(data.manager_id)
     if (data.recipient_id) apiData.recipient_id = Number(data.recipient_id)
@@ -575,6 +586,12 @@ const ComplaintCreate = () => {
 
                   {canAssignInstaller && complaintType === 'installer' && (
                     <div className="md:col-span-2">
+                      <InstallerPaymentChoice value={paid} onChange={setPaid} />
+                      {paid && !sourceOrderId && (
+                        <Button type="button" variant="outline" onClick={() => setPickingOrder(true)}>Привязать заказ</Button>
+                      )}
+                      {pickingOrder && <OrderPickerModal title="Заказ для рекламации" onClose={() => setPickingOrder(false)}
+                        onPick={(chosen) => { setSourceOrderId(chosen); setPickingOrder(false) }} />}
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Монтажник <span className="text-red-500">*</span>
                       </label>

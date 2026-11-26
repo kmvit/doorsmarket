@@ -1,3 +1,6 @@
+import InstallerPaymentChoice from '../../components/complaints/InstallerPaymentChoice'
+import OrderPickerModal from '../Installations/OrderPickerModal'
+import { apiErrorText } from '../../api/installations'
 import { canManageService } from '../../types/auth'
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
@@ -17,6 +20,9 @@ const ComplaintProcess = () => {
   const [managers, setManagers] = useState<User[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [assigneeComment, setAssigneeComment] = useState('')
+  const [paid, setPaid] = useState<boolean | null>(null)
+  const [pickingOrder, setPickingOrder] = useState(false)
+  const [orderId, setOrderId] = useState<number>()
   const [closureReason, setClosureReason] = useState('')
 
   useEffect(() => {
@@ -84,9 +90,19 @@ const ComplaintProcess = () => {
           setIsProcessing(false)
           return
         }
-        // Сначала устанавливаем тип, потом назначаем монтажника
-        await complaintsAPI.process(Number(id), 'installer')
-        await complaintsAPI.update(Number(id), { installer_assigned_id: installerId })
+        if (paid === null) {
+          alert('Укажите, оплачивается ли работа монтажника.')
+          return
+        }
+        if (paid && !currentComplaint?.source_order && !orderId) {
+          alert('Привяжите заказ к рекламации.')
+          return
+        }
+        await complaintsAPI.process(Number(id), 'installer', {
+          installer_id: installerId,
+          installer_work_paid: paid,
+          source_order_id: paid ? orderId : undefined,
+        })
         alert(`Тип установлен: Монтажник. Назначен монтажник.`)
       } else if (type === 'manager') {
         if (!managerId) {
@@ -105,7 +121,7 @@ const ComplaintProcess = () => {
       await fetchComplaint(Number(id))
       navigate(`/complaints/${id}`)
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Ошибка обработки рекламации')
+      alert(apiErrorText(error, 'Ошибка обработки рекламации'))
     } finally {
       setIsProcessing(false)
     }
@@ -132,7 +148,7 @@ const ComplaintProcess = () => {
 
     setIsProcessing(true)
     try {
-      await complaintsAPI.changeInstaller(Number(id), newInstallerId)
+      await complaintsAPI.changeInstaller(Number(id), newInstallerId, paid ?? undefined)
       await fetchComplaint(Number(id))
       alert('Монтажник успешно заменён')
     } catch (error: any) {
@@ -299,6 +315,14 @@ const ComplaintProcess = () => {
                     </svg>
                     <span className="font-semibold text-blue-900">Монтажник</span>
                   </div>
+                  <InstallerPaymentChoice value={paid} onChange={setPaid} />
+                  {paid && !currentComplaint.source_order && (
+                    <Button type="button" variant="outline" onClick={() => setPickingOrder(true)}>
+                      {orderId ? `Заказ №${orderId}` : 'Привязать заказ'}
+                    </Button>
+                  )}
+                  {pickingOrder && <OrderPickerModal title="Заказ для рекламации" onClose={() => setPickingOrder(false)}
+                    onPick={(chosen) => { setOrderId(chosen); setPickingOrder(false) }} />}
                   <InstallerSelect
                     installers={installers}
                     onSelect={(installerId) => handleSetType('installer', installerId)}
@@ -383,6 +407,9 @@ const ComplaintProcess = () => {
                       : currentComplaint.installer_assigned.username}
                   </strong>
                 </p>
+                {currentComplaint.installer_work_paid == null && (
+                  <InstallerPaymentChoice value={paid} onChange={setPaid} />
+                )}
                 <InstallerSelect
                   installers={installers}
                   currentInstallerId={currentComplaint.installer_assigned.id}

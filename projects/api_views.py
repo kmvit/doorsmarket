@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -32,6 +32,7 @@ from .serializers import (
     ComplaintListSerializer,
     ComplaintDetailSerializer,
     ComplaintCreateSerializer,
+    validate_installer_payment,
     DefectiveProductSerializer,
     ComplaintAttachmentSerializer,
     ComplaintCommentSerializer,
@@ -689,7 +690,41 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("У вас нет доступа к этой рекламации")
     
+    def _installer_payment(self, complaint, *, required=False):
+        if 'installer_work_paid' not in self.request.data and not required:
+            return complaint.installer_work_paid
+        if self.request.data.get('source_order_id') is not None:
+            from orders.api_views import get_orders_queryset_for_user
+
+            order_id = serializers.IntegerField(min_value=1).run_validation(self.request.data['source_order_id'])
+            if hasattr(complaint, 'paid_installation') and complaint.source_order_id != order_id:
+                raise serializers.ValidationError({'detail': 'По рекламации уже оформляются работы. Заказ менять нельзя.'})
+            order = get_orders_queryset_for_user(self.request.user).filter(pk=order_id).first()
+            if order is None:
+                raise serializers.ValidationError({'detail': 'У вас нет доступа к этому заказу.'})
+            complaint.source_order = order
+        raw = self.request.data.get('installer_work_paid', complaint.installer_work_paid)
+        paid = serializers.BooleanField(allow_null=True).run_validation(raw)
+        validate_installer_payment(paid, complaint.source_order)
+        if hasattr(complaint, 'paid_installation') and paid != complaint.installer_work_paid:
+            raise serializers.ValidationError({'detail': 'По рекламации уже оформляются работы. Оплату менять нельзя.'})
+        return paid
+
+    @action(detail=True, methods=['post'], url_path='paid_work')
+    @transaction.atomic
+    def paid_work(self, request, pk=None):
+        from installations.complaint_work import prepare_work
+        from installations.serializers import InstallationDetailSerializer
+
+        complaint = Complaint.objects.select_for_update().get(pk=self.get_object().pk)
+        if not (complaint.installer_assigned_id == request.user.pk
+                or request.user.can_manage_service or request.user.role == 'admin'):
+            raise PermissionDenied('Работы доступны назначенному монтажнику и сервис-менеджеру.')
+        work = prepare_work(complaint, request.user)
+        return Response(InstallationDetailSerializer(work, context=self.get_serializer_context()).data)
+
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def process(self, request, pk=None):
         """Обработка рекламации (выбор типа)"""
         complaint = self.get_object()
@@ -707,7 +742,17 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         if complaint_type == 'installer':
             if not user.can_assign_complaint_installer:
                 raise PermissionDenied('Назначать монтажника может только сервис-менеджер.')
+            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
             installer = complaint.installer_assigned
+            if 'installer_id' in request.data:
+                from installations.services import city_installers
+                from orders.serializers import user_city_id
+                city_id = user.salon.city_id if user.combines_service_roles and user.salon_id else user_city_id(user)
+                installer_id = serializers.IntegerField(min_value=1).run_validation(request.data['installer_id'])
+                installer = city_installers(city_id).filter(pk=installer_id).first()
+                if not installer:
+                    return Response({'detail': 'Выберите монтажника.'}, status=400)
+            complaint.installer_work_paid = self._installer_payment(complaint, required=True)
             complaint.set_type_installer(installer=installer)
         elif complaint_type == 'manager':
             if not complaint.manager:
@@ -735,9 +780,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def complete(self, request, pk=None):
         """Монтажник отмечает работу выполненной"""
-        complaint = self.get_object()
+        complaint = Complaint.objects.select_for_update().get(pk=self.get_object().pk)
         user = request.user
         
         if user.role != 'installer' or complaint.installer_assigned != user:
@@ -746,6 +792,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        if complaint.installer_work_paid:
+            return Response({'detail': 'Оформите акт в форме оплачиваемых работ.'}, status=400)
         if error := complaint.completion_error():
             return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -783,10 +831,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         complaint = self.get_object()
         user = request.user
         
+        complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
         installer_id = request.data.get('installer_id')
         date_by_installer = str(request.data.get('date_by_installer', '')).lower() in ('true', '1', 'yes', 'on')
         if user.role == 'installer':
-            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
             if (complaint.installer_assigned_id != user.pk or date_by_installer
                     or (installer_id is not None and str(installer_id) != str(user.pk))):
                 raise PermissionDenied('Монтажник может выбрать дату только своего выезда.')
@@ -808,13 +856,18 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             staff = city_installers(city_id).in_bulk(periods)
             if not city_id or len(staff) != len(data.validated_data):
                 return Response({'detail': 'Выберите монтажников своего города без повторений.'}, status=400)
-            complaint = Complaint.objects.select_for_update().get(pk=complaint.pk)
             if complaint.status not in {*INSTALLATION_STAGE_STATUSES, ComplaintStatus.ON_WAREHOUSE, ComplaintStatus.SHIPPING_PLANNED}:
                 return Response({'detail': 'На этом этапе монтаж по рекламации не назначается.'}, status=400)
             team = [(staff[pk], start, end) for pk, (start, end) in periods.items()]
             primary, start, end = team[0]
-            if complaint.installation_dates_only and complaint.installer_periods() == team:
+            existing_installers = {pk for pk in (complaint.installer_assigned_id,) if pk}
+            existing_installers.update(complaint.additional_visits.values_list('installer_id', flat=True))
+            previous_order_id = complaint.source_order_id
+            paid = self._installer_payment(complaint, required=bool(set(periods) - existing_installers))
+            if (complaint.installation_dates_only and complaint.installer_periods() == team
+                    and paid == complaint.installer_work_paid and previous_order_id == complaint.source_order_id):
                 return Response(self.get_serializer(complaint).data)
+            complaint.installer_work_paid = paid
             complaint.plan_installation_by_sm(
                 primary, timezone.make_aware(datetime.combine(start, time.min)),
                 timezone.make_aware(datetime.combine(end, time(23, 59, 59))), team=team,
@@ -836,6 +889,10 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             )
 
         # Вариант: СМ назначает монтажника, а дату/время определит сам монтажник.
+        if user.role != 'installer':
+            complaint.installer_work_paid = self._installer_payment(
+                complaint, required=complaint.installer_assigned_id != installer.pk or date_by_installer,
+            )
         if date_by_installer:
             complaint.plan_installation_assign_only(installer)
             serializer = self.get_serializer(complaint)
@@ -1236,6 +1293,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             
             if complaint.planned_installation_date:
                 complaint.check_installer_calendar(new_installer, complaint.planned_installation_date)
+            complaint.installer_work_paid = self._installer_payment(complaint, required=True)
             complaint.installer_assigned = new_installer
             complaint.save()
             

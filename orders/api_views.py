@@ -567,12 +567,13 @@ def apply_order_folder(qs, folder, own_flow=None):
             status__in=DESIGNER_PAYOUT_STATUSES, designer_paid_at__isnull=True,
         )
     if folder == 'installation_needed':
+        from installations.models import Installation
         # Заказ на складе или отгружен, монтаж по нему не оформлен и менеджер
         # не отметил «Монтаж не нужен»
         return qs.filter(
             status__in=[OrderStatus.ON_WAREHOUSE, OrderStatus.SHIPPED],
             installation_not_needed_at__isnull=True,
-        ).exclude(installations__isnull=False)
+        ).exclude(id__in=Installation.objects.filter(complaint__isnull=True).values('order_id'))
     if folder in OrderStatus.values:
         return qs.filter(Q(status=folder) | own_q)
     return qs
@@ -1422,9 +1423,9 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='notify_client_call_failed')
     def notify_client_call_failed(self, request, pk=None):
         """
-        SMS клиенту «Мы не дозвонились по замеру...». Доступно СМ сразу после
+        SMS клиенту «Не дозвонились по замеру...». Доступно СМ сразу после
         создания заявки на замер — замер ещё может быть не создан.
-        Имя/телефон СМ: из замера, если он есть, иначе — текущий пользователь.
+        Телефон СМ: из замера, если он есть, иначе — текущий пользователь.
         """
         order = self.get_object()
         mr = MeasurementRequest.objects.filter(order=order).first()
@@ -1435,11 +1436,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
         m = Measurement.objects.filter(request=mr).select_related('service_manager').first()
         sm_user = (m.service_manager if m and m.service_manager_id else None) or request.user
-        sm_name, sm_phone = _sm_name_phone(sm_user)
+        _, sm_phone = _sm_name_phone(sm_user)
         phone = mr.contact_phone or order.contact_phone
         ok = send_client_sms(
             order, phone,
-            sms_templates.call_failed(sm_name, sm_phone),
+            sms_templates.call_failed(sm_phone),
             actor=request.user,
         )
         if not ok:
@@ -2358,7 +2359,7 @@ class MeasurementViewSet(viewsets.ModelViewSet):
             order.status = OrderStatus.MEASUREMENT_DONE
         order.touch_activity(ActivityKind.MEASUREMENT_DONE, save=False)
         order.save()
-        # SMS клиенту: «Замер выполнен. Скачать {ссылка PDF}»
+        # SMS контактному лицу со ссылкой на PDF замера
         mr = m.request
         phone = mr.contact_phone or order.contact_phone
         send_client_sms(order, phone, sms_templates.measurement_done(m), actor=request.user)
@@ -2385,14 +2386,14 @@ class MeasurementViewSet(viewsets.ModelViewSet):
     # ---- Уведомление клиенту о недозвоне (кнопка «Отправить / Повторно») ----
     @action(detail=True, methods=['post'], url_path='notify_client_call_failed')
     def notify_client_call_failed(self, request, pk=None):
-        """SMS клиенту: «Мы не дозвонились по замеру. Перезвоните...»."""
+        """SMS клиенту: «Не дозвонились по замеру. Перезвоните...»."""
         m = self.get_object()
         order = m.request.order
-        sm_name, sm_phone = _sm_name_phone(m.service_manager or request.user)
+        _, sm_phone = _sm_name_phone(m.service_manager or request.user)
         phone = m.request.contact_phone or order.contact_phone
         ok = send_client_sms(
             order, phone,
-            sms_templates.call_failed(sm_name, sm_phone),
+            sms_templates.call_failed(sm_phone),
             actor=request.user,
         )
         if not ok:

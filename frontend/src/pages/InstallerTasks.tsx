@@ -1,9 +1,11 @@
+import DateSortHeading from '../components/common/DateSortHeading'
+import { compareDates, type SortDirection } from '../utils/dateSort'
 import { useAuthStore } from '../store/authStore'
 import { formatPeriod } from '../types/installations'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useComplaintsStore } from '../store/complaintsStore'
-import { ComplaintFilters } from '../types/complaints'
+import { ComplaintFilters, ComplaintListItem } from '../types/complaints'
 import Button from '../components/common/Button'
 import PhoneLink from '../components/common/PhoneLink'
 import { formatInstallationTime } from '../utils/installationWindow'
@@ -13,6 +15,7 @@ const InstallerTasks = () => {
   const installerId = useAuthStore(state => state.user?.id)
   const [searchParams] = useSearchParams()
   const { complaints, isLoading, fetchComplaints, setFilters } = useComplaintsStore()
+  const [dateSort, setDateSort] = useState<SortDirection | null>(null)
   const [excludeClosed, setExcludeClosed] = useState(true)
 
   useEffect(() => {
@@ -117,6 +120,15 @@ const InstallerTasks = () => {
       </div>
     )
   }
+
+  const visitStart = (complaint: ComplaintListItem) =>
+    complaint.installation_dates_only
+      ? complaint.installation_assignments?.find((row) => row.installer_id === installerId)?.date_from
+        || complaint.planned_installation_date
+      : complaint.planned_installation_date
+  const rows = dateSort
+    ? [...complaints].sort((a, b) => compareDates(visitStart(a), visitStart(b), dateSort))
+    : complaints
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -238,12 +250,16 @@ const InstallerTasks = () => {
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Рекламация</th>
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент / Адрес</th>
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата монтажа</th>
+                    <DateSortHeading
+                      className="px-6 py-4 text-left text-xs font-medium text-gray-500"
+                      direction={dateSort}
+                      onToggle={() => setDateSort((value) => value === 'ascending' ? 'descending' : 'ascending')}
+                    >Дата монтажа</DateSortHeading>
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {complaints.map((complaint) => (
+                  {rows.map((complaint) => (
                     <tr key={complaint.id} className="hover:bg-gray-50 transition-colors">
                       <td
                         className="px-6 py-4 whitespace-nowrap cursor-pointer"

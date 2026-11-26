@@ -48,6 +48,16 @@
                         <label class="block text-sm font-semibold text-gray-700 mb-2">
                             Монтажник <span class="text-red-500">*</span>
                         </label>
+                        <label class="block text-sm mb-2">Оплата работы монтажника
+                            <select name="installer_work_paid" class="block w-full rounded-md border-gray-300 mb-2" id="installer_payment">
+                                <option value="">Выберите вариант</option>
+                                <option value="true">Оплачивается</option>
+                                <option value="false">Не оплачивается</option>
+                            </select>
+                        </label>
+                        <label class="block text-sm mb-2">Номер заказа в системе для оплачиваемой работы
+                            <input type="number" min="1" name="source_order_id" class="block w-full rounded-md border-gray-300">
+                        </label>
                         <select name="installer" id="installer_select" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white">
                             <option value="">Выберите монтажника</option>
                             {% for installer in installers %}
@@ -290,16 +300,19 @@ function handleComplaintTypeChange() {
     const complaintType = document.getElementById('complaint_type');
     const installerField = document.getElementById('installer_field');
     const installerSelect = document.getElementById('installer_select');
+    const installerPayment = document.getElementById('installer_payment');
     
     if (complaintType && installerField) {
         if (complaintType.value === 'installer') {
             // Показываем поле выбора монтажника
             installerField.classList.remove('hidden');
             installerSelect.required = true;
+            installerPayment.required = true;
         } else {
             // Скрываем поле монтажника
             installerField.classList.add('hidden');
             installerSelect.required = false;
+            installerPayment.required = false;
             installerSelect.value = '';
         }
     }

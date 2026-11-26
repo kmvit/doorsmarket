@@ -1,8 +1,7 @@
 """
 SMS-шаблоны для уведомлений клиента/контактного лица по замеру (Фаза 5).
 
-Каждая функция возвращает готовый текст сообщения. Отправка — через
-`users.push_utils.send_sms_to_phone`. Помощник `public_pdf_url` собирает
+Каждая функция возвращает готовый текст сообщения. Отправка — через `send_client_sms` из API заказов. Помощник `public_pdf_url` собирает
 публичную ссылку на PDF-бланк замера (доступен без авторизации по токену).
 """
 from django.conf import settings
@@ -70,7 +69,7 @@ def request_created(sm_name: str, sm_phone: str, client_phone: str = '') -> str:
     name = _sm_first_name(sm_name)
     phone = (sm_phone or '').strip()
     tail = f' {phone}' if phone else ''
-    return f'Вам позвонит {name}{tail} по замеру в течение 2 раб. дн.{max_invite(client_phone)}'
+    return f'Вам позвонит {name}{tail} по замеру в течение 2р.д.{max_invite(client_phone)}'
 
 
 def _measurement_window(start, end):
@@ -93,12 +92,11 @@ def measurement_rescheduled(measurement_date, measurement_end=None) -> str:
 
 def measurement_done(measurement) -> str:
     """При выполнении замера — короткая ссылка на PDF-бланк."""
-    return f'Замер выполнен. Скачать: {short_pdf_url(measurement)}'
+    return f'Ваш замер {short_pdf_url(measurement)}'
 
 
-def call_failed(sm_name: str, sm_phone: str) -> str:
+def call_failed(sm_phone: str) -> str:
     """При недозвоне до клиента по замеру."""
-    name = _sm_first_name(sm_name)
     phone = (sm_phone or '').strip()
-    tail = f', {phone}' if phone else ''
-    return f'Мы не дозвонились по замеру. Перезвоните пожалуйста {name}{tail}'
+    tail = f' {phone}' if phone else ''
+    return f'Не дозвонились по замеру. Перезвоните пжл{tail}'

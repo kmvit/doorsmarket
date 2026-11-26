@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { installationsAPI, apiErrorText } from '../../api/installations'
 import {
-  InstallationFields, InstallationFile, InstallationFileKind, INSTALLATION_FILE_KIND_DISPLAY,
+  InstallationFields, InstallationFileKind, INSTALLATION_FILE_KIND_DISPLAY,
 } from '../../types/installations'
 import PhoneInput from '../../components/common/PhoneInput'
 
@@ -34,7 +34,6 @@ const InstallationForm = () => {
   const orderId = Number(searchParams.get('order')) || null
 
   const repeatFrom = Number(searchParams.get('repeat_from')) || undefined
-  const [copiedFiles, setCopiedFiles] = useState<InstallationFile[]>([])
   const [fields, setFields] = useState<InstallationFields>(EMPTY)
   const [address, setAddress] = useState('')
   // При оформлении «оплачен / не оплачен» не выбрано, пока менеджер не ответит
@@ -52,18 +51,13 @@ const InstallationForm = () => {
     setHeader(null)
     setError(null)
     setFiles({})
-    setCopiedFiles([])
     setPaidAnswer('')
     const load = async () => {
       try {
-        if (isEdit || repeatFrom) {
-          const inst = await installationsAPI.getById(isEdit ? Number(id) : repeatFrom!)
+        if (repeatFrom && !isEdit) return
+        if (isEdit) {
+          const inst = await installationsAPI.getById(Number(id))
           if (!active) return
-          if (!isEdit) {
-            if (inst.order !== orderId) throw new Error('Исходный монтаж относится к другому заказу')
-            setCopiedFiles(inst.files)
-            setBlankRequired(Boolean(inst.measurement_blank_required))
-          }
           setFields({
             address: inst.address || '',
             is_paid: inst.is_paid,
@@ -129,7 +123,7 @@ const InstallationForm = () => {
       return
     }
     if (!isEdit) {
-      const missing = requiredKinds.filter((k) => !files[k]?.length && !copiedFiles.some(f => f.kind === k))
+      const missing = requiredKinds.filter((k) => !files[k]?.length)
       if (missing.length) {
         setError(`Приложите: ${missing.map((k) => INSTALLATION_FILE_KIND_DISPLAY[k]).join(', ')}`)
         return
@@ -140,7 +134,7 @@ const InstallationForm = () => {
     try {
       const inst = isEdit
         ? await installationsAPI.update(Number(id), payload)
-        : await installationsAPI.create(orderId!, payload, files, repeatFrom)
+        : await installationsAPI.create(orderId!, payload, files)
       navigate(`/orders/installations/${inst.id}`, { replace: true })
     } catch (err) {
       setError(apiErrorText(err, 'Не удалось сохранить монтаж'))
@@ -148,6 +142,8 @@ const InstallationForm = () => {
       setIsSaving(false)
     }
   }
+
+  if (repeatFrom && !isEdit) return <Navigate to={`/orders/installations/${repeatFrom}`} replace />
 
   if (isLoading) {
     return (
@@ -157,7 +153,6 @@ const InstallationForm = () => {
     )
   }
 
-  const createTitle = repeatFrom ? 'Оформить повторный монтаж' : 'Оформить монтаж'
   const renderKind = (kind: InstallationFileKind, required: boolean) => (
     <div key={kind} className="py-2">
       <div className="flex items-center justify-between gap-2">
@@ -193,12 +188,11 @@ const InstallationForm = () => {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-3xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{isEdit ? `Монтаж #${id}` : createTitle}</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">{isEdit ? `Монтаж #${id}` : 'Оформить монтаж'}</h1>
       {header && (
         <p className="text-sm text-gray-500 mb-6">
           Заказ <Link to={`/orders/${header.order}`} className="text-primary-600 hover:underline">#{header.order}</Link>
           {' · '}{header.client}
-          {repeatFrom && <> · По монтажу <Link to={`/orders/installations/${repeatFrom}`} className="text-primary-600 hover:underline">#{repeatFrom}</Link></>}
         </p>
       )}
       {!isEdit && header && header.count > 0 && (
@@ -337,14 +331,6 @@ const InstallationForm = () => {
                   Бланк выполненного замера и КП заказа попадут в пакет сами.
                 </p>
               )}
-              {copiedFiles.length > 0 && (
-                <div className="my-3 text-sm">
-                  <p className="font-medium text-gray-700">Файлы из монтажа #{repeatFrom}</p>
-                  <ul className="list-disc pl-5">
-                    {copiedFiles.map(f => <li key={f.id} className="break-all">{f.name} · {INSTALLATION_FILE_KIND_DISPLAY[f.kind]}</li>)}
-                  </ul>
-                </div>
-              )}
               <div className="divide-y divide-gray-100">
                 {requiredKinds.map((k) => renderKind(k, true))}
                 {OPTIONAL_KINDS.map((k) => renderKind(k, false))}
@@ -365,7 +351,7 @@ const InstallationForm = () => {
               disabled={isSaving}
               className="px-5 py-2 text-sm font-medium text-white rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-700 hover:to-cyan-700 shadow-md disabled:opacity-50"
             >
-              {isSaving ? 'Сохранение…' : isEdit ? 'Сохранить' : createTitle}
+              {isSaving ? 'Сохранение…' : isEdit ? 'Сохранить' : 'Оформить монтаж'}
             </button>
           </div>
         </form>

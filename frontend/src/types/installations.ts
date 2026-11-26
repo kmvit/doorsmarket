@@ -122,6 +122,13 @@ export interface InstallationVisit {
   previous_date_to?: string | null
 }
 
+export const pickPeriodDay = (day: string, period?: InstallationPeriod): InstallationPeriod => {
+  const start = period?.date_from
+  if (!start) return { date_from: day, date_to: day }
+  if (day < start) return { date_from: day, date_to: period.date_to || start }
+  return { date_from: start, date_to: day }
+}
+
 export const installerPeriod = (visit: InstallationVisit, installerId?: number | null): InstallationPeriod =>
   visit.installer_dates?.[String(installerId)] ?? { date_from: visit.date_from, date_to: visit.date_to }
 
@@ -159,6 +166,7 @@ export interface ComplaintInstallationRow {
   installer_id: number | null
   products: string
   date: string | null
+  scheduled_at?: string | null
   window: string
   needs_planning: boolean
 }

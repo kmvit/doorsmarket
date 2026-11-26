@@ -446,7 +446,7 @@ class Order(models.Model):
                 installation_id=models.OuterRef('installation_id'),
             ).order_by('-pk').values('pk')[:1]
             visit = InstallationVisit.objects.filter(
-                installation__order_id=self.pk, installation__status=InstallationStatus.PLANNED,
+                installation__order_id=self.pk, installation__complaint__isnull=True, installation__status=InstallationStatus.PLANNED,
                 pk=models.Subquery(latest_for_installation),
             ).order_by(
                 models.Case(models.When(date_to__gte=today, then=0), default=1), '-pk',

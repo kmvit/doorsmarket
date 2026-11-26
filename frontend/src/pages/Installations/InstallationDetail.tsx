@@ -158,10 +158,9 @@ const InstallationDetail = () => {
           </div>
         </div>
         {inst.can_repeat && (
-          <Link to={`/orders/installations/new?order=${inst.order}&repeat_from=${inst.id}`}
-            className="px-4 py-2 text-sm font-medium rounded-xl border border-primary-300 text-primary-700 hover:bg-primary-50">
+          <button type="button" disabled={acting} onClick={() => run('repeat')} className="px-4 py-2 text-sm font-medium rounded-xl border border-primary-300 text-primary-700 hover:bg-primary-50 disabled:opacity-50">
             Оформить повторный монтаж
-          </Link>
+          </button>
         )}
         {editable && !isInstaller && (
           <Link
@@ -244,7 +243,7 @@ const InstallationDetail = () => {
       )}
 
       {/* Акт на оплату — монтажнику выезда и СМ, когда монтаж (частично) завершён */}
-      {['done', 'partially_done'].includes(inst.status) && (myVisit || sm) && (
+      {(['done', 'partially_done'].includes(inst.status) || inst.payment?.available) && (myVisit || sm) && (
         <PaymentBlock inst={inst} onChanged={(updated) => { setInst(updated); load() }} />
       )}
 

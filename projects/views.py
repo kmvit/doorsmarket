@@ -22,6 +22,24 @@ from .models import (
 from .decorators import role_required, complaint_access_required
 
 
+def _legacy_installer_payment(request, complaint=None):
+    from orders.api_views import get_orders_queryset_for_user
+
+    raw = request.POST.get('installer_work_paid')
+    paid = {'true': True, 'false': False}.get(raw, getattr(complaint, 'installer_work_paid', None))
+    if paid is None:
+        raise ValueError('Укажите, оплачивается ли работа монтажника.')
+    order = getattr(complaint, 'source_order', None)
+    order_id = request.POST.get('source_order_id', '').strip()
+    if paid and order is None and order_id.isdecimal():
+        order = get_orders_queryset_for_user(request.user).filter(pk=int(order_id)).first()
+    if paid and order is None:
+        raise ValueError('Для оплачиваемой работы укажите доступный заказ.')
+    if complaint and hasattr(complaint, 'paid_installation') and paid != complaint.installer_work_paid:
+        raise ValueError('По рекламации уже оформляются работы. Оплату менять нельзя.')
+    return paid, order
+
+
 def _complaint_for_view(request, pk):
     queryset = Complaint.objects.all()
     if request.user.role == 'group_leader':
@@ -369,7 +387,11 @@ def complaint_detail(request, pk):
                     installer = User.objects.get(id=installer_id)
                     from rest_framework.exceptions import ValidationError
                     try:
+                        complaint.installer_work_paid, complaint.source_order = _legacy_installer_payment(request, complaint)
                         complaint.plan_installation_by_sm(installer, installation_date)
+                    except ValueError as exc:
+                        messages.error(request, str(exc))
+                        return redirect('projects:complaint_detail', pk=complaint.id)
                     except ValidationError as exc:
                         messages.error(request, str(exc.detail['detail']))
                         return redirect('projects:complaint_detail', pk=complaint.id)
@@ -589,8 +611,17 @@ def complaint_create(request):
                     messages.error(request, 'Необходимо указать менеджера заказа')
                     raise ValueError('Manager is required')
                 
+                paid, source_order = None, None
+                if complaint_type == 'installer':
+                    try:
+                        paid, source_order = _legacy_installer_payment(request)
+                    except ValueError as exc:
+                        messages.error(request, str(exc))
+                        raise
                 # Создаем рекламацию
                 complaint = Complaint.objects.create(
+                    installer_work_paid=paid,
+                    source_order=source_order,
                     initiator=request.user,
                     recipient=recipient,
                     manager_id=final_manager_id,
@@ -870,8 +901,11 @@ def complaint_process(request, pk):
             installer_id = request.POST.get('installer')
             if installer_id:
                 installer = get_object_or_404(User, id=installer_id, role='installer', is_active=True)
-                complaint.installer_assigned = installer
-                complaint.save()
+                try:
+                    complaint.installer_work_paid, complaint.source_order = _legacy_installer_payment(request, complaint)
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    return redirect('projects:complaint_process', pk=complaint.id)
                 complaint.set_type_installer(installer=installer)
                 messages.success(request, f'Тип установлен: Монтажник. Назначен: {installer.get_full_name() or installer.username}')
             else:
@@ -981,6 +1015,11 @@ def complaint_process(request, pk):
                 old_installer = complaint.installer_assigned
                 new_installer = get_object_or_404(User, id=new_installer_id, role='installer', is_active=True)
                 
+                try:
+                    complaint.installer_work_paid, complaint.source_order = _legacy_installer_payment(request, complaint)
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    return redirect('projects:complaint_process', pk=complaint.id)
                 complaint.installer_assigned = new_installer
                 complaint.save()
                 
@@ -1179,7 +1218,11 @@ def installer_planning(request):
 def installer_complete(request, pk):
     """Монтажник отмечает работу выполненной"""
     complaint = get_object_or_404(Complaint, pk=pk)
-    
+    if complaint.installer_work_paid:
+        from django.conf import settings
+        base = getattr(settings, 'FRONTEND_URL', '').rstrip('/')
+        return redirect(f'{base}/complaints/{complaint.pk}')
+
     if request.method == 'POST':
         if error := complaint.completion_error():
             messages.error(request, error)

@@ -95,6 +95,9 @@ class Installation(models.Model):
         'orders.Order', on_delete=models.CASCADE, related_name='installations',
         verbose_name='Заказ',
     )
+    complaint = models.OneToOneField(
+        'projects.Complaint', related_name='paid_installation', null=True, blank=True, on_delete=models.CASCADE,
+    )
     status = models.CharField(
         max_length=30, choices=InstallationStatus.choices,
         default=InstallationStatus.NOT_PLANNED, verbose_name='Статус',

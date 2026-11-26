@@ -85,6 +85,16 @@
                             </svg>
                             <span class="font-semibold text-blue-900">Монтажник</span>
                         </div>
+                        <label class="block text-sm mb-2">Оплата работы монтажника
+                            <select name="installer_work_paid" class="block w-full rounded-md border-gray-300 mb-2" required>
+                                <option value="">Выберите вариант</option>
+                                <option value="true">Оплачивается</option>
+                                <option value="false">Не оплачивается</option>
+                            </select>
+                        </label>
+                        <label class="block text-sm mb-2">Номер заказа в системе для оплачиваемой работы
+                            <input type="number" min="1" name="source_order_id" class="block w-full rounded-md border-gray-300">
+                        </label>
                         <select name="installer" required class="w-full px-3 py-2 border border-gray-300 rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Выберите монтажника</option>
                             {% for installer in installers %}
@@ -177,6 +187,16 @@
                     <form method="post">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="change_installer">
+                        {% if complaint.installer_work_paid == None %}<label class="block text-sm mb-2">Оплата работы монтажника
+                            <select name="installer_work_paid" class="block w-full rounded-md border-gray-300 mb-2" >
+                                <option value="">Выберите вариант</option>
+                                <option value="true">Оплачивается</option>
+                                <option value="false">Не оплачивается</option>
+                            </select>
+                        </label>
+                        <label class="block text-sm mb-2">Номер заказа в системе для оплачиваемой работы
+                            <input type="number" min="1" name="source_order_id" class="block w-full rounded-md border-gray-300">
+                        </label>{% endif %}
                         <select name="new_installer" required class="w-full px-3 py-2 border border-gray-300 rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Выберите нового монтажника</option>
                             {% for installer in installers %}

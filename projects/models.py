@@ -171,6 +171,7 @@ class Complaint(models.Model):
         verbose_name='Причина рекламации'
     )
     order_number = models.CharField(max_length=100, verbose_name='Номер заказа')
+    installer_work_paid = models.BooleanField(null=True, blank=True, verbose_name='Работа монтажника оплачивается')
     source_order = models.ForeignKey(
         'orders.Order',
         on_delete=models.SET_NULL,

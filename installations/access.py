@@ -58,10 +58,10 @@ def is_installer_of(user, inst):
     )
 
 
-def installations_for_user(user):
+def installations_for_user(user, *, include_complaint_work=False):
     qs = Installation.objects.select_related(
         'order', 'order__salon', 'order__salon__city', 'order__manager',
-        'order__measurement_request', 'created_by', 'irrelevant_requested_by', 'rating',
+        'order__measurement_request', 'complaint', 'created_by', 'irrelevant_requested_by', 'rating',
     ).prefetch_related(
         'files',
         Prefetch('visits', queryset=InstallationVisit.objects.prefetch_related('installers')),
@@ -72,17 +72,28 @@ def installations_for_user(user):
             to_attr='done_measurements',
         ),
     )
+    regular = qs.filter(complaint__isnull=True)
+    if include_complaint_work and can_see_installations(user):
+        from projects.api_views import scope_complaints_for_user
+        from projects.models import Complaint
+        visible = scope_complaints_for_user(Complaint.objects.filter(installer_work_paid=True), user)
+        if user.role == INSTALLER_ROLE:
+            visible = visible.filter(installer_assigned=user)
+        work = qs.filter(complaint__in=visible)
+    else:
+        work = qs.none()
+    qs = regular
     if not can_see_installations(user):
         return qs.none()
     if user.role == 'admin':
-        return qs
+        return qs | work
     if user.role == INSTALLER_ROLE:
-        return qs.filter(visits__installers=user).distinct()
+        return (qs.filter(visits__installers=user) | work).distinct()
     if user.role == 'group_leader':
-        return qs.filter(order__salon_id__in=user.managed_salon_ids())
+        return qs.filter(order__salon_id__in=user.managed_salon_ids()) | work
     if user.combines_service_roles:
-        return manager_installations_scope(qs, user)
+        return manager_installations_scope(qs, user) | work
     city_id = user_city_id(user)
     if not city_id:
-        return qs.none()
-    return qs.filter(order__salon__city_id=city_id)
+        return work
+    return qs.filter(order__salon__city_id=city_id) | work

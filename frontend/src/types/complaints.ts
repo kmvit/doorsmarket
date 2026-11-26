@@ -113,6 +113,9 @@ export interface ComplaintAssignment {
 }
 
 export interface Complaint {
+  installer_work_paid?: boolean | null
+  source_order?: number | null
+  installer_order_documents?: { kind: string; kind_display: string; name: string; file_url: string }[]
   installation_window_text?: string
   installation_assignments?: ComplaintAssignment[]
   installation_dates_only?: boolean
@@ -200,6 +203,7 @@ export interface ComplaintListItem {
 }
 
 export interface ComplaintCreateData {
+  installer_work_paid?: boolean
   production_site_id: number
   reason_id: number
   manager_id?: number

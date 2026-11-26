@@ -21,6 +21,14 @@ from orders.models import Order
 User = get_user_model()
 
 
+def validate_installer_payment(paid, order):
+    if paid is None:
+        raise serializers.ValidationError({'detail': 'Укажите, оплачивается ли работа монтажника.'})
+    if paid and not order:
+        raise serializers.ValidationError({'detail': 'Для оплачиваемой работы привяжите заказ к рекламации.'})
+    return paid
+
+
 def validate_installer_assignment(serializer, user, field='installer_assigned'):
     actor = getattr(serializer.context.get('request'), 'user', None)
     current_id = getattr(serializer.instance, f'{field}_id', None)
@@ -222,6 +230,35 @@ class ComplaintListSerializer(ComplaintScheduleSerializer):
 
 
 class ComplaintDetailSerializer(ComplaintScheduleSerializer):
+    installer_order_documents = serializers.SerializerMethodField()
+
+    def get_installer_order_documents(self, obj):
+        user = getattr(self.context.get('request'), 'user', None)
+        if not obj.source_order_id or not user or user.role != 'installer':
+            return []
+        if obj.installer_assigned_id != user.pk and not obj.additional_visits.filter(installer=user).exists():
+            return []
+        from installations.models import InstallationFileKind, InstallationFile
+        from installations.serializers import order_documents
+
+        order = obj.source_order
+        docs = order_documents(order)
+        kinds = (
+            InstallationFileKind.MEASUREMENT_BLANK, InstallationFileKind.FINAL_KP,
+            InstallationFileKind.INSTALLATION_KP, InstallationFileKind.DRAWINGS, InstallationFileKind.EXTRA,
+        )
+        package = InstallationFile.objects.filter(
+            installation__order=order, installation__complaint__isnull=True, kind__in=kinds,
+        ).exclude(file='').order_by('kind', 'id')
+        seen = {doc['file_url'] for doc in docs}
+        for file in package:
+            url = file.file.url
+            if url not in seen:
+                docs.append({'kind': file.kind, 'kind_display': file.get_kind_display(),
+                             'name': file.name, 'file_url': url})
+                seen.add(url)
+        return docs
+
     initiator = UserSerializer(read_only=True)
     recipient = UserSerializer(read_only=True)
     manager = UserSerializer(read_only=True)
@@ -295,6 +332,31 @@ class ComplaintDetailSerializer(ComplaintScheduleSerializer):
             manager = attrs.get('manager', getattr(self.instance, 'manager', None))
             if not in_manager_salon(actor, manager, attrs['source_order']):
                 raise serializers.ValidationError({'source_order': 'Выберите заказ своего салона.'})
+        instance = self.instance
+        if source_order and source_order != getattr(instance, 'source_order', None):
+            from orders.api_views import get_orders_queryset_for_user
+            if not actor or not get_orders_queryset_for_user(actor).filter(pk=source_order.pk).exists():
+                raise serializers.ValidationError({'detail': 'У вас нет доступа к этому заказу.'})
+        if (attrs.get('complaint_type') == ComplaintType.INSTALLER
+                and (not instance or instance.complaint_type != ComplaintType.INSTALLER)
+                or 'installer_assigned' in attrs and attrs['installer_assigned']
+                and attrs['installer_assigned'].pk != getattr(instance, 'installer_assigned_id', None)):
+            validate_installer_payment(
+                attrs.get('installer_work_paid', getattr(instance, 'installer_work_paid', None)),
+                attrs.get('source_order', getattr(instance, 'source_order', None)),
+            )
+        if attrs.get('installer_work_paid', getattr(instance, 'installer_work_paid', False)):
+            validate_installer_payment(True, attrs.get('source_order', getattr(instance, 'source_order', None)))
+        if instance and (instance.installer_work_paid or attrs.get('installer_work_paid')) and attrs.get('status') in (
+            ComplaintStatus.UNDER_SM_REVIEW, ComplaintStatus.COMPLETED,
+        ) and attrs['status'] != instance.status:
+            raise serializers.ValidationError({'detail': 'Оформите выполнение через акт оплачиваемых работ.'})
+        if 'installer_work_paid' in attrs and not (actor and actor.can_assign_complaint_installer):
+            raise PermissionDenied('Указывать оплату может только сервис-менеджер.')
+        if instance and hasattr(instance, 'paid_installation'):
+            if ('installer_work_paid' in attrs and attrs['installer_work_paid'] != instance.installer_work_paid
+                    or 'source_order' in attrs and attrs['source_order'] != instance.source_order):
+                raise serializers.ValidationError({'detail': 'По рекламации уже оформляются работы. Оплату и заказ менять нельзя.'})
         return attrs
 
     def validate_installer_assigned_id(self, user):
@@ -327,7 +389,7 @@ class ComplaintDetailSerializer(ComplaintScheduleSerializer):
             'manager',
             'manager_id',
             'installer_assigned',
-            'installer_assigned_id', 'installation_assignments', 'installation_dates_only', 'installation_window_text',
+            'installer_work_paid', 'installer_assigned_id', 'installation_assignments', 'installation_dates_only', 'installation_window_text',
             
             # Производство
             'production_site',
@@ -343,7 +405,7 @@ class ComplaintDetailSerializer(ComplaintScheduleSerializer):
             'contact_phone',
             'additional_info',
             'assignee_comment',
-            'source_order',
+            'source_order', 'installer_order_documents',
 
             # Документы
             'document_package_link',
@@ -468,6 +530,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
             'production_site_id',
             'reason_id',
             'source_order_id',
+            'installer_work_paid',
             'complaint_type',
             'order_number',
             'client_name',
@@ -494,6 +557,14 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         if (actor and actor.combines_service_roles and source_order
                 and not in_manager_salon(actor, attrs.get('manager'), source_order)):
             raise serializers.ValidationError({'source_order_id': 'Выберите заказ своего салона.'})
+        if attrs.get('complaint_type') == ComplaintType.INSTALLER or attrs.get('installer_assigned'):
+            validate_installer_payment(attrs.get('installer_work_paid'), source_order)
+            if attrs.get('installer_work_paid'):
+                from orders.api_views import get_orders_queryset_for_user
+                if not actor or not get_orders_queryset_for_user(actor).filter(pk=source_order.pk).exists():
+                    raise serializers.ValidationError({'detail': 'У вас нет доступа к этому заказу.'})
+        elif 'installer_work_paid' in attrs:
+            raise serializers.ValidationError({'detail': 'Оплата указывается при направлении монтажнику.'})
         if request and request.user and request.user.role == 'installer':
             additional_info = attrs.get('additional_info') or ''
             if not str(additional_info).strip():

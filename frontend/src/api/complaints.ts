@@ -1,3 +1,4 @@
+import type { Installation } from '../types/installations'
 import type { ComplaintAssignment } from '../types/complaints'
 import apiClient from './client'
 import {
@@ -272,12 +273,16 @@ export const complaintsAPI = {
   },
 
   // Действия с рекламацией
-  process: async (id: number, complaintType: 'installer' | 'manager' | 'factory'): Promise<Complaint> => {
+  process: async (id: number, complaintType: 'installer' | 'manager' | 'factory', assignment?: { installer_id: number; installer_work_paid: boolean; source_order_id?: number }): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/process/`, {
       complaint_type: complaintType,
+      ...assignment,
     })
     return response.data
   },
+
+  paidWork: async (id: number): Promise<Installation> =>
+    (await apiClient.post(`/complaints/${id}/paid_work/`)).data,
 
   complete: async (id: number): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/complete/`)
@@ -289,8 +294,8 @@ export const complaintsAPI = {
     return response.data
   },
 
-  scheduleTeam: async (id: number, assignments: ComplaintAssignment[]): Promise<Complaint> =>
-    (await apiClient.post(`/complaints/${id}/plan_installation/`, { assignments })).data,
+  scheduleTeam: async (id: number, assignments: ComplaintAssignment[], payment?: { installer_work_paid: boolean; source_order_id?: number }): Promise<Complaint> =>
+    (await apiClient.post(`/complaints/${id}/plan_installation/`, { assignments, ...payment })).data,
 
   planInstallation: async (
     id: number,
@@ -298,12 +303,14 @@ export const complaintsAPI = {
     installationDate: string,
     dateByInstaller = false,
     installationEnd?: string,
+    payment?: { installer_work_paid: boolean; source_order_id?: number },
   ): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/plan_installation/`, {
       installer_id: installerId,
       installation_date: dateByInstaller ? null : installationDate,
       installation_end: dateByInstaller ? null : (installationEnd || null),
       date_by_installer: dateByInstaller,
+      ...payment,
     })
     return response.data
   },
@@ -383,9 +390,10 @@ export const complaintsAPI = {
   },
 
   // СМ заменяет монтажника
-  changeInstaller: async (id: number, newInstallerId: number): Promise<Complaint> => {
+  changeInstaller: async (id: number, newInstallerId: number, installer_work_paid?: boolean): Promise<Complaint> => {
     const response = await apiClient.post(`/complaints/${id}/change_installer/`, {
       new_installer_id: newInstallerId,
+      installer_work_paid,
     })
     return response.data
   },

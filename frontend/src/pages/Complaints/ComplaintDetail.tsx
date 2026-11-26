@@ -1,9 +1,14 @@
+import InstallerWorkPanel from '../../components/installations/InstallerWorkPanel'
+import PaymentBlock from '../../components/installations/PaymentBlock'
+import InstallerPaymentChoice from '../../components/complaints/InstallerPaymentChoice'
+import { installationsAPI } from '../../api/installations'
+import type { Installation } from '../../types/installations'
 import { canPlanComplaintStatus } from '../../types/complaints'
 import AssignModal from '../../components/installations/AssignModal'
 import { formatPeriod } from '../../types/installations'
 import { canManageService, hasManagerPermissions } from '../../types/auth'
 import { useEffect, useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useComplaintsStore } from '../../store/complaintsStore'
 import { useAuthStore } from '../../store/authStore'
 import { complaintsAPI } from '../../api/complaints'
@@ -24,8 +29,12 @@ import {
 const ComplaintDetail = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { state } = useLocation()
+  const scheduleSearch = typeof state?.installationScheduleSearch === 'string' ? state.installationScheduleSearch : null
   const { currentComplaint, fetchComplaint, isLoading, error } = useComplaintsStore()
   const { user } = useAuthStore()
+  const [paidWork, setPaidWork] = useState<Installation | null>(null)
+  const [replacementPaid, setReplacementPaid] = useState<boolean | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   // Интервал монтажа «дата, с … до …» — общий для всех трёх форм (одновременно открыта одна)
   const [installationWindow, setInstallationWindow] = useState(emptyInstallationWindow)
@@ -68,6 +77,7 @@ const ComplaintDetail = () => {
 
   useEffect(() => {
     if (id) {
+      setPaidWork(null)
       fetchComplaint(Number(id))
     }
   }, [id, fetchComplaint])
@@ -271,7 +281,7 @@ const ComplaintDetail = () => {
             alert('Выберите нового монтажника')
             return
           }
-          await complaintsAPI.changeInstaller(Number(id), Number(formData.newInstallerId))
+          await complaintsAPI.changeInstaller(Number(id), Number(formData.newInstallerId), replacementPaid ?? undefined)
           setShowForms({ ...showForms, changeInstaller: false })
           setFormData({ ...formData, newInstallerId: '' })
           break
@@ -285,10 +295,18 @@ const ComplaintDetail = () => {
             const newWindow = installationWindowToApi(installationWindow)
             await complaintsAPI.rescheduleInstallation(Number(id), newWindow.start, newWindow.end)
           }
+          setPaidWork(null)
           setShowForms({ ...showForms, reschedule: false })
           setInstallationWindow(emptyInstallationWindow)
           break
+        case 'paid_work':
+          setPaidWork(await complaintsAPI.paidWork(Number(id)))
+          return
         case 'complete':
+          if (currentComplaint?.installer_work_paid) {
+            setPaidWork(await complaintsAPI.paidWork(Number(id)))
+            return
+          }
           if (!confirm('Работы по рекламации выполнены? Рекламация будет отправлена на проверку сервис-менеджеру.')) return
           await complaintsAPI.complete(Number(id))
           break
@@ -413,6 +431,13 @@ const ComplaintDetail = () => {
     } finally {
       setIsProcessing(false)
     }
+  }
+
+  const canOpenPaidWork = currentComplaint.installer_work_paid
+    && (canManageService(user) || (user?.role === 'installer' && currentComplaint.installer_assigned?.id === user.id))
+  const activeWork = paidWork?.status === 'planned' || paidWork?.status === 'awaiting_signature'
+  const reloadPaidWork = async () => {
+    setPaidWork(await complaintsAPI.paidWork(currentComplaint.id))
   }
 
   const regularAttachments = currentComplaint.attachments?.filter(a => a.attachment_type !== 'commercial_offer') || []
@@ -668,6 +693,29 @@ const ComplaintDetail = () => {
               </>
             )}
 
+            {user?.role === 'installer' && currentComplaint.source_order
+              && (currentComplaint.installer_assigned?.id === user.id
+                || currentComplaint.installation_assignments?.some((visit) => visit.installer_id === user.id)) && (
+              <section className="bg-white rounded-2xl border border-gray-200 p-5">
+                <h2 className="text-lg font-semibold mb-2">Заказ №{currentComplaint.source_order}</h2>
+                <p className="text-sm text-gray-700">{currentComplaint.client_name} · {currentComplaint.address}</p>
+                <h3 className="text-sm font-semibold mt-4 mb-2">Пакет документов</h3>
+                {currentComplaint.installer_order_documents?.length ? (
+                  <ul className="space-y-2">
+                    {currentComplaint.installer_order_documents.map((doc) => (
+                      <li key={doc.file_url}>
+                        <span className="block text-xs text-gray-500">{doc.kind_display}</span>
+                        <button type="button" className="text-left text-primary-700 break-all hover:underline"
+                          onClick={() => setViewingFile({ url: doc.file_url, name: doc.name })}>
+                          {doc.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="text-sm text-gray-500">Нет документов</p>}
+              </section>
+            )}
+
             {/* Вложения */}
             {regularAttachments.length > 0 && (
               <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-gray-100">
@@ -771,6 +819,11 @@ const ComplaintDetail = () => {
                 {currentComplaint.installer_assigned && (
                   <div className="pt-2 border-t border-gray-200">
                     <p className="text-xs text-gray-600">Монтажник</p>
+                    {currentComplaint.installer_work_paid != null && (
+                      <p className="text-xs text-gray-600">
+                        {currentComplaint.installer_work_paid ? 'Работа оплачивается' : 'Работа не оплачивается'}
+                      </p>
+                    )}
                     <p className="text-sm font-semibold text-gray-900">
                       {currentComplaint.installer_assigned.first_name && currentComplaint.installer_assigned.last_name
                         ? `${currentComplaint.installer_assigned.first_name} ${currentComplaint.installer_assigned.last_name}`
@@ -938,6 +991,7 @@ const ComplaintDetail = () => {
                         onClose={() => setShowForms({ ...showForms, planInstallation: false })}
                         onDone={() => {
                           setShowForms({ ...showForms, planInstallation: false })
+                          setPaidWork(null)
                           fetchComplaint(currentComplaint.id)
                         }} />}
                     </>}
@@ -971,6 +1025,9 @@ const ComplaintDetail = () => {
                                   : currentComplaint.installer_assigned.username}
                               </strong>
                             </p>
+                            {currentComplaint.installer_work_paid == null && (
+                              <InstallerPaymentChoice value={replacementPaid} onChange={setReplacementPaid} />
+                            )}
                             <select
                               value={formData.newInstallerId || ''}
                               onChange={(e) => setFormData({ ...formData, newInstallerId: e.target.value })}
@@ -1630,7 +1687,7 @@ const ComplaintDetail = () => {
                     )}
                     
                     {/* Отметить выполненным */}
-                    {['installation_planned', 'both_planned', 'installer_overdue'].includes(currentComplaint.status) && (
+                    {!paidWork && ['installation_planned', 'both_planned', 'installer_overdue'].includes(currentComplaint.status) && (
                       <Button
                         onClick={() => handleAction('complete')}
                         disabled={isProcessing}
@@ -1693,6 +1750,46 @@ const ComplaintDetail = () => {
                       )
                     )}
                   </>
+                )}
+
+                {canOpenPaidWork && !paidWork && (
+                  ['under_sm_review', 'completed', 'closed'].includes(currentComplaint.status)
+                  || (canManageService(user) && ['installation_planned', 'both_planned', 'installer_overdue'].includes(currentComplaint.status))
+                ) && (
+                  <Button onClick={() => handleAction('paid_work')} disabled={isProcessing} variant="outline">
+                    Акт и оплата работ
+                  </Button>
+                )}
+
+                {canOpenPaidWork && paidWork && activeWork && (
+                  <InstallerWorkPanel
+                    key={paidWork.current_visit?.id}
+                    inst={paidWork}
+                    complaintWork
+                    onReschedule={() => {
+                      setInstallationWindow(installationWindowFromDates(
+                        currentComplaint.planned_installation_date, currentComplaint.planned_installation_end,
+                      ))
+                      setShowForms((forms) => ({ ...forms, reschedule: true }))
+                    }}
+                    onRemove={async (fileId, name) => {
+                      if (!confirm(`Удалить файл «${name}»?`)) return
+                      try {
+                        await installationsAPI.deleteFile(fileId)
+                        await reloadPaidWork()
+                      } catch (error) {
+                        alert(getErrorMessage(error, 'Не удалось удалить файл'))
+                      }
+                    }}
+                    onFilesChanged={reloadPaidWork}
+                    onChanged={(updated) => {
+                      if (updated) setPaidWork(updated)
+                      void fetchComplaint(currentComplaint.id)
+                    }}
+                  />
+                )}
+                {canOpenPaidWork && paidWork && ['done', 'partially_done'].includes(paidWork.status) && (
+                  <PaymentBlock inst={paidWork} onChanged={setPaidWork} />
                 )}
 
                 {/* Действия для менеджера */}
@@ -1824,12 +1921,16 @@ const ComplaintDetail = () => {
                 )}
 
                 {/* Кнопка назад */}
-                <Link to={user?.role === 'installer' ? '/installer/planning' : '/complaints'}>
+                <Link to={user?.role === 'installer' && scheduleSearch !== null
+                  ? { pathname: '/orders/installations/installers', search: scheduleSearch }
+                  : user?.role === 'installer' ? '/installer/planning' : '/complaints'}>
                   <Button variant="outline" className="w-full">
                     <svg className="h-5 w-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
-                    {user?.role === 'installer' ? 'Вернуться к задачам' : 'Вернуться к списку'}
+                    {user?.role === 'installer'
+                      ? scheduleSearch !== null ? 'Вернуться в график монтажей' : 'Вернуться к задачам'
+                      : 'Вернуться к списку'}
                   </Button>
                 </Link>
               </div>

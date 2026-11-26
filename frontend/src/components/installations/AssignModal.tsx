@@ -1,10 +1,12 @@
+import InstallerPaymentChoice from '../complaints/InstallerPaymentChoice'
+import OrderPickerModal from '../../pages/Installations/OrderPickerModal'
 import type { Complaint } from '../../types/complaints'
 import { complaintsAPI } from '../../api/complaints'
 import { canManageService } from '../../types/auth'
 import { useEffect, useMemo, useState } from 'react'
 import ModalPortal from './ModalPortal'
 import { installationsAPI, apiErrorText } from '../../api/installations'
-import { Installation, Installer, ScheduleVisit, InstallationPeriod, installerPeriod, formatPeriod, INSTALLATION_STATUS_COLOR } from '../../types/installations'
+import { Installation, Installer, ScheduleVisit, InstallationPeriod, installerPeriod, pickPeriodDay, formatPeriod, INSTALLATION_STATUS_COLOR } from '../../types/installations'
 import ScheduleVisitContent, { scheduleVisitTitle } from './ScheduleVisitContent'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 import MonthCalendar, { monthGridRange, monthStart } from './MonthCalendar'
@@ -44,6 +46,9 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
   const visit = installation?.status === 'planned' ? installation.current_visit : null
   const target = complaint ?? installation
   const editing = Boolean(visit || complaint?.planned_installation_date)
+  const [paid, setPaid] = useState(complaint?.installer_work_paid ?? null)
+  const [pickingOrder, setPickingOrder] = useState(false)
+  const [orderId, setOrderId] = useState(complaint?.source_order ?? null)
   const [delegate, setDelegate] = useState(false)
   const [installers, setInstallers] = useState<Installer[]>([])
   const [assignments, setAssignments] = useState(() => {
@@ -94,12 +99,9 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
   }
 
   const pickDay = (day: string) => {
-    if (!active) return
-    if (!dateFrom || (dateTo && dateTo !== dateFrom) || day < dateFrom) {
-      updatePeriod({ date_from: day, date_to: day })
-    } else {
-      updatePeriod({ date_from: dateFrom, date_to: day })
-    }
+    setAssignments((rows) => rows.map((row) => row.installer_id === activeId
+      ? { ...row, ...pickPeriodDay(day, row) }
+      : row))
   }
 
   const editPeriod = (id: number, from: string) => {
@@ -125,6 +127,10 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
 
   const save = async () => {
     setError(null)
+    if (complaint && (paid === null || (paid && !orderId))) {
+      setError(paid === null ? 'Укажите, оплачивается ли работа монтажника.' : 'Привяжите заказ к рекламации.')
+      return
+    }
     if (!assignments.length) { setError('Выберите монтажника'); return }
     if (!delegate && assignments.some((row) => !row.date_from || (row.date_to && row.date_to < row.date_from))) {
       setError('Укажите корректные даты для каждого монтажника')
@@ -144,9 +150,13 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
         installer_id, date_from, date_to: date_to || date_from,
       }))
       if (complaint) {
+        const payment = paid === null ? undefined : {
+          installer_work_paid: paid,
+          source_order_id: paid && orderId !== complaint.source_order ? orderId ?? undefined : undefined,
+        }
         const updated = delegate
-          ? await complaintsAPI.planInstallation(complaint.id, periods[0].installer_id, '', true)
-          : await complaintsAPI.scheduleTeam(complaint.id, periods)
+          ? await complaintsAPI.planInstallation(complaint.id, periods[0].installer_id, '', true, undefined, payment)
+          : await complaintsAPI.scheduleTeam(complaint.id, periods, payment)
         onDone(updated)
       } else {
         onDone(await installationsAPI.assign(installation.id, periods))
@@ -177,6 +187,16 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
 
+        {complaint && complaint.installer_work_paid == null && (
+          <InstallerPaymentChoice value={paid} onChange={setPaid} />
+        )}
+        {complaint && paid && !complaint.source_order && (
+          <button type="button" className="mb-3 text-primary-700 underline" onClick={() => setPickingOrder(true)}>
+            {orderId ? `Заказ №${orderId}` : 'Привязать заказ'}
+          </button>
+        )}
+        {pickingOrder && <OrderPickerModal title="Заказ для рекламации" onClose={() => setPickingOrder(false)}
+          onPick={(chosen) => { setOrderId(chosen); setPickingOrder(false) }} />}
         <div className="mb-4">
           <p className="text-sm font-medium text-gray-700 mb-1">Монтажники</p>
           {installers.length === 0 ? (
@@ -234,7 +254,12 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
               onChange={(e) => updatePeriod({ date_from: dateFrom, date_to: e.target.value })}
               className="block rounded-lg border-gray-300 shadow-sm text-sm" />
           </label>
-          <span className="text-xs text-gray-500 pb-2">или выберите дни в календаре</span>
+          {(dateFrom || dateTo) && (
+            <button type="button" className="text-sm text-primary-700 underline pb-1"
+              onClick={() => updatePeriod({ date_from: '', date_to: '' })}>
+              Сбросить даты
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -275,6 +300,9 @@ const AssignModal = ({ installation, complaint, preset, onClose, onDone }: Props
                 <li key={v.id}>
                   {formatPeriod(v.date_from, v.date_to)} · {installerName(active.installer_id)}
                   {' — '}{v.client_name}{v.address && `, ${v.address}`}
+                  {v.work_description.trim() && (
+                    <p className="whitespace-pre-line break-words text-sm">{v.work_description}</p>
+                  )}
                 </li>
               ))}
             </ul>

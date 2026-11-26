@@ -451,8 +451,8 @@ const Dashboard = () => {
         {(isManager || isLeader || isSM || isInstaller) && (() => {
           const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
           const shown = installationFolders
-            .filter((f) => !managerOnlyInstallations || f.folder === 'irrelevant_requested')
-            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review'].includes(f.folder))
+            .filter((f) => !managerOnlyInstallations || ['irrelevant_requested', 'partially_done'].includes(f.folder))
+            .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review', 'partially_done'].includes(f.folder))
             .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
           const mine = isManager ? '&mine=1' : ''

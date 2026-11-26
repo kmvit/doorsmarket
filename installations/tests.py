@@ -123,32 +123,23 @@ class CreateInstallationTest(InstallationTestBase):
         kinds = [d['kind'] for d in response.data['order_documents']]
         self.assertIn('order_measurement', kinds)
 
-    def test_repeat_copies_selected_installation_for_every_status(self):
+    def test_legacy_repeat_request_returns_existing_installation(self):
         created = self.create(desired_date_comment='После доставки', extra=pdf('Схема.pdf'))
         self.assertEqual(created.status_code, 201, created.data)
         source = Installation.objects.get(pk=created.data['id'])
-        original_files = list(source.files.order_by('pk').values_list('kind', 'name', 'file'))
-        for status in InstallationStatus.values:
-            with self.subTest(status=status):
-                Installation.objects.filter(pk=source.pk).update(status=status)
-                response = self.client_for(self.manager).post('/api/v1/installations/', {
-                    'order': self.order.pk, 'repeat_from': source.pk, 'contact_name': 'Новый контакт',
-                }, format='multipart')
-                self.assertEqual(response.status_code, 201, response.data)
-                repeat = Installation.objects.get(pk=response.data['id'])
-                self.assertEqual(repeat.status, InstallationStatus.NOT_PLANNED)
-                self.assertEqual(repeat.order_id, source.order_id)
-                self.assertEqual(repeat.desired_date_comment, source.desired_date_comment)
-                self.assertEqual(repeat.planned_delivery_date, source.planned_delivery_date)
-                self.assertEqual(repeat.is_paid, source.is_paid)
-                self.assertEqual(repeat.contact_name, 'Новый контакт')
-                self.assertEqual(list(repeat.files.order_by('pk').values_list('kind', 'name', 'file')), original_files)
-                self.assertFalse(repeat.visits.exists())
-                self.assertEqual(repeat.events.get(kind=EventKind.CREATED).meta['source_installation_id'], source.pk)
-                repeat.files.all().delete()
-                self.assertEqual(source.files.count(), len(original_files))
-                source.refresh_from_db()
-                self.assertEqual(source.status, status)
+        original_files = list(source.files.values_list('pk', flat=True))
+        source.status = InstallationStatus.PARTIALLY_DONE
+        source.save(update_fields=['status'])
+        response = self.client_for(self.manager).post('/api/v1/installations/', {
+            'order': self.order.pk, 'repeat_from': source.pk,
+        }, format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['id'], source.pk)
+        source.refresh_from_db()
+        self.assertEqual(source.status, InstallationStatus.NOT_PLANNED)
+        self.assertEqual(source.desired_date_comment, 'После доставки')
+        self.assertCountEqual(source.files.values_list('pk', flat=True), original_files)
+        self.assertEqual(self.order.installations.count(), 1)
 
     def test_repeat_rejects_source_from_another_order(self):
         source = self.create()

@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import PdfPages from './PdfPages'
+import IosMediaDownload from './IosMediaDownload'
+import { isIosDevice } from '../../utils/isIosDevice'
 import { isVideoFile } from '../../utils/videoFiles'
 
 interface FileViewerProps {
@@ -66,6 +68,13 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
     }
   }
 
+  const downloadClass = 'flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 active:bg-primary-800 disabled:opacity-60'
+  const downloadIcon = (
+    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+    </svg>
+  )
+
   // Через портал в body: страница лежит в <main class="relative z-10">, и окно
   // внутри него не поднималось выше шапки (z-20) — она закрывала кнопку «Закрыть»
   return createPortal(
@@ -75,23 +84,19 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
       tabIndex={-1}
     >
       {/* Шапка — всегда поверх контента, iframe не может её перекрыть */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 shrink-0">
-        <span className="text-sm text-gray-300 truncate max-w-[60vw]">{fileName || 'Файл'}</span>
-        <div className="flex items-center gap-2 shrink-0 ml-3">
-          {/* Скачать — для любого типа файла */}
-          <a
-            href={normalizedUrl}
-            download={fileName || true}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 active:bg-primary-800"
-            aria-label="Скачать"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Скачать
-          </a>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-gray-900 shrink-0">
+        <span className="min-w-0 flex-1 basis-full truncate text-sm text-gray-300 sm:basis-auto">{fileName || 'Файл'}</span>
+        <div className="ml-auto flex items-center gap-2">
+          {(fileType === 'image' || fileType === 'video') && isIosDevice() ? (
+            <IosMediaDownload key={normalizedUrl} url={normalizedUrl} name={fileName} className={downloadClass}>
+              {downloadIcon}
+            </IosMediaDownload>
+          ) : (
+            <a href={normalizedUrl} download={fileName || true} target="_blank" rel="noreferrer" className={downloadClass}>
+              {downloadIcon}
+              Скачать
+            </a>
+          )}
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100 active:bg-gray-200"

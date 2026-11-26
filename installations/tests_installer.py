@@ -148,6 +148,49 @@ class CompleteTest(InstallerTestBase):
         self.assertEqual(self.inst.status, InstallationStatus.DONE)
         self.assertTrue(self.inst.events.filter(kind=EventKind.COMPLETED).exists())
 
+    def test_manager_reopens_partial_installation_and_preserves_previous_visit(self):
+        self.assertEqual(self.post(self.manager, 'repeat').status_code, 400)
+        act = self.upload(self.inst1).data
+        visit = self.inst.current_visit
+        result = self.post(self.inst1, 'complete_partial', {'reason': 'client_postponed'})
+        self.assertEqual(result.status_code, 200, result.data)
+        self.assertEqual(self.post(self.inst1, 'repeat').status_code, 403)
+        self.assertEqual(self.post(self.sm, 'repeat').status_code, 403)
+
+        service = self.client_for(self.sm)
+        list_url = '/api/v1/installations/'
+        counts_url = list_url + 'folder_counts/'
+        self.assertEqual([row['id'] for row in service.get(list_url, {'folder': 'partially_done'}).data], [self.inst.pk])
+        self.assertEqual(service.get(list_url, {'folder': 'to_assign'}).data, [])
+        counts = {row['folder']: row['count'] for row in service.get(counts_url).data}
+        self.assertEqual((counts['partially_done'], counts['to_assign']), (1, 0))
+
+        for _ in range(2):
+            reopened = self.post(self.manager, 'repeat')
+            self.assertEqual(reopened.status_code, 200, reopened.data)
+            self.assertEqual(reopened.data['id'], self.inst.pk)
+            self.assertEqual(reopened.data['status'], InstallationStatus.NOT_PLANNED)
+            self.assertFalse(reopened.data['can_repeat'])
+
+        self.assertEqual(self.order.installations.count(), 1)
+        self.assertEqual(self.inst.events.filter(kind=EventKind.STATUS_CHANGED, new_status=InstallationStatus.NOT_PLANNED).count(), 1)
+        pending = service.get(list_url, {'folder': 'to_assign'}).data
+        self.assertEqual([row['id'] for row in pending], [self.inst.pk])
+        self.assertEqual(service.get(list_url, {'folder': 'partially_done'}).data, [])
+        counts = {row['folder']: row['count'] for row in service.get(counts_url).data}
+        self.assertEqual((counts['partially_done'], counts['to_assign']), (0, 1))
+        self.assertEqual(reopened.data['visits'][0]['id'], visit.pk)
+        self.assertIn(act['id'], [file['id'] for file in reopened.data['files']])
+        self.assertTrue(reopened.data['payment']['available'])
+
+        assigned = self.assign(installers=[self.inst2.pk], date_from='2026-11-20', date_to='2026-11-20')
+        self.assertEqual(assigned.status_code, 200, assigned.data)
+        self.assertEqual(assigned.data['id'], self.inst.pk)
+        self.assertEqual(assigned.data['status'], InstallationStatus.PLANNED)
+        self.assertEqual(len(assigned.data['visits']), 2)
+        self.assertNotEqual(assigned.data['current_visit']['id'], visit.pk)
+        self.assertEqual(self.post(self.inst2, 'complete').status_code, 400)
+
     def test_partial_then_next_visit_needs_new_act(self):
         self.upload(self.inst1)
         result = self.post(self.inst1, 'complete_partial', {'reason': 'client_postponed'})
@@ -191,7 +234,7 @@ class CompleteTest(InstallerTestBase):
         self.assertTrue(task.notified)
         self.assertIn('Оформить повторный монтаж', task.action_text)
         self.assertEqual(push.call_args.kwargs['user'], self.manager)
-        self.assertIn(f'repeat_from={self.inst.pk}', push.call_args.kwargs['url'])
+        self.assertEqual(push.call_args.kwargs['url'], f'/orders/installations/{self.inst.pk}')
 
     @patch('users.push_utils.send_push_notification')
     def test_complaint_only_records_reason(self, push):

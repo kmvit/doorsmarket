@@ -28,17 +28,22 @@ export async function downloadFile(url: string, filename?: string): Promise<void
     const resp = await fetch(u, { credentials: 'include' })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const blob = await resp.blob()
-    const objUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = objUrl
-    a.download = downloadName
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(objUrl), 1500)
+    saveBlob(blob, downloadName)
   } catch {
     // Не удалось скачать как blob — открываем в новой вкладке, чтобы текущее
     // окно не блокировалось.
     window.open(u, '_blank', 'noopener')
   }
+}
+
+
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
 }

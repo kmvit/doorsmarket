@@ -1,3 +1,5 @@
+import DateSortHeading from '../../components/common/DateSortHeading'
+import { compareDates, type SortDirection } from '../../utils/dateSort'
 import { canPlanComplaintStatus } from '../../types/complaints'
 import { complaintsAPI } from '../../api/complaints'
 import type { Complaint } from '../../types/complaints'
@@ -9,7 +11,7 @@ import { installationsAPI } from '../../api/installations'
 import {
   Installation, InstallationStatus, INSTALLATION_STATUS_COLOR, INSTALLATION_STATUS_DISPLAY,
   INSTALLATION_STATUS_ORDER, ComplaintInstallationRow, canCreateInstallation, canEditSchedule,
-  formatDeliveryDateRange, formatVisitAssignments,
+  formatDeliveryDateRange, formatVisitAssignments, installerPeriod,
 } from '../../types/installations'
 import { usePersistedState } from '../../utils/persistedState'
 import MultiSelect, { toArray } from '../../components/common/MultiSelect'
@@ -33,6 +35,7 @@ const FOLDER_LABELS: Record<string, string> = {
   reschedule_requested: 'Перенос даты? Подтвердить',
   awaiting_signature: 'Ожидает подписи клиента',
   act_review: 'Проверить акт клиента',
+  partially_done: INSTALLATION_STATUS_DISPLAY.partially_done,
 }
 
 const STATUS_OPTIONS = INSTALLATION_STATUS_ORDER.map((value) => ({ value, label: INSTALLATION_STATUS_DISPLAY[value] }))
@@ -42,6 +45,7 @@ type PaidFilter = '' | 'paid' | 'unpaid'
 const InstallationList = () => {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const [dateSort, setDateSort] = useState<SortDirection | null>(null)
   const [items, setItems] = useState<Installation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,12 +55,13 @@ const InstallationList = () => {
   const [assigning, setAssigning] = useState<Installation | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const folder = searchParams.get('folder') || ''
+  const partialFolder = folder === 'partially_done'
   const mineParam = searchParams.get('mine') === '1'
   const canAssign = canEditSchedule(user)
 
   const [search, setSearch] = usePersistedState('installations:search', '')
   const [rawStatus, setStatus] = usePersistedState<InstallationStatus[]>('installations:status', [])
-  const status = toArray<InstallationStatus>(rawStatus)
+  const status = partialFolder ? [] : toArray<InstallationStatus>(rawStatus)
   const [paid, setPaid] = usePersistedState<PaidFilter>('installations:paid', '')
   const [mine, setMine] = usePersistedState('installations:mine', false)
   // «Кроме выполненных» — по умолчанию включено
@@ -65,7 +70,8 @@ const InstallationList = () => {
   const people = normalizePeopleFilter(rawPeople)
   const byPeople = canFilterByPeople(user?.role)
   // Галочка включает режим только рекламационных монтажей; выключенная — общий список.
-  const [complaintsOnly, setComplaintsOnly] = usePersistedState('installations:complaints_only', false)
+  const [savedComplaintsOnly, setComplaintsOnly] = usePersistedState('installations:complaints_only', false)
+  const complaintsOnly = !partialFolder && savedComplaintsOnly
   const [complaintRows, setComplaintRows] = useState<ComplaintInstallationRow[]>([])
   // Статусы, оплата и папки — отдельные фильтры обычных монтажей.
   const complaintsShown = (!folder || folder === 'to_assign') && !status.length && paid === ''
@@ -135,6 +141,171 @@ const InstallationList = () => {
   const th = 'px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'
   const td = 'px-3 py-3 text-sm text-gray-700 align-top'
 
+  const renderInstallation = (it: Installation) => {
+    const docs = [
+      ...it.order_documents.map((d) => ({ key: `${d.kind}-${d.file_url}`, name: d.name, url: d.file_url })),
+      ...it.files.map((f) => ({ key: `f${f.id}`, name: f.kind_display, url: f.file_url || '' })),
+    ]
+    return (
+      <tr
+        key={it.id}
+        className="hover:bg-gray-50 cursor-pointer"
+        onClick={() => navigate(`/orders/installations/${it.id}`)}
+      >
+        <td className={`${td} whitespace-nowrap`}>
+          <Link
+            to={`/orders/installations/${it.id}`}
+            className="text-primary-600 font-medium hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            #{it.id}
+          </Link>
+          <div className="text-xs text-gray-500">
+            заказ{' '}
+            <Link
+              to={`/orders/${it.order}`}
+              className="hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              #{it.order}
+            </Link>
+          </div>
+        </td>
+        <td className={td}>
+          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${INSTALLATION_STATUS_COLOR[it.status]}`}>
+            {it.status_display}
+          </span>
+          {it.status === 'planned' && it.current_visit && (
+            <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
+              {formatVisitAssignments(it.current_visit)}
+            </div>
+          )}
+          <div className={`mt-1 text-xs font-medium ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>
+            {it.is_paid ? 'Оплачен' : 'Не оплачен'}
+          </div>
+          {it.rating_overall && (
+            <div className="mt-1 text-xs text-amber-600 whitespace-nowrap" title="Оценка клиента: общее впечатление">
+              ★ {it.rating_overall}/5
+            </div>
+          )}
+          {it.irrelevant_requested_at && (
+            <div className="mt-1 text-xs font-medium text-gray-600">Помечен неактуальным</div>
+          )}
+          {canAssign && ['not_planned', 'partially_done', 'planned'].includes(it.status) && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setAssigning(it) }}
+              className="mt-1 text-xs font-medium text-primary-600 hover:underline"
+            >
+              {it.status === 'planned' ? 'Изменить' : 'Назначить'}
+            </button>
+          )}
+        </td>
+        <td className={td}>
+          <div className="font-medium text-gray-900">{it.client_name}</div>
+          {it.address && <div className="text-xs text-gray-500 max-w-[220px]">{it.address}</div>}
+        </td>
+        <td className={td}>
+          <div>{it.contact_name || '—'}</div>
+          {it.contact_phone && <PhoneLink phone={it.contact_phone} className="text-xs" stopPropagation />}
+        </td>
+        <td className={td}>
+          <div>{it.manager_name}</div>
+          <div className="text-xs text-gray-500">{it.salon_name}</div>
+        </td>
+        <td className={`${td} max-w-[240px] whitespace-pre-line`}>{it.work_description}</td>
+        <td className={`${td} max-w-[200px]`}>{it.collection_finish}</td>
+        <td className={`${td} whitespace-nowrap`}>{it.already_on_site
+          ? 'На объекте'
+          : formatDeliveryDateRange(it.planned_delivery_date, it.planned_delivery_date_end)}</td>
+        <td className={`${td} max-w-[220px] whitespace-pre-line text-xs`}>{it.desired_date_comment || '—'}</td>
+        <td className={td}>
+          <ul className="space-y-0.5">
+            {docs.map((d) => (
+              <li key={d.key}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setViewing({ url: d.url, name: d.name }) }}
+                  className="text-xs text-primary-600 hover:underline text-left whitespace-nowrap"
+                >
+                  {d.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </td>
+      </tr>
+    )
+  }
+
+  const renderComplaint = (c: ComplaintInstallationRow) => (
+    <tr
+      key={`c${c.id}`}
+      className="bg-rose-50 hover:bg-rose-100 cursor-pointer"
+      onClick={() => navigate(`/complaints/${c.id}`)}
+    >
+      <td className={`${td} whitespace-nowrap`}>
+        <Link to={`/complaints/${c.id}`} className="text-rose-700 font-medium hover:underline"
+          onClick={(e) => e.stopPropagation()}>
+          Рекл. #{c.id}
+        </Link>
+        <div className="text-xs text-gray-500">заказ {c.order_number}</div>
+      </td>
+      <td className={td}>
+        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-rose-100 text-rose-800">
+          {c.status_display}
+        </span>
+        {c.team_schedule?.length ? c.team_schedule.map(line => (
+          <div key={line} className="mt-1 text-xs text-gray-700 whitespace-nowrap">{line}</div>
+        )) : c.window && (
+          <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
+            <span className="font-semibold">{c.window}</span>
+            {c.installer_name && <> · {c.installer_name}</>}
+          </div>
+        )}
+        {canManageService(user) && canPlanComplaintStatus(c.status) && (
+          <button type="button" className="mt-1 text-xs font-medium text-primary-600 hover:underline"
+            onClick={async e => {
+              e.stopPropagation()
+              try { setAssigningComplaint(await complaintsAPI.getDetail(c.id)) }
+              catch { setError('Не удалось загрузить рекламацию') }
+            }}>{c.needs_planning ? 'Назначить' : 'Изменить'}</button>
+        )}
+      </td>
+      <td className={td}>
+        <div className="font-medium text-gray-900">{c.client_name}</div>
+        {c.address && <div className="text-xs text-gray-500 max-w-[220px]">{c.address}</div>}
+      </td>
+      <td className={td}>
+        <div>{c.contact_name || '—'}</div>
+        {c.contact_phone && <PhoneLink phone={c.contact_phone} className="text-xs" stopPropagation />}
+      </td>
+      <td className={td}>{c.manager_name || '—'}</td>
+      <td className={`${td} max-w-[240px]`}>
+        <div className="line-clamp-3 break-words" title={c.products || 'Рекламация'}>{c.products || 'Рекламация'}</div>
+      </td>
+      <td className={td}>—</td>
+      <td className={td}>—</td>
+      <td className={td}>—</td>
+      <td className={td}>—</td>
+    </tr>
+  )
+
+  const isInstaller = user?.role === 'installer'
+  const rows = [
+    ...items.map((value) => ({
+      kind: 'installation' as const,
+      value,
+      start: value.status === 'planned' && value.current_visit
+        ? installerPeriod(value.current_visit, user?.id).date_from
+        : null,
+    })),
+    ...complaintRows.map((value) => ({
+      kind: 'complaint' as const, value, start: value.scheduled_at ?? value.date,
+    })),
+  ]
+  if (isInstaller && dateSort) rows.sort((a, b) => compareDates(a.start, b.start, dateSort))
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-[1600px]">
       <InstallationsTabs active="list" />
@@ -185,7 +356,7 @@ const InstallationList = () => {
         </div>
         {!complaintsOnly && (
           <>
-            <div>
+            {!partialFolder && <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
               <MultiSelect
                 options={STATUS_OPTIONS}
@@ -194,7 +365,7 @@ const InstallationList = () => {
                 placeholder="Все статусы"
                 className="w-56 rounded-lg border-gray-300 shadow-sm text-sm px-3 py-2 focus:border-primary-500 focus:ring-primary-500"
               />
-            </div>
+            </div>}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Оплата</label>
               <select
@@ -232,7 +403,7 @@ const InstallationList = () => {
             Скрывать выполненные
           </label>
         )}
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        {!partialFolder && <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input
             type="checkbox"
             checked={complaintsOnly}
@@ -240,7 +411,7 @@ const InstallationList = () => {
             className="rounded border-gray-300 text-rose-600 focus:ring-rose-500"
           />
           Только рекламационные монтажи
-        </label>
+        </label>}
       </div>
 
       {error && (
@@ -270,7 +441,12 @@ const InstallationList = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className={th}>№</th>
-                  <th className={th}>Статус</th>
+                  {isInstaller ? (
+                    <DateSortHeading className={th} direction={dateSort} title="Сортировать по началу выезда"
+                      onToggle={() => setDateSort((value) => value === 'ascending' ? 'descending' : 'ascending')}>
+                      Статус
+                    </DateSortHeading>
+                  ) : <th className={th}>Статус</th>}
                   <th className={th}>Клиент</th>
                   <th className={th}>Контактное лицо</th>
                   <th className={th}>Менеджер / салон</th>
@@ -282,154 +458,7 @@ const InstallationList = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((it) => {
-                  const docs = [
-                    ...it.order_documents.map((d) => ({ key: `${d.kind}-${d.file_url}`, name: d.name, url: d.file_url })),
-                    ...it.files.map((f) => ({ key: `f${f.id}`, name: f.kind_display, url: f.file_url || '' })),
-                  ]
-                  return (
-                    <tr
-                      key={it.id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => navigate(`/orders/installations/${it.id}`)}
-                    >
-                      <td className={`${td} whitespace-nowrap`}>
-                        <Link
-                          to={`/orders/installations/${it.id}`}
-                          className="text-primary-600 font-medium hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          #{it.id}
-                        </Link>
-                        <div className="text-xs text-gray-500">
-                          заказ{' '}
-                          <Link
-                            to={`/orders/${it.order}`}
-                            className="hover:underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            #{it.order}
-                          </Link>
-                        </div>
-                      </td>
-                      <td className={td}>
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${INSTALLATION_STATUS_COLOR[it.status]}`}>
-                          {it.status_display}
-                        </span>
-                        {it.status === 'planned' && it.current_visit && (
-                          <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
-                            {formatVisitAssignments(it.current_visit)}
-                          </div>
-                        )}
-                        <div className={`mt-1 text-xs font-medium ${it.is_paid ? 'text-green-700' : 'text-red-600'}`}>
-                          {it.is_paid ? 'Оплачен' : 'Не оплачен'}
-                        </div>
-                        {it.rating_overall && (
-                          <div className="mt-1 text-xs text-amber-600 whitespace-nowrap" title="Оценка клиента: общее впечатление">
-                            ★ {it.rating_overall}/5
-                          </div>
-                        )}
-                        {it.irrelevant_requested_at && (
-                          <div className="mt-1 text-xs font-medium text-gray-600">Помечен неактуальным</div>
-                        )}
-                        {canAssign && ['not_planned', 'partially_done', 'planned'].includes(it.status) && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setAssigning(it) }}
-                            className="mt-1 text-xs font-medium text-primary-600 hover:underline"
-                          >
-                            {it.status === 'planned' ? 'Изменить' : 'Назначить'}
-                          </button>
-                        )}
-                      </td>
-                      <td className={td}>
-                        <div className="font-medium text-gray-900">{it.client_name}</div>
-                        {it.address && <div className="text-xs text-gray-500 max-w-[220px]">{it.address}</div>}
-                      </td>
-                      <td className={td}>
-                        <div>{it.contact_name || '—'}</div>
-                        {it.contact_phone && <PhoneLink phone={it.contact_phone} className="text-xs" stopPropagation />}
-                      </td>
-                      <td className={td}>
-                        <div>{it.manager_name}</div>
-                        <div className="text-xs text-gray-500">{it.salon_name}</div>
-                      </td>
-                      <td className={`${td} max-w-[240px] whitespace-pre-line`}>{it.work_description}</td>
-                      <td className={`${td} max-w-[200px]`}>{it.collection_finish}</td>
-                      <td className={`${td} whitespace-nowrap`}>{it.already_on_site
-                        ? 'На объекте'
-                        : formatDeliveryDateRange(it.planned_delivery_date, it.planned_delivery_date_end)}</td>
-                      <td className={`${td} max-w-[220px] whitespace-pre-line text-xs`}>{it.desired_date_comment || '—'}</td>
-                      <td className={td}>
-                        <ul className="space-y-0.5">
-                          {docs.map((d) => (
-                            <li key={d.key}>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setViewing({ url: d.url, name: d.name }) }}
-                                className="text-xs text-primary-600 hover:underline text-left whitespace-nowrap"
-                              >
-                                {d.name}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {complaintRows.map((c) => (
-                  <tr
-                    key={`c${c.id}`}
-                    className="bg-rose-50 hover:bg-rose-100 cursor-pointer"
-                    onClick={() => navigate(`/complaints/${c.id}`)}
-                  >
-                    <td className={`${td} whitespace-nowrap`}>
-                      <Link to={`/complaints/${c.id}`} className="text-rose-700 font-medium hover:underline"
-                        onClick={(e) => e.stopPropagation()}>
-                        Рекл. #{c.id}
-                      </Link>
-                      <div className="text-xs text-gray-500">заказ {c.order_number}</div>
-                    </td>
-                    <td className={td}>
-                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-rose-100 text-rose-800">
-                        {c.status_display}
-                      </span>
-                      {c.team_schedule?.length ? c.team_schedule.map(line => (
-                        <div key={line} className="mt-1 text-xs text-gray-700 whitespace-nowrap">{line}</div>
-                      )) : c.window && (
-                        <div className="mt-1 text-xs text-gray-700 whitespace-nowrap">
-                          <span className="font-semibold">{c.window}</span>
-                          {c.installer_name && <> · {c.installer_name}</>}
-                        </div>
-                      )}
-                      {canManageService(user) && canPlanComplaintStatus(c.status) && (
-                        <button type="button" className="mt-1 text-xs font-medium text-primary-600 hover:underline"
-                          onClick={async e => {
-                            e.stopPropagation()
-                            try { setAssigningComplaint(await complaintsAPI.getDetail(c.id)) }
-                            catch { setError('Не удалось загрузить рекламацию') }
-                          }}>{c.needs_planning ? 'Назначить' : 'Изменить'}</button>
-                      )}
-                    </td>
-                    <td className={td}>
-                      <div className="font-medium text-gray-900">{c.client_name}</div>
-                      {c.address && <div className="text-xs text-gray-500 max-w-[220px]">{c.address}</div>}
-                    </td>
-                    <td className={td}>
-                      <div>{c.contact_name || '—'}</div>
-                      {c.contact_phone && <PhoneLink phone={c.contact_phone} className="text-xs" stopPropagation />}
-                    </td>
-                    <td className={td}>{c.manager_name || '—'}</td>
-                    <td className={`${td} max-w-[240px]`}>
-                      <div className="line-clamp-3 break-words" title={c.products || 'Рекламация'}>{c.products || 'Рекламация'}</div>
-                    </td>
-                    <td className={td}>—</td>
-                    <td className={td}>—</td>
-                    <td className={td}>—</td>
-                    <td className={td}>—</td>
-                  </tr>
-                ))}
+                {rows.map((row) => row.kind === 'installation' ? renderInstallation(row.value) : renderComplaint(row.value))}
               </tbody>
             </table>
           </HScrollSync>

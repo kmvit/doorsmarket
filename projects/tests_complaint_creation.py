@@ -80,7 +80,7 @@ class ComplaintCreationPermissionsTest(TestCase):
         api = APIClient()
         api.force_authenticate(self.users[Role.SERVICE_MANAGER])
         with patch('projects.models.send_sms_notification', return_value=False):
-            response = api.post('/api/v1/complaints/', self.payload, format='json')
+            response = api.post('/api/v1/complaints/', self.payload | {'installer_work_paid': False}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         complaint = Complaint.objects.get(pk=response.data['id'])
         another = User.objects.create_user(username='another', role=Role.INSTALLER)
@@ -103,7 +103,7 @@ class ComplaintCreationPermissionsTest(TestCase):
 
         api = APIClient()
         api.force_authenticate(sm)
-        response = api.post('/api/v1/complaints/', self.payload, format='json')
+        response = api.post('/api/v1/complaints/', self.payload | {'installer_work_paid': False}, format='json')
 
         self.assertEqual(response.status_code, 201, response.data)
         complaint = Complaint.objects.get(pk=response.data['id'])
@@ -119,7 +119,7 @@ class ComplaintCreationPermissionsTest(TestCase):
         manager.save(update_fields=['performs_service_manager_duties'])
         api = APIClient()
         api.force_authenticate(manager)
-        response = api.post('/api/v1/complaints/', self.payload, format='json')
+        response = api.post('/api/v1/complaints/', self.payload | {'installer_work_paid': False}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         complaint = Complaint.objects.get(pk=response.data['id'])
         self.assertEqual(complaint.installer_assigned_id, self.users[Role.INSTALLER].pk)

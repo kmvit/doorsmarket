@@ -182,15 +182,15 @@ class RequestCreatedSmsInviteTest(TestCase):
         from orders.sms_templates import request_created
         text = request_created('Иван Петров', '+79160000000', '8 927 123-45-67')
         self.assertTrue(text.endswith(
-            'по замеру в течение 2 раб. дн. Уведомления о статусе заказа в MAX: https://max.ru/id5260488163_bot'
+            'по замеру в течение 2р.д. Уведомления о статусе заказа в MAX: https://max.ru/id5260488163_bot'
         ))
 
     def test_no_invite_when_already_linked(self):
         from orders.sms_templates import request_created
         MaxContact.objects.create(phone='+79271234567', chat_id=1, max_user_id=1)
-        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2 раб. дн.'))
+        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2р.д.'))
 
     @override_settings(MAX_BOT_NAME='')
     def test_no_invite_without_bot(self):
         from orders.sms_templates import request_created
-        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2 раб. дн.'))
+        self.assertTrue(request_created('Иван', '', '+79271234567').endswith('2р.д.'))
