@@ -54,9 +54,8 @@ def act_sign_request(installation):
     return f'монтаж завершен. Подпишите акт по ссылке {client_link(installation)}'
 
 
-def act_rejected(installation, reason):
-    return (f'{BRAND} Акт выполненных работ не принят: {reason}. Приложите пожалуйста подписанный акт '
-            f'ещё раз по ссылке {client_link(installation)}')
+def act_rejected(installation):
+    return f'Акт вып работ не принят. Приложите подписанный акт ещё раз по ссылке {client_link(installation)}'
 
 
 def rating_request(installation):

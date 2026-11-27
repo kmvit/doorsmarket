@@ -232,9 +232,10 @@ const InstallersSchedule = () => {
                         className="px-3 py-1.5 rounded-lg text-white bg-primary-600 hover:bg-primary-700">
                         Назначить монтаж
                       </button>}
-                      {editable && <input aria-label="Причина занятости" placeholder="Причина, например выставка"
+                      <input aria-label={self ? 'Комментарий к выходному' : 'Причина занятости'}
+                        placeholder={self ? 'Комментарий (необязательно)' : 'Причина, например выставка'}
                         value={comment} maxLength={500} onChange={e => setComment(e.target.value)}
-                        className="rounded-lg border-gray-300 text-sm" />}
+                        className="rounded-lg border-gray-300 text-sm" />
                       <button type="button" onClick={() => changeBlock()} disabled={saving || (editable && !comment.trim())}
                         className="rounded-lg border border-gray-300 px-3 py-1.5 disabled:opacity-50">
                         {self ? 'Отметить выходной' : 'Отметить занятость'}

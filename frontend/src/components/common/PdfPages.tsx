@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   url: string
+  showOpenLink?: boolean
 }
 
 const MIN_ZOOM = 1
@@ -17,7 +18,7 @@ const ZOOM_STEP = 0.5
  * pdf.js 3.x — работает и на iOS 15–16 (4.x требует iOS 17+). Библиотека
  * подгружается только при первом открытии PDF.
  */
-const PdfPages = ({ url }: Props) => {
+const PdfPages = ({ url, showOpenLink = true }: Props) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const pagesRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -109,7 +110,11 @@ const PdfPages = ({ url }: Props) => {
         {error && (
           <div className="text-center text-gray-200 text-sm py-8 px-4">
             <p className="mb-2">Не удалось показать PDF</p>
-            <a href={url} target="_blank" rel="noreferrer" className="text-primary-300 underline">Открыть файл</a>
+            {showOpenLink ? (
+              <a href={url} target="_blank" rel="noreferrer" className="text-primary-300 underline">Открыть файл</a>
+            ) : (
+              <p>Файл можно скачать кнопкой сверху.</p>
+            )}
           </div>
         )}
         <div ref={pagesRef} />

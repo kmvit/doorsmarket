@@ -256,43 +256,17 @@ def mark_ready(inst, actor):
                 'Клиент готов — монтаж снова ждёт назначения')
 
 
-def request_irrelevant(inst, reason, actor):
-    inst.irrelevant_requested_at = timezone.now()
-    inst.irrelevant_requested_by = actor
-    inst.irrelevant_reason = reason
-    inst.save(update_fields=['irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason', 'updated_at'])
-    inst.log(EventKind.IRRELEVANT_REQUESTED, actor=actor,
-             description=f'Причина: {reason}' if reason else 'Помечен неактуальным')
-    _push(inst.order.manager, f'Монтаж #{inst.id} помечен неактуальным',
-          reason or 'Подтвердите или оставьте монтаж в работе', f'/orders/installations/{inst.id}', actor)
-
-
-def _clear_irrelevant_request(inst):
+def mark_irrelevant(inst, reason, actor):
+    _drop_current_visit(inst, actor)
+    reason = reason or inst.irrelevant_reason
     inst.irrelevant_requested_at = None
     inst.irrelevant_requested_by = None
     inst.irrelevant_reason = ''
-    return ['irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason']
-
-
-@transaction.atomic
-def confirm_irrelevant(inst, actor):
-    requested_by = inst.irrelevant_requested_by
-    _drop_current_visit(inst, actor)
-    fields = _clear_irrelevant_request(inst)
-    _set_status(inst, InstallationStatus.IRRELEVANT, actor, EventKind.IRRELEVANT_CONFIRMED,
-                'Менеджер подтвердил неактуальность', extra_fields=fields)
-    _push(requested_by, f'Монтаж #{inst.id} признан неактуальным', 'Менеджер подтвердил',
-          f'/orders/installations/{inst.id}', actor)
-
-
-def keep_relevant(inst, comment, actor):
-    requested_by = inst.irrelevant_requested_by
-    fields = _clear_irrelevant_request(inst)
-    inst.save(update_fields=[*fields, 'updated_at'])
-    inst.log(EventKind.IRRELEVANT_REJECTED, actor=actor,
-             description=f'Комментарий: {comment}' if comment else 'Менеджер оставил монтаж в работе')
-    _push(requested_by, f'Монтаж #{inst.id} остаётся в работе',
-          comment or 'Менеджер не подтвердил неактуальность', f'/orders/installations/{inst.id}', actor)
+    _set_status(
+        inst, InstallationStatus.IRRELEVANT, actor, EventKind.STATUS_CHANGED,
+        f'Монтаж не актуален. Причина: {reason}' if reason else 'Монтаж не актуален',
+        extra_fields=('irrelevant_requested_at', 'irrelevant_requested_by', 'irrelevant_reason'),
+    )
 
 
 # ==================== Этап 3: работа монтажника ====================
@@ -573,7 +547,7 @@ def approve_act(f, actor):
 
 @transaction.atomic
 def reject_act(f, reason, actor):
-    """Подпись не подтверждена — клиенту снова уходит ссылка с причиной."""
+    """Сохраняет причину отклонения и повторно отправляет клиенту ссылку."""
     from . import sms
     inst = f.installation
     f.review_status = ActReview.REJECTED
@@ -581,7 +555,7 @@ def reject_act(f, reason, actor):
     f.reviewed_by, f.reviewed_at = actor, timezone.now()
     f.save(update_fields=['review_status', 'review_comment', 'reviewed_by', 'reviewed_at'])
     inst.log(EventKind.ACT_REJECTED, actor=actor, description=f'{f.name}: {reason}')
-    sms.send(inst, sms.act_rejected(inst, reason), actor=actor, purpose='act_rejected')
+    sms.send(inst, sms.act_rejected(inst), actor=actor, purpose='act_rejected')
 
 
 # ==================== Этап 5: оценка клиента, акт на оплату ====================
@@ -671,7 +645,7 @@ def payment_recipients(inst):
 
 def send_to_payment(inst, estimate, actor):
     """
-    Акт — бухгалтеру города и в копии салону. Письмо уходит с общего адреса,
+    Акт и КП на монтаж — бухгалтеру города и в копии салону. Письмо уходит с общего адреса,
     ответ — монтажнику (Reply-To); в теме монтажник, номер заказа и монтажа,
     в теле — смета работ и ссылка на монтаж.
     """
@@ -692,6 +666,7 @@ def send_to_payment(inst, estimate, actor):
     acts = list(payment_acts(inst))
     if not acts:
         raise PaymentEmailError('Нет подписанного акта — без него на оплату не отправить.')
+    offers = inst.files.filter(kind=InstallationFileKind.INSTALLATION_KP)
     name, phone = staff_name_phone(actor)
     path = f'/complaints/{inst.complaint_id}' if inst.complaint_id else f'/orders/installations/{inst.id}'
     body = (
@@ -706,9 +681,12 @@ def send_to_payment(inst, estimate, actor):
         subject=payment_subject(inst, actor), body=body, from_email=settings.DEFAULT_FROM_EMAIL,
         to=recipients, cc=copies, reply_to=[actor.email] if actor.email else None,
     )
-    for f in acts:
-        with f.file.open('rb') as fh:
-            email.attach(f.name, fh.read())
+    for attachment in (*acts, *offers):
+        try:
+            with attachment.file.open('rb') as content:
+                email.attach(attachment.name, content.read())
+        except Exception as exc:  # noqa: BLE001
+            raise PaymentEmailError(f'Не удалось приложить файл «{attachment.name}». Письмо не отправлено.') from exc
     try:
         email.send()
     except Exception as exc:  # noqa: BLE001

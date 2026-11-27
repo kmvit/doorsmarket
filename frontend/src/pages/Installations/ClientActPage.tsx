@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { publicActAPI, apiErrorText } from '../../api/installations'
 import { PublicActPage } from '../../types/installations'
 import RatingView from '../../components/installations/RatingView'
@@ -12,6 +12,8 @@ import RatingView from '../../components/installations/RatingView'
 const ClientActPage = () => {
   const { code = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const preview = searchParams.get('preview') === '1'
   const [page, setPage] = useState<PublicActPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -84,10 +86,16 @@ const ClientActPage = () => {
 
       {page.rating_open ? (
         <>
-          <RatingForm page={page} code={code} onDone={(p) => { setPage(p); setMessage('Спасибо за оценку!') }} />
+          {preview ? (
+            <div className="rounded-2xl bg-white p-5 text-sm text-gray-700 shadow-sm">
+              Оценку можно отправить по клиентской ссылке из СМС.
+            </div>
+          ) : (
+            <RatingForm page={page} code={code} onDone={(p) => { setPage(p); setMessage('Спасибо за оценку!') }} />
+          )}
           <button type="button" onClick={() => navigate('/')}
             className="w-full py-3 rounded-xl border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
-            Выйти из формы оценки
+            {preview ? 'Выйти со страницы' : 'Выйти из формы оценки'}
           </button>
         </>
       ) : page.rating ? (

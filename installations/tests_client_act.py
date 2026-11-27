@@ -7,6 +7,7 @@
         python manage.py test installations
 """
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from orders.models import OrderAttachment
@@ -100,6 +101,7 @@ class PublicPageTest(ClientActTestBase):
         # После завершения страница больше не принимает файлы
         self.assertEqual(self.public('upload', {'file': scan()}).status_code, 400)
 
+    @override_settings(BASE_URL='https://example.test')
     def test_reject_sends_link_again(self):
         self.public('upload', {'file': scan()})
         f = InstallationFile.objects.get(kind='act', review_status=ActReview.PENDING)
@@ -108,10 +110,14 @@ class PublicPageTest(ClientActTestBase):
         response = self.post(self.inst1, 'reject_act', {'file': f.id, 'reason': 'нет подписи на 2-й странице'})
         self.assertEqual(response.status_code, 200)
         text = self.send.call_args.args[1]
-        self.assertIn('нет подписи на 2-й странице', text)
-        self.assertIn(f'/m/{self.inst.client_code}', text)
+        self.assertEqual(
+            text,
+            'Акт вып работ не принят. Приложите подписанный акт ещё раз по ссылке '
+            f'https://example.test/m/{self.inst.client_code}',
+        )
         page = self.public(method='get').data
         self.assertEqual(page['last_upload']['review_status'], 'rejected')
+        self.assertEqual(page['last_upload']['review_comment'], 'нет подписи на 2-й странице')
         self.assertTrue(self.inst.events.filter(kind=EventKind.ACT_REJECTED).exists())
 
     def test_other_installer_cannot_review(self):

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import DocxPages from './DocxPages'
 import PdfPages from './PdfPages'
 import IosMediaDownload from './IosMediaDownload'
 import { isIosDevice } from '../../utils/isIosDevice'
@@ -10,6 +11,8 @@ interface FileViewerProps {
   fileName?: string
   onClose: () => void
 }
+
+type FileType = 'image' | 'video' | 'pdf' | 'docx' | 'other'
 
 const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
   useEffect(() => {
@@ -45,16 +48,22 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
   // у blob-URL (URL.createObjectURL при создании) расширения нет, а у обычных
   // ссылок может быть query-строка (?token=...), ломающая якорь $. Поэтому
   // отрезаем query/hash и проверяем сначала имя, затем сам URL.
-  const detectType = (s: string): 'image' | 'video' | 'pdf' | 'other' | null => {
+  const detectType = (s: string): FileType | null => {
     const v = s.toLowerCase().split('?')[0].split('#')[0]
     if (v.match(/\.(jpg|jpeg|jfif|jpe|png|gif|webp|bmp|svg|heic|heif|avif)$/)) return 'image'
     if (isVideoFile(v)) return 'video'
-    if (v.match(/\.(pdf)$/)) return 'pdf'
+    // Публичный бланк замера отдаётся как PDF по адресу без расширения.
+    if (v.endsWith('.pdf') || /(?:^|\/)api\/v1\/public\/measurements\/[^/]+\/pdf\/?$/.test(v)) return 'pdf'
+    if (v.endsWith('.docx')) return 'docx'
     return null
   }
 
-  const fileType: 'image' | 'video' | 'pdf' | 'other' =
+  const fileType =
     detectType(fileName || '') || detectType(normalizedUrl) || 'other'
+  const ios = isIosDevice()
+  const downloadName = fileType === 'pdf' && fileName && !/\.pdf$/i.test(fileName)
+    ? `${fileName}.pdf`
+    : fileName
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -87,12 +96,12 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-gray-900 shrink-0">
         <span className="min-w-0 flex-1 basis-full truncate text-sm text-gray-300 sm:basis-auto">{fileName || 'Файл'}</span>
         <div className="ml-auto flex items-center gap-2">
-          {(fileType === 'image' || fileType === 'video') && isIosDevice() ? (
-            <IosMediaDownload key={normalizedUrl} url={normalizedUrl} name={fileName} className={downloadClass}>
+          {ios && (fileType === 'image' || fileType === 'video' || fileType === 'pdf') ? (
+            <IosMediaDownload key={normalizedUrl} url={normalizedUrl} name={downloadName} className={downloadClass}>
               {downloadIcon}
             </IosMediaDownload>
           ) : (
-            <a href={normalizedUrl} download={fileName || true} target="_blank" rel="noreferrer" className={downloadClass}>
+            <a href={normalizedUrl} download={downloadName || true} target="_blank" rel="noreferrer" className={downloadClass}>
               {downloadIcon}
               Скачать
             </a>
@@ -136,7 +145,9 @@ const FileViewer = ({ fileUrl, fileName, onClose }: FileViewerProps) => {
         )}
 
         {/* PDF — через pdf.js, а не <iframe>: на iPhone во фрейме видна только первая страница */}
-        {fileType === 'pdf' && <PdfPages url={normalizedUrl} />}
+        {fileType === 'pdf' && <PdfPages url={normalizedUrl} showOpenLink={!ios} />}
+
+        {fileType === 'docx' && <DocxPages key={normalizedUrl} url={normalizedUrl} />}
 
         {fileType === 'other' && (
           <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md mx-4">

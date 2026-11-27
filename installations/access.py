@@ -15,8 +15,6 @@ LIST_ROLES = CREATE_ROLES | {'service_manager'}
 INSTALLER_ROLE = 'installer'
 # Виды файлов, которые загружает монтажник
 INSTALLER_FILE_KINDS = frozenset({'act', 'act_unsigned', 'result'})
-# Решение по неактуальности — за менеджером заказа
-DECIDE_ROLES = CREATE_ROLES
 # «Назначить монтаж» после «Не готов к монтажу» нажимает менеджер или СМ
 READY_ROLES = LIST_ROLES
 

@@ -451,7 +451,7 @@ const Dashboard = () => {
         {(isManager || isLeader || isSM || isInstaller) && (() => {
           const due = (isManager || isLeader) ? orderFolders.find((f) => f.folder === 'installation_needed') : undefined
           const shown = installationFolders
-            .filter((f) => !managerOnlyInstallations || ['irrelevant_requested', 'partially_done'].includes(f.folder))
+            .filter((f) => !managerOnlyInstallations || ['irrelevant', 'partially_done'].includes(f.folder))
             .filter((f) => !isInstaller || ['planned', 'awaiting_signature', 'act_review', 'partially_done'].includes(f.folder))
             .map((f) => (isInstaller && f.folder === 'planned' ? { ...f, label: 'Мои монтажи' } : f))
           if (!due && shown.length === 0) return null
@@ -465,7 +465,7 @@ const Dashboard = () => {
                 {due && <FolderCard to={`/orders?folder=installation_needed${mine}`} label={due.label} count={due.count} />}
                 {shown.map((f) => (
                   <FolderCard key={f.folder} to={`/orders/installations?folder=${f.folder}${managerOnlyInstallations ? '&mine=1' : ''}`} label={f.label}
-                    count={f.count} overdue={['irrelevant_requested', 'reschedule_requested', 'act_review'].includes(f.folder)} />
+                    count={f.count} overdue={['reschedule_requested', 'act_review'].includes(f.folder)} />
                 ))}
               </div>
             </div>

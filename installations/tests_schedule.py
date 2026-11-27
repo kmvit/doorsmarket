@@ -1,6 +1,6 @@
 """
 Монтажи, этап 2: СМ распределяет монтажи по монтажникам, графики,
-«не готов к монтажу», «не актуален» с подтверждением менеджера, СМС.
+«не готов к монтажу», «не актуален», СМС.
 
     DATABASE_ENGINE=django.db.backends.sqlite3 DATABASE_NAME=/tmp/t.sqlite3 \\
         python manage.py test installations
@@ -10,6 +10,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from orders.models import ActivityKind, Order, OrderStatus, Salon
@@ -208,37 +209,45 @@ class StatusFlowTest(ScheduleTestBase):
         self.inst.refresh_from_db()
         self.assertEqual(self.inst.status, InstallationStatus.NOT_PLANNED)
 
-    def test_irrelevant_needs_manager_confirmation(self):
+    def test_service_manager_marks_installation_irrelevant_immediately(self):
         self.assign()
+        self.assertEqual(self.post(self.manager, 'request_irrelevant').status_code, 403)
         response = self.post(self.sm, 'request_irrelevant', {'reason': 'Клиент отказался'})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['status'], InstallationStatus.IRRELEVANT)
         self.inst.refresh_from_db()
-        # До решения менеджера монтаж в работе
-        self.assertEqual(self.inst.status, InstallationStatus.PLANNED)
-        self.assertEqual(self.inst.irrelevant_reason, 'Клиент отказался')
-        self.assertEqual(self.post(self.sm, 'confirm_irrelevant').status_code, 403)
-
-        response = self.post(self.manager, 'confirm_irrelevant')
-        self.assertEqual(response.status_code, 200)
-        self.inst.refresh_from_db()
-        self.assertEqual(self.inst.status, InstallationStatus.IRRELEVANT)
         self.assertIsNone(self.inst.irrelevant_requested_at)
         self.assertFalse(InstallationVisit.objects.exists())
+        self.assertEqual(self.post(self.sm, 'request_irrelevant').status_code, 200)
+        event = self.inst.events.get(new_status=InstallationStatus.IRRELEVANT)
+        self.assertEqual(event.actor_id, self.sm.pk)
+        self.assertIn('Клиент отказался', event.description)
 
-    def test_manager_keeps_installation(self):
-        self.post(self.sm, 'request_irrelevant', {'reason': 'Не берёт трубку'})
-        response = self.post(self.manager, 'keep_relevant', {'comment': 'Клиент ждёт'})
+    def test_service_manager_can_close_a_previously_pending_installation(self):
+        Installation.objects.filter(pk=self.inst.pk).update(
+            irrelevant_requested_at=timezone.now(), irrelevant_requested_by=self.sm,
+            irrelevant_reason='Не берёт трубку',
+        )
+        response = self.post(self.sm, 'request_irrelevant')
         self.assertEqual(response.status_code, 200)
         self.inst.refresh_from_db()
         self.assertIsNone(self.inst.irrelevant_requested_at)
-        self.assertEqual(self.inst.status, InstallationStatus.NOT_PLANNED)
+        self.assertIsNone(self.inst.irrelevant_requested_by_id)
+        self.assertEqual(self.inst.status, InstallationStatus.IRRELEVANT)
+        self.assertIn('Не берёт трубку', self.inst.events.get(new_status=InstallationStatus.IRRELEVANT).description)
 
     def test_folders(self):
         c = self.client_for(self.manager)
         counts = {f['folder']: f['count'] for f in c.get('/api/v1/installations/folder_counts/').data}
         self.assertEqual(counts['to_assign'], 1)
-        self.post(self.sm, 'request_irrelevant')
-        rows = c.get('/api/v1/installations/', {'folder': 'irrelevant_requested', 'mine': 'true'}).data
+        self.assertEqual(self.post(self.sm, 'request_irrelevant').status_code, 200)
+        counts = {f['folder']: f['count'] for f in c.get('/api/v1/installations/folder_counts/').data}
+        self.assertEqual(counts['to_assign'], 0)
+        self.assertEqual(counts['irrelevant'], 1)
+        self.assertNotIn('irrelevant_requested', counts)
+        rows = c.get('/api/v1/installations/', {
+            'folder': 'irrelevant', 'mine': 'true', 'exclude_closed': 'true',
+        }).data
         self.assertEqual([r['id'] for r in rows], [self.inst.id])
 
 
@@ -324,6 +333,21 @@ class CalendarBlockTests(ScheduleTestBase):
         url = f"{self.url}{result.data['id']}/"
         self.assertEqual(self.client_for(self.inst1).delete(url).status_code, 404)
         self.assertEqual(self.client_for(self.sm).delete(url).status_code, 204)
+
+    def test_personal_day_off_comment_is_visible_in_schedule(self):
+        self.assertEqual(self.block(self.inst1, self.inst1, 'а' * 501).status_code, 400)
+        result = self.block(self.inst1, self.inst1, '  Отпуск  ')
+        self.assertEqual(result.status_code, 201, result.data)
+        for actor in (self.inst1, self.manager, self.sm):
+            with self.subTest(role=actor.role):
+                response = self.client_for(actor).get('/api/v1/installations/schedule/', {
+                    'date_from': '2026-11-11', 'date_to': '2026-11-12',
+                })
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(
+                    [(row['kind'], row['work_description']) for row in response.data],
+                    [('day_off', 'Отпуск')],
+                )
 
     def test_reschedule_checks_every_installer_on_shared_visit(self):
         self.assertEqual(self.block(self.inst2, self.inst2).status_code, 201)

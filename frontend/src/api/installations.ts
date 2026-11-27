@@ -1,4 +1,4 @@
-import apiClient from './client'
+import apiClient, { LONG_TIMEOUT, publicApiClient } from './client'
 import { withOfflineFallback } from '../services/offline'
 import { requestWithQueue } from '../services/sync'
 import {
@@ -163,7 +163,7 @@ export const installationsAPI = {
 
   action: async (
     id: number,
-    name: 'repeat' | 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant' | 'confirm_irrelevant' | 'keep_relevant'
+    name: 'repeat' | 'unassign' | 'not_ready' | 'ready' | 'request_irrelevant'
       | 'notify_call_failed' | 'installer_call_failed' | 'reschedule' | 'confirm_reschedule' | 'reject_reschedule'
       | 'send_act_to_client' | 'approve_act' | 'reject_act' | 'send_to_payment',
     body: Record<string, string> = {},
@@ -189,16 +189,14 @@ const publicUrl = (code: string, action = '') =>
   `/public/installation-acts/${encodeURIComponent(code)}/${action ? `${action}/` : ''}`
 
 export const publicActAPI = {
-  get: async (code: string): Promise<PublicActPage> => (await apiClient.get(publicUrl(code))).data,
-  confirm: async (code: string): Promise<PublicActPage> => (await apiClient.post(publicUrl(code, 'confirm'))).data,
+  get: async (code: string): Promise<PublicActPage> => (await publicApiClient.get(publicUrl(code))).data,
+  confirm: async (code: string): Promise<PublicActPage> => (await publicApiClient.post(publicUrl(code, 'confirm'))).data,
   rate: async (code: string, scores: Record<string, number>, comments: Record<string, string>): Promise<PublicActPage> =>
-    (await apiClient.post(publicUrl(code, 'rate'), { scores, comments })).data,
+    (await publicApiClient.post(publicUrl(code, 'rate'), { scores, comments })).data,
   upload: async (code: string, file: File): Promise<PublicActPage> => {
     const form = new FormData()
     form.append('file', file)
-    return (await apiClient.post(publicUrl(code, 'upload'), form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })).data
+    return (await publicApiClient.post(publicUrl(code, 'upload'), form, { timeout: LONG_TIMEOUT })).data
   },
 }
 

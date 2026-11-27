@@ -6,7 +6,7 @@ import {
   CLOSED_INSTALLATION_STATUSES, Installation, InstallationEvent, InstallationFileKind,
   INSTALLATION_FILE_KINDS, INSTALLATION_FILE_KIND_DISPLAY, INSTALLATION_STATUS_COLOR,
   formatDate, formatDeliveryDateRange, formatPeriod, formatVisitAssignments, formatPeriodForInstaller,
-  canDecideIrrelevant, canEditSchedule, canSeeInstallations, INSTALLER_FILE_KINDS,
+  canEditSchedule, canSeeInstallations, INSTALLER_FILE_KINDS,
 } from '../../types/installations'
 import AssignModal from '../../components/installations/AssignModal'
 import InstallerWorkPanel from '../../components/installations/InstallerWorkPanel'
@@ -123,7 +123,6 @@ const InstallationDetail = () => {
     && (!INSTALLER_FILE_KINDS.includes(kind) || ['planned', 'awaiting_signature'].includes(inst.status))
   const canDeleteFile = (uploadedBy: number | null) => editable && (!isInstaller || uploadedBy === user?.id)
   const assignable = ['not_planned', 'partially_done', 'planned'].includes(inst.status)
-  const pending = !!inst.irrelevant_requested_at && editable
   const btn = 'px-3 py-1.5 text-sm rounded-lg border transition-all disabled:opacity-50'
   const btnPrimary = `${btn} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`
   const btnPlain = `${btn} border-gray-300 text-gray-700 bg-white hover:bg-gray-50`
@@ -176,9 +175,9 @@ const InstallationDetail = () => {
         <div className="rounded-xl border border-primary-200 bg-primary-50 p-4 mb-4">
           <p className="text-sm font-medium text-primary-900 mb-2">Страница клиента: подпись акта и оценка</p>
           <div className="flex flex-wrap items-center gap-3">
-            <a href={inst.client_link} target="_blank" rel="noreferrer"
+            <a href={`${inst.client_link}?preview=1`} target="_blank" rel="noreferrer"
               className="text-sm text-primary-700 underline break-all">
-              Открыть страницу оценки
+              Предпросмотр страницы оценки
             </a>
             <button type="button" onClick={async () => {
               try {
@@ -191,27 +190,6 @@ const InstallationDetail = () => {
               Скопировать ссылку
             </button>
           </div>
-        </div>
-      )}
-
-      {pending && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
-          <p className="text-sm text-amber-900">
-            <span className="font-semibold">{inst.irrelevant_requested_by_name || 'Сервис-менеджер'}</span> пометил монтаж
-            неактуальным{inst.irrelevant_reason && <>: «{inst.irrelevant_reason}»</>}. До решения менеджера монтаж в работе.
-          </p>
-          {canDecideIrrelevant(user?.role) && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              <button type="button" disabled={acting} className={btnPrimary}
-                onClick={() => ask('Подтвердить: монтаж не актуален?', 'confirm_irrelevant')}>
-                Подтвердить неактуальность
-              </button>
-              <button type="button" disabled={acting} className={btnPlain}
-                onClick={() => ask('Комментарий для сервис-менеджера (необязательно):', 'keep_relevant', 'comment')}>
-                Оставить в работе
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -284,10 +262,10 @@ const InstallationDetail = () => {
               Не дозвонился — отправить СМС
             </button>
           )}
-          {sm && !inst.irrelevant_requested_at && (
+          {sm && (
             <button type="button" disabled={acting} className={`${btn} border-red-200 text-red-700 bg-white hover:bg-red-50`}
-              onClick={() => ask('Почему монтаж не актуален? Решение примет менеджер.', 'request_irrelevant', 'reason')}>
-              Не актуален
+              onClick={() => run('request_irrelevant')}>
+              Монтаж не актуален
             </button>
           )}
         </div>

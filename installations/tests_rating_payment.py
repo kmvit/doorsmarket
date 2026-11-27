@@ -5,12 +5,14 @@
         python manage.py test installations
 """
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from orders.models import Measurement, MeasurementRequest
 
-from .models import InstallationRating, InstallationStatus
+from .models import InstallationFile, InstallationFileKind, InstallationRating, InstallationStatus
 from .tests_installer import InstallerTestBase
 
 SCORES = {'overall': 5, 'installation': 4, 'manager': 5}
@@ -40,6 +42,18 @@ class RatingPaymentBase(InstallerTestBase):
 
 
 class RatingTest(RatingPaymentBase):
+    def test_customer_link_accepts_rating_without_staff_credentials(self):
+        self.finish()
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.manager)}')
+        url = f'/api/v1/public/installation-acts/{self.inst.client_code}/rate/'
+        payload = {'scores': SCORES}
+        self.assertEqual(client.post(url, payload, format='json').status_code, 403)
+        self.assertFalse(InstallationRating.objects.exists())
+        client.credentials()
+        self.assertEqual(client.post(url, payload, format='json').status_code, 200)
+        self.assertEqual(InstallationRating.objects.count(), 1)
+
     def test_completion_sends_rating_link(self):
         self.finish()
         text = self.send.call_args.args[1]
@@ -122,6 +136,40 @@ class PaymentTest(RatingPaymentBase):
     def test_partial_can_be_sent(self):
         self.finish(partial=True)
         self.assertEqual(self.send_payment().status_code, 200)
+
+    def test_payment_email_includes_all_installation_offers(self):
+        offers = {'КП на монтаж 1.pdf': b'%PDF-1.4 first', 'КП на монтаж 2.pdf': b'%PDF-1.4 second'}
+        for name, content in offers.items():
+            InstallationFile.objects.create(
+                installation=self.inst, kind=InstallationFileKind.INSTALLATION_KP, name=name,
+                file=SimpleUploadedFile(name, content, content_type='application/pdf'),
+            )
+        InstallationFile.objects.create(
+            installation=self.inst, kind=InstallationFileKind.FINAL_KP, name='Итоговое КП.pdf',
+            file='installations/files/final-offer.pdf',
+        )
+        self.finish()
+
+        response = self.send_payment()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(mail.outbox), 1)
+        attachments = mail.outbox[0].attachments
+        self.assertCountEqual([(file.filename, file.content) for file in attachments], [('Акт.jpg', b'jpg'), *offers.items()])
+
+    def test_payment_is_not_marked_sent_if_an_offer_cannot_be_attached(self):
+        InstallationFile.objects.create(
+            installation=self.inst, kind=InstallationFileKind.INSTALLATION_KP, name='КП на монтаж.pdf',
+            file='installations/files/missing-installation-offer.pdf',
+        )
+        self.finish()
+
+        response = self.send_payment()
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('КП на монтаж.pdf', response.data['detail'])
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIsNone(self.inst.visits.get().payment_sent_at)
 
     def test_city_admin_address_and_order_salon_copy(self):
         self.city.name = 'Самара'

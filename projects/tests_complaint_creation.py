@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -103,13 +104,16 @@ class ComplaintCreationPermissionsTest(TestCase):
 
         api = APIClient()
         api.force_authenticate(sm)
-        response = api.post('/api/v1/complaints/', self.payload | {'installer_work_paid': False}, format='json')
+        response = api.post('/api/v1/complaints/', self.payload, format='multipart')
+        self.assertEqual(response.status_code, 400, response.data)
+        response = api.post('/api/v1/complaints/', self.payload | {'installer_work_paid': 'false'}, format='multipart')
 
         self.assertEqual(response.status_code, 201, response.data)
         complaint = Complaint.objects.get(pk=response.data['id'])
         self.assertEqual(complaint.initiator, sm)
         self.assertEqual(complaint.installer_assigned, self.users[Role.INSTALLER])
         self.assertEqual(complaint.status, ComplaintStatus.WAITING_INSTALLER_DATE)
+        self.assertIs(complaint.installer_work_paid, False)
 
     @patch('projects.models.send_sms_notification', return_value=False)
     @patch('users.push_utils.send_push_notification', return_value=False)
@@ -150,10 +154,19 @@ class ComplaintCreationPermissionsTest(TestCase):
         api.force_authenticate(manager)
         payload = self.payload.copy()
         del payload['complaint_type'], payload['installer_assigned_id']
-        response = api.post('/api/v1/complaints/', payload, format='json')
+        self.assertEqual(api.post('/api/v1/complaints/', {
+            **payload, 'installer_work_paid': 'false',
+        }, format='multipart').status_code, 400)
+        offer = SimpleUploadedFile('offer.pdf', b'%PDF-1.4', content_type='application/pdf')
+        with self.settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'}}):
+            response = api.post('/api/v1/complaints/', {
+                **payload, 'commercial_offers': [offer],
+            }, format='multipart')
 
         self.assertEqual(response.status_code, 201, response.data)
         complaint = Complaint.objects.get(pk=response.data['id'])
         self.assertEqual(complaint.initiator, manager)
         self.assertEqual(complaint.recipient, self.users[Role.SERVICE_MANAGER])
         self.assertEqual(complaint.status, ComplaintStatus.NEW)
+        self.assertIsNone(complaint.installer_work_paid)
+        self.assertEqual(complaint.attachments.get().attachment_type, 'commercial_offer')

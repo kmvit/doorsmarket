@@ -14,7 +14,7 @@ from . import services
 from .complaint_work import current_assignment
 from . import sms
 from .access import (
-    can_unassign_installation, CREATE_ROLES, DECIDE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
+    can_unassign_installation, CREATE_ROLES, INSTALLER_FILE_KINDS, INSTALLER_ROLE, READY_ROLES,
     can_schedule_installations, can_see_installations, installations_for_user, is_installer_of, manager_installations_scope,
 )
 from .models import (
@@ -32,11 +32,11 @@ INSTALLATION_FOLDERS = [
     ('to_assign', 'Назначить монтаж'),
     ('planned', 'Запланирован'),
     ('not_ready', 'Не готов к монтажу'),
-    ('irrelevant_requested', 'Неактуален? Подтвердить'),
     ('reschedule_requested', 'Перенос даты? Подтвердить'),
     ('awaiting_signature', 'Ожидает подписи клиента'),
     ('act_review', 'Проверить акт клиента'),
     (InstallationStatus.PARTIALLY_DONE, InstallationStatus.PARTIALLY_DONE.label),
+    (InstallationStatus.IRRELEVANT, 'Неактуальные'),
 ]
 
 # Монтаж в работе у монтажника: запланирован или ждёт подписи клиента
@@ -46,14 +46,12 @@ WORK_STATUSES = (InstallationStatus.PLANNED, InstallationStatus.AWAITING_SIGNATU
 def apply_installation_folder(qs, folder):
     if folder == 'to_assign':
         return qs.filter(status=InstallationStatus.NOT_PLANNED)
-    if folder == InstallationStatus.PARTIALLY_DONE:
-        return qs.filter(status=InstallationStatus.PARTIALLY_DONE)
+    if folder in (InstallationStatus.PARTIALLY_DONE, InstallationStatus.IRRELEVANT):
+        return qs.filter(status=folder)
     if folder == 'planned':
         return qs.filter(status=InstallationStatus.PLANNED)
     if folder == 'not_ready':
         return qs.filter(status=InstallationStatus.NOT_READY)
-    if folder == 'irrelevant_requested':
-        return qs.filter(irrelevant_requested_at__isnull=False).exclude(status=InstallationStatus.IRRELEVANT)
     if folder == 'awaiting_signature':
         return qs.filter(status=InstallationStatus.AWAITING_SIGNATURE)
     if folder == 'act_review':
@@ -148,7 +146,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             'send_act_to_client', 'approve_act', 'reject_act', 'send_to_payment',
         }
         qs = installations_for_user(request.user, include_complaint_work=self.action in complaint_actions)
-        if self.action in ('assign', 'unassign', 'repeat'):
+        if self.action in ('assign', 'unassign', 'repeat', 'mark_irrelevant'):
             return qs.select_for_update(of=('self', 'order'))
         if self.action != 'list':
             return qs
@@ -160,7 +158,8 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             qs = qs.filter(status__in=statuses)
         # «Кроме выполненных» — по умолчанию в списке; явный выбор закрытого
         # статуса в фильтре важнее, иначе он всегда давал бы пустой список
-        if params.get('exclude_closed') == 'true' and not statuses & set(CLOSED_INSTALLATION_STATUSES):
+        if (params.get('exclude_closed') == 'true' and params.get('folder') != InstallationStatus.IRRELEVANT
+                and not statuses & set(CLOSED_INSTALLATION_STATUSES)):
             qs = qs.exclude(status__in=CLOSED_INSTALLATION_STATUSES)
         is_paid = _bool_param(params.get('is_paid'))
         if is_paid is not None:
@@ -345,7 +344,12 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         if not self._installers_qs(request).filter(pk=installer_id).exists():
             return Response(status=status.HTTP_403_FORBIDDEN)
         comment = request.data.get('comment', '')
-        if not isinstance(comment, str) or len(comment.strip()) > 500 or (not own and not comment.strip()):
+        if not isinstance(comment, str):
+            return _bad('Комментарий должен быть текстом.')
+        comment = comment.strip()
+        if len(comment) > 500:
+            return _bad('Комментарий не должен превышать 500 символов.')
+        if not own and not comment:
             return _bad('Укажите причину занятости (до 500 символов).')
         start, end = data['date_from'], data['date_to']
         services.check_calendar_blocks({installer_id: (start, end)})
@@ -368,7 +372,7 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             return _bad('На выбранные дни уже назначен выезд по рекламации.')
         block = InstallerCalendarBlock.objects.create(
             **data, kind=InstallerCalendarBlock.Kind.DAY_OFF if own else InstallerCalendarBlock.Kind.OTHER_WORK,
-            comment='' if own else comment.strip(),
+            comment=comment,
         )
         return Response({'id': block.pk}, status=status.HTTP_201_CREATED)
 
@@ -550,38 +554,20 @@ class InstallationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         services.mark_ready(inst, request.user)
         return Response(self._detail(inst))
 
-    @action(detail=True, methods=['post'], url_path='request_irrelevant')
-    def request_irrelevant(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='request_irrelevant', url_name='request-irrelevant')
+    @transaction.atomic
+    def mark_irrelevant(self, request, pk=None):
         if not can_schedule_installations(request.user):
             return _forbidden('Пометить неактуальным может сервис-менеджер.')
         inst = self.get_object()
-        if inst.is_closed or inst.irrelevant_requested_at:
-            return _bad('Монтаж уже закрыт или ждёт решения менеджера.')
-        services.request_irrelevant(inst, (request.data.get('reason') or '').strip()[:500], request.user)
-        return Response(self._detail(inst))
-
-    def _decide(self, request):
-        if request.user.role not in DECIDE_ROLES:
-            return None, _forbidden('Решение по неактуальности принимает менеджер.')
-        inst = self.get_object()
-        if not inst.irrelevant_requested_at or inst.is_closed:
-            return None, _bad('Монтаж не помечен неактуальным.')
-        return inst, None
-
-    @action(detail=True, methods=['post'], url_path='confirm_irrelevant')
-    def confirm_irrelevant(self, request, pk=None):
-        inst, error = self._decide(request)
-        if error:
-            return error
-        services.confirm_irrelevant(inst, request.user)
-        return Response(self._detail(inst))
-
-    @action(detail=True, methods=['post'], url_path='keep_relevant')
-    def keep_relevant(self, request, pk=None):
-        inst, error = self._decide(request)
-        if error:
-            return error
-        services.keep_relevant(inst, (request.data.get('comment') or '').strip()[:500], request.user)
+        if inst.status == InstallationStatus.IRRELEVANT:
+            return Response(self._detail(inst))
+        if inst.is_closed:
+            return _bad('Монтаж уже закрыт.')
+        reason = request.data.get('reason', '')
+        if not isinstance(reason, str):
+            return _bad('Причина должна быть текстом.')
+        services.mark_irrelevant(inst, reason.strip()[:500], request.user)
         return Response(self._detail(inst))
 
     @action(detail=True, methods=['post'], url_path='notify_call_failed')

@@ -563,7 +563,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
                 from orders.api_views import get_orders_queryset_for_user
                 if not actor or not get_orders_queryset_for_user(actor).filter(pk=source_order.pk).exists():
                     raise serializers.ValidationError({'detail': 'У вас нет доступа к этому заказу.'})
-        elif 'installer_work_paid' in attrs:
+        elif attrs.get('installer_work_paid') is not None:
             raise serializers.ValidationError({'detail': 'Оплата указывается при направлении монтажнику.'})
         if request and request.user and request.user.role == 'installer':
             additional_info = attrs.get('additional_info') or ''

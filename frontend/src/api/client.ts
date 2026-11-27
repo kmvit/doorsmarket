@@ -18,7 +18,10 @@ export const resetRedirectFlag = () => {
 const DEFAULT_TIMEOUT = 20 * 1000
 // Загрузка файлов и генерация PDF законно занимают минуты на медленной сети —
 // им короткий таймаут не ставим (иначе получим дубли вложений при повторе)
-const LONG_TIMEOUT = 3 * 60 * 1000
+export const LONG_TIMEOUT = 3 * 60 * 1000
+
+// Клиентские ссылки работают независимо от рабочей сессии в том же браузере.
+export const publicApiClient = axios.create({ baseURL: API_BASE_URL, timeout: DEFAULT_TIMEOUT })
 
 // Создаем экземпляр axios
 const apiClient: AxiosInstance = axios.create({

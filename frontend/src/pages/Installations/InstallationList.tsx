@@ -31,7 +31,7 @@ const FOLDER_LABELS: Record<string, string> = {
   to_assign: 'Назначить монтаж',
   planned: 'Запланирован',
   not_ready: 'Не готов к монтажу',
-  irrelevant_requested: 'Неактуален? Подтвердить',
+  irrelevant: 'Неактуальные',
   reschedule_requested: 'Перенос даты? Подтвердить',
   awaiting_signature: 'Ожидает подписи клиента',
   act_review: 'Проверить акт клиента',
@@ -55,13 +55,14 @@ const InstallationList = () => {
   const [assigning, setAssigning] = useState<Installation | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const folder = searchParams.get('folder') || ''
-  const partialFolder = folder === 'partially_done'
+  const irrelevantFolder = folder === 'irrelevant'
+  const statusFolder = irrelevantFolder || folder === 'partially_done'
   const mineParam = searchParams.get('mine') === '1'
   const canAssign = canEditSchedule(user)
 
   const [search, setSearch] = usePersistedState('installations:search', '')
   const [rawStatus, setStatus] = usePersistedState<InstallationStatus[]>('installations:status', [])
-  const status = partialFolder ? [] : toArray<InstallationStatus>(rawStatus)
+  const status = statusFolder ? [] : toArray<InstallationStatus>(rawStatus)
   const [paid, setPaid] = usePersistedState<PaidFilter>('installations:paid', '')
   const [mine, setMine] = usePersistedState('installations:mine', false)
   // «Кроме выполненных» — по умолчанию включено
@@ -71,7 +72,7 @@ const InstallationList = () => {
   const byPeople = canFilterByPeople(user?.role)
   // Галочка включает режим только рекламационных монтажей; выключенная — общий список.
   const [savedComplaintsOnly, setComplaintsOnly] = usePersistedState('installations:complaints_only', false)
-  const complaintsOnly = !partialFolder && savedComplaintsOnly
+  const complaintsOnly = !statusFolder && savedComplaintsOnly
   const [complaintRows, setComplaintRows] = useState<ComplaintInstallationRow[]>([])
   // Статусы, оплата и папки — отдельные фильтры обычных монтажей.
   const complaintsShown = (!folder || folder === 'to_assign') && !status.length && paid === ''
@@ -85,7 +86,7 @@ const InstallationList = () => {
         status,
         is_paid: paid === '' ? undefined : paid === 'paid',
         mine: mine || undefined,
-        exclude_closed: excludeClosed || undefined,
+        exclude_closed: !irrelevantFolder && excludeClosed || undefined,
         cities: byPeople ? people.cities : undefined,
         salons: byPeople ? people.salons : undefined,
         managers: byPeople ? people.managers : undefined,
@@ -108,7 +109,7 @@ const InstallationList = () => {
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder, complaintsShown, complaintsOnly])
+  }, [search, rawStatus, paid, mine, excludeClosed, rawPeople, byPeople, folder, irrelevantFolder, complaintsShown, complaintsOnly])
 
   // Фильтры статуса/оплаты/папки относятся к обычным монтажам. Сбрасываем их,
   // чтобы режим «только рекламационные» всегда показывал ожидаемый результат.
@@ -143,8 +144,8 @@ const InstallationList = () => {
 
   const renderInstallation = (it: Installation) => {
     const docs = [
-      ...it.order_documents.map((d) => ({ key: `${d.kind}-${d.file_url}`, name: d.name, url: d.file_url })),
-      ...it.files.map((f) => ({ key: `f${f.id}`, name: f.kind_display, url: f.file_url || '' })),
+      ...it.order_documents.map((d) => ({ key: `${d.kind}-${d.file_url}`, label: d.name, name: d.name, url: d.file_url })),
+      ...it.files.map((f) => ({ key: `f${f.id}`, label: f.kind_display, name: f.name, url: f.file_url || '' })),
     ]
     return (
       <tr
@@ -188,9 +189,6 @@ const InstallationList = () => {
               ★ {it.rating_overall}/5
             </div>
           )}
-          {it.irrelevant_requested_at && (
-            <div className="mt-1 text-xs font-medium text-gray-600">Помечен неактуальным</div>
-          )}
           {canAssign && ['not_planned', 'partially_done', 'planned'].includes(it.status) && (
             <button
               type="button"
@@ -228,7 +226,7 @@ const InstallationList = () => {
                   onClick={(e) => { e.stopPropagation(); setViewing({ url: d.url, name: d.name }) }}
                   className="text-xs text-primary-600 hover:underline text-left whitespace-nowrap"
                 >
-                  {d.name}
+                  {d.label}
                 </button>
               </li>
             ))}
@@ -356,7 +354,7 @@ const InstallationList = () => {
         </div>
         {!complaintsOnly && (
           <>
-            {!partialFolder && <div>
+            {!statusFolder && <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Статус</label>
               <MultiSelect
                 options={STATUS_OPTIONS}
@@ -392,7 +390,7 @@ const InstallationList = () => {
             Мои заказы
           </label>
         )}
-        {!complaintsOnly && (
+        {!complaintsOnly && !irrelevantFolder && (
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"
@@ -403,7 +401,7 @@ const InstallationList = () => {
             Скрывать выполненные
           </label>
         )}
-        {!partialFolder && <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        {!statusFolder && <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input
             type="checkbox"
             checked={complaintsOnly}

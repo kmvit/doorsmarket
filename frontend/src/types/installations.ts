@@ -332,9 +332,6 @@ export const formatDeliveryDateRange = (from: string | null, to: string | null) 
 /** Графики монтажников правит СМ */
 export const canEditSchedule = (user?: User | null) => canManageService(user) || user?.role === 'admin'
 
-/** Решение по неактуальности — менеджер */
-export const canDecideIrrelevant = (role?: string) => canCreateInstallation(role)
-
 /** Дата ГГГГ-ММ-ДД по локальному времени (без сдвига в UTC) */
 export const isoDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
